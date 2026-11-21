@@ -13,6 +13,9 @@ class AppConfig {
   static const stravaRedirectHost = 'localhost';
   static const stravaRedirectPath = '/oauth';
 
-  static const googleServerClientId =
-      '267607013114-qud9nba6kopvqfut8umgtor2cqp846u0.apps.googleusercontent.com';
+  static const googleServerClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+    defaultValue:
+        '267607013114-qud9nba6kopvqfut8umgtor2cqp846u0.apps.googleusercontent.com',
+  );
 }

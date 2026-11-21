@@ -61,6 +61,18 @@ void main() {
 
     expect(repository.syncCalls, 2);
   });
+
+  test('never asks the backend to sync while Strava is off', () async {
+    final repository = _StubRepository(imported: 3);
+    final controller = SyncController(repository, enabled: false);
+
+    controller.startBackgroundSync(force: true);
+    final result = await controller.sync(fullResync: true);
+
+    expect(repository.syncCalls, 0);
+    expect(controller.syncing, isFalse);
+    expect(result.succeeded, isFalse);
+  });
 }
 
 class _StubRepository implements ActivityRepository {

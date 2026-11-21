@@ -3,11 +3,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart'
+    show contractGiftProvider;
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
+import 'package:myrun/src/run_contracts/run_contract_insights.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
+import 'package:myrun/src/run_contracts/widgets/contract_card_panel.dart';
+import 'package:myrun/src/run_contracts/widgets/contract_gift_section.dart';
+import 'package:myrun/src/run_contracts/widgets/contract_share.dart';
+import 'package:myrun/src/run_contracts/widgets/run_contract_card.dart'
+    show runContractStateColor, runContractStateLabel;
+import 'package:myrun/src/run_contracts/widgets/run_contract_meetup_panel.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
@@ -16,6 +25,8 @@ import 'package:myrun/src/widgets/live_route_view.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
 import 'package:myrun/src/widgets/route_map.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
+import 'package:myrun/src/widgets/run_now_empty.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 class RunContractDetailScreen extends ConsumerStatefulWidget {
   const RunContractDetailScreen({required this.contractId, super.key});
@@ -54,6 +65,12 @@ class _RunContractDetailScreenState
       appBar: AppBar(
         title: const Text('Chi tiết kèo'),
         actions: [
+          if (contract != null)
+            IconButton(
+              onPressed: () => _share(contract, uid),
+              icon: const Icon(Icons.ios_share_rounded),
+              tooltip: 'Khoe kèo',
+            ),
           if (canDelete)
             IconButton(
               onPressed: _working ? null : () => _confirmDelete(contract),
@@ -84,6 +101,32 @@ class _RunContractDetailScreenState
     );
   }
 
+  Future<void> _share(RunContract contract, String? uid) {
+    final me = ref.read(userProfileProvider).value;
+    final members = {
+      for (final member
+          in ref.read(membersProvider).value ?? const <MemberProfile>[])
+        member.uid: member,
+    };
+    final mine = contract.creatorUid == uid;
+    final owner = members[contract.creatorUid];
+    return showContractShare(
+      context,
+      contract: contract,
+      currentUid: uid,
+      ownerName: mine
+          ? me?.displayName ?? 'Bạn'
+          : owner?.displayName ?? '3i member',
+      ownerAvatarUrl: mine ? me?.avatarUrl : owner?.avatarUrl,
+      participantAvatarUrls: [
+        for (final participant in contract.participants.values)
+          participant.uid == uid
+              ? me?.avatarUrl
+              : members[participant.uid]?.avatarUrl,
+      ],
+    );
+  }
+
   /// Hành động nổi bật kiểu "pin" ở đáy màn hình — ưu tiên nhắc sync khi kèo
   /// đang chờ đồng bộ cuối; ngoài ra, nếu kèo đang active và user chưa hoàn
   /// thành, ưu tiên tiếp theo là chọn/đổi buổi chạy áp dụng (trước đây chỉ là
@@ -95,7 +138,10 @@ class _RunContractDetailScreenState
     required String? uid,
     required bool syncing,
   }) {
+    // Nút đồng bộ chỉ kéo lại từ Strava, nên chỉ hiện khi Strava đang bật và
+    // user có nối.
     if (lifecycle == RunContractLifecycle.syncGrace) {
+      if (!ref.watch(stravaConnectionProvider)) return null;
       return _PinnedSyncButton(
         syncing: syncing,
         onPressed: () =>
@@ -226,13 +272,35 @@ class _RunContractDetailScreenState
           in ref.watch(membersProvider).value ?? const <MemberProfile>[])
         member.uid: member,
     };
+    final giftState = ref.watch(contractGiftProvider(contract.id));
+    final gift = giftState.value;
+    // Kèo có quà do job chốt và chia quà; chưa tải xong thì cũng ẩn nút chốt
+    // tay, vì rules chặn chủ kèo đóng kèo có quà.
+    final giftCloses =
+        giftState.isLoading || (gift != null && gift.items.isNotEmpty);
     return ListView(
       padding: const EdgeInsets.fromLTRB(0, 16, 0, 120),
       children: [
         _ContractDetailHeader(
           contract: contract,
+          currentUid: uid,
           ownerName: ownerName,
           ownerAvatarUrl: ownerAvatarUrl,
+        ),
+        if (contract.meetAt != null) ...[
+          const SizedBox(height: 12),
+          RunContractMeetupPanel(contract: contract),
+        ],
+        const SizedBox(height: 12),
+        ContractGiftSection(
+          contract: contract,
+          gift: gift,
+          uid: uid,
+          names: {
+            for (final p in profiles.values) p.uid: p.displayName,
+            if (uid != null && currentProfile != null)
+              uid: currentProfile.displayName,
+          },
         ),
         if (contract.route != null) ...[
           const SizedBox(height: 16),
@@ -248,6 +316,15 @@ class _RunContractDetailScreenState
         ] else if (participant != null) ...[
           const SizedBox(height: 12),
           _MyProgressCard(contract: contract, participant: participant),
+          // Hành trình nhóm xét đạt theo tổng cả nhóm, còn thẻ xét theo tiến
+          // độ riêng từng người, nên loại kèo đó chưa có thẻ.
+          if (contractCardShown(contract, uid)) ...[
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: ContractCardPanel(contract: contract),
+            ),
+          ],
         ],
         const SizedBox(height: 12),
         _ParticipantProgressList(
@@ -282,7 +359,7 @@ class _RunContractDetailScreenState
             lifecycle == RunContractLifecycle.awaitingFinalize)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: _primaryAction(contract, lifecycle),
+            child: _primaryAction(contract, lifecycle, giftCloses: giftCloses),
           )
         else if (owner &&
             contract.isActive &&
@@ -290,7 +367,7 @@ class _RunContractDetailScreenState
                 lifecycle == RunContractLifecycle.scheduled))
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: _primaryAction(contract, lifecycle),
+            child: _primaryAction(contract, lifecycle, giftCloses: giftCloses),
           ),
         if (owner && !contract.isActive)
           Padding(
@@ -323,29 +400,37 @@ class _RunContractDetailScreenState
     );
   }
 
-  Widget _primaryAction(RunContract contract, RunContractLifecycle lifecycle) =>
-      switch (lifecycle) {
-        RunContractLifecycle.awaitingFinalize => FilledButton.icon(
-          onPressed: _working ? null : () => _finalize(contract),
-          icon: const Icon(Icons.verified_outlined),
-          label: const Text('Chốt kết quả'),
-        ),
-        RunContractLifecycle.syncGrace => const Card(
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Text(
-              'Đang chờ đồng bộ cuối. Bạn có thể chốt kết quả từ 06:00.',
-            ),
-          ),
-        ),
-        RunContractLifecycle.scheduled => const Card(
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('Kèo đã chốt và sẽ tự bắt đầu đúng giờ.'),
-          ),
-        ),
-        _ => const SizedBox.shrink(),
-      };
+  Widget _primaryAction(
+    RunContract contract,
+    RunContractLifecycle lifecycle, {
+    required bool giftCloses,
+  }) => switch (lifecycle) {
+    RunContractLifecycle.awaitingFinalize ||
+    RunContractLifecycle.syncGrace when giftCloses => const Card(
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('Kèo có quà: hệ thống tự chốt và chia quà sau 06:00.'),
+      ),
+    ),
+    RunContractLifecycle.awaitingFinalize => FilledButton.icon(
+      onPressed: _working ? null : () => _finalize(contract),
+      icon: const Icon(Icons.verified_outlined),
+      label: const Text('Chốt kết quả'),
+    ),
+    RunContractLifecycle.syncGrace => const Card(
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('Đang chờ đồng bộ cuối. Bạn có thể chốt kết quả từ 06:00.'),
+      ),
+    ),
+    RunContractLifecycle.scheduled => const Card(
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('Kèo đã chốt và sẽ tự bắt đầu đúng giờ.'),
+      ),
+    ),
+    _ => const SizedBox.shrink(),
+  };
 
   Future<void> _finalize(RunContract contract) async {
     setState(() => _working = true);
@@ -407,8 +492,10 @@ class _RunContractDetailScreenState
       backgroundColor: palette.glassStart,
       barrierColor: Colors.black.withValues(alpha: 0.72),
       clipBehavior: Clip.antiAlias,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: context.runNowPalette.cornerRadius(24),
+        ),
       ),
       builder: (context) => _ActivityAssignmentSheet(
         contract: contract,
@@ -577,7 +664,7 @@ class _ActivityAssignmentSheetState extends State<_ActivityAssignmentSheet> {
                   height: 4,
                   decoration: BoxDecoration(
                     color: Theme.of(context).dividerColor,
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: context.runNowPalette.radius(2),
                   ),
                 ),
               ),
@@ -740,11 +827,11 @@ class _AssignedActivityTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Color.alphaBlend(
-          palette.accent.withValues(alpha: 0.07),
+          palette.wash(palette.accent, 0.07),
           palette.glassStart,
         ),
         border: Border.all(color: palette.border),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: palette.radius(12),
       ),
       child: Row(
         children: [
@@ -785,7 +872,7 @@ class _AssignedActivityTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
             decoration: BoxDecoration(
               color: palette.accent,
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: context.runNowPalette.radius(999),
             ),
             child: Text(
               'ĐÃ GÁN',
@@ -806,18 +893,21 @@ class _AssignedActivityTile extends StatelessWidget {
 class _ContractDetailHeader extends StatelessWidget {
   const _ContractDetailHeader({
     required this.contract,
+    required this.currentUid,
     required this.ownerName,
     required this.ownerAvatarUrl,
   });
 
   final RunContract contract;
+  final String? currentUid;
   final String ownerName;
   final String? ownerAvatarUrl;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
-    final completed = contract.overallProgressPercent >= 100;
+    final state = contractUiStateFor(contract, DateTime.now(), currentUid);
+    final stateColor = runContractStateColor(context, state);
     return GlassPanel(
       borderRadius: 18,
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -832,7 +922,7 @@ class _ContractDetailHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(
+              RunNowAvatar(
                 radius: 22,
                 backgroundImage:
                     ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
@@ -855,7 +945,7 @@ class _ContractDetailHeader extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'KÈO NHÓM',
+                      contractKindLabel(contract),
                       style: TextStyle(
                         color: palette.accent,
                         fontSize: 11,
@@ -868,8 +958,8 @@ class _ContractDetailHeader extends StatelessWidget {
               ),
               DecoratedBox(
                 decoration: BoxDecoration(
-                  color: palette.accent.withValues(alpha: 0.13),
-                  borderRadius: BorderRadius.circular(999),
+                  color: context.runNowPalette.wash(stateColor, 0.13),
+                  borderRadius: context.runNowPalette.radius(999),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -877,9 +967,9 @@ class _ContractDetailHeader extends StatelessWidget {
                     vertical: 7,
                   ),
                   child: Text(
-                    completed ? 'ĐÃ CỨU' : 'ĐANG CHẠY',
+                    runContractStateLabel(state),
                     style: TextStyle(
-                      color: palette.accent,
+                      color: stateColor,
                       fontSize: 10,
                       fontWeight: FontWeight.w900,
                     ),
@@ -933,6 +1023,7 @@ class _MyProgressCard extends StatelessWidget {
       contract.targetValue,
     );
     final completed = rawRatio >= 1;
+    final need = dailyNeed(contract, participant.uid, DateTime.now());
     final foreground =
         ThemeData.estimateBrightnessForColor(palette.accent) == Brightness.dark
         ? Colors.white
@@ -964,11 +1055,13 @@ class _MyProgressCard extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 _contractValue(contract.metric, participant.progressValue),
-                style: TextStyle(
-                  color: foreground,
-                  fontSize: 22,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
+                style: palette.heading(
+                  TextStyle(
+                    color: foreground,
+                    fontSize: 22,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
               Text(
@@ -1011,14 +1104,37 @@ class _MyProgressCard extends StatelessWidget {
           LinearProgressIndicator(
             value: rawRatio.clamp(0.0, 1.0),
             minHeight: 9,
-            borderRadius: BorderRadius.circular(2),
+            borderRadius: context.runNowPalette.radius(2),
             backgroundColor: foreground.withValues(alpha: 0.2),
             color: foreground,
           ),
+          if (need != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _dailyNeedLabel(need),
+              style: TextStyle(
+                color: foreground.withValues(alpha: 0.82),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
+}
+
+String _dailyNeedLabel(DailyNeed need) {
+  if (need.metric == RunContractMetric.activeDays) {
+    final days = need.remaining.ceil();
+    if (need.mustRunToday) return 'Hôm nay phải chạy · còn $days ngày cần chạy';
+    return 'Còn $days ngày cần chạy trong ${need.daysLeft} ngày';
+  }
+  if (need.daysLeft == 1) {
+    return 'Hôm nay cần ${need.remaining.toStringAsFixed(1)} km';
+  }
+  return 'Mỗi ngày ~${need.perDay.toStringAsFixed(1)} km · ${need.daysLeft} ngày nữa';
 }
 
 /// Kèo HÀNH TRÌNH TẬP THỂ: tiến độ GỘP cả nhóm (tổng km mọi người / độ dài
@@ -1076,11 +1192,13 @@ class _TeamConquestCard extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 _contractValue(contract.metric, teamTotal),
-                style: TextStyle(
-                  color: foreground,
-                  fontSize: 22,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
+                style: palette.heading(
+                  TextStyle(
+                    color: foreground,
+                    fontSize: 22,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
               Text(
@@ -1092,45 +1210,29 @@ class _TeamConquestCard extends StatelessWidget {
               ),
               const Spacer(),
               if (completed)
-                Row(
-                  children: [
-                    Icon(
-                      Icons.emoji_events_rounded,
-                      color: foreground,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Chinh phục!',
-                      style: TextStyle(
-                        color: foreground,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                )
-              else
-                Text(
-                  'Còn ${_contractValue(contract.metric, remaining)}',
-                  style: TextStyle(
-                    color: foreground.withValues(alpha: 0.82),
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
+                Icon(Icons.emoji_events_rounded, color: foreground, size: 18),
             ],
           ),
           const SizedBox(height: 10),
           LinearProgressIndicator(
             value: ratio.clamp(0.0, 1.0),
             minHeight: 9,
-            borderRadius: BorderRadius.circular(2),
+            borderRadius: context.runNowPalette.radius(2),
             backgroundColor: foreground.withValues(alpha: 0.2),
             color: foreground,
           ),
           const SizedBox(height: 8),
+          // "Còn …" nằm ở dòng này chứ không ở dòng tổng phía trên: tổng nhóm
+          // ba chữ số cộng "Còn …" tràn bề ngang 390.
           Text(
-            '${(ratio * 100).clamp(0, 100).toStringAsFixed(0)}% chặng đường · '
-            '${contract.participants.length} người cùng đi',
+            [
+              '${(ratio * 100).clamp(0, 100).toStringAsFixed(0)}% chặng đường',
+              if (completed)
+                'Chinh phục!'
+              else
+                'còn ${_contractValue(contract.metric, remaining)}',
+              '${contract.participants.length} người cùng đi',
+            ].join(' · '),
             style: TextStyle(
               color: foreground.withValues(alpha: 0.82),
               fontSize: 12,
@@ -1169,14 +1271,14 @@ class _LazyContractSection extends StatelessWidget {
         children: [
           Material(
             color: Colors.transparent,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: palette.radius(18),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: onToggle,
               child: Ink(
                 decoration: BoxDecoration(
                   color: palette.glassStart,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: palette.radius(18),
                 ),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -1305,7 +1407,7 @@ class _LazyRouteMapSection extends ConsumerWidget {
       onToggle: onToggle,
       child: RepaintBoundary(
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: context.runNowPalette.radius(18),
           child: RouteMap.fromRoutePoints(
             points: [
               for (final point in routePoints)
@@ -1388,12 +1490,9 @@ class _ContractPhotoAlbumLoader extends ConsumerWidget {
             for (final photo in item.activity.photos) photo.id: photo,
         }.values.toList();
         if (photos.isEmpty) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text(
-              'Chưa có ảnh nào trong kèo này.',
-              style: TextStyle(color: context.runNowPalette.textMuted),
-            ),
+          return const RunNowEmpty(
+            compact: true,
+            message: 'Chưa có ảnh nào trong kèo này',
           );
         }
         return _ContractPhotoAlbum(photos: photos);
@@ -1448,7 +1547,7 @@ class _GoLiveButtonState extends State<_GoLiveButton>
 
   @override
   Widget build(BuildContext context) {
-    const danger = RunNowSemanticColors.danger;
+    final danger = context.runNowPalette.danger;
     final palette = context.runNowPalette;
     final activeColor = widget.enabled ? danger : palette.textMuted;
     // Bọc RepaintBoundary — pulse chạy vô thời hạn (`repeat(reverse: true)`)
@@ -1463,7 +1562,7 @@ class _GoLiveButtonState extends State<_GoLiveButton>
               : 0.0;
           return DecoratedBox(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: context.runNowPalette.radius(999),
               boxShadow: [
                 BoxShadow(
                   color: activeColor.withValues(alpha: glowAlpha),
@@ -1477,7 +1576,7 @@ class _GoLiveButtonState extends State<_GoLiveButton>
         },
         child: Material(
           color: Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: context.runNowPalette.radius(999),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: widget.enabled ? widget.onPressed : null,
@@ -1510,7 +1609,7 @@ class _GoLiveButtonState extends State<_GoLiveButton>
                         height: 10,
                         decoration: BoxDecoration(
                           color: widget.enabled ? Colors.white : activeColor,
-                          shape: BoxShape.circle,
+                          shape: context.runNowPalette.round,
                         ),
                       ),
                     ),
@@ -1568,7 +1667,7 @@ class _ContractPhotoAlbum extends StatelessWidget {
           itemBuilder: (context, index) {
             final photo = sorted[index];
             return ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: context.runNowPalette.radius(12),
               child: GestureDetector(
                 onTap: () => showActivityPhotoViewer(context, photo),
                 child: StoragePhoto(
@@ -1709,7 +1808,7 @@ class _ParticipantRow extends StatelessWidget {
         : (participant.progressValue / denom).clamp(0.0, 1.0);
     return Row(
       children: [
-        CircleAvatar(
+        RunNowAvatar(
           radius: 20,
           backgroundImage: avatarUrl == null || avatarUrl!.isEmpty
               ? null
@@ -1735,9 +1834,9 @@ class _ParticipantRow extends StatelessWidget {
                   ),
                   if (completed) ...[
                     const SizedBox(width: 6),
-                    const Icon(
+                    Icon(
                       Icons.check_circle,
-                      color: RunNowSemanticColors.success,
+                      color: context.runNowPalette.success,
                       size: 17,
                     ),
                   ],
@@ -1747,10 +1846,10 @@ class _ParticipantRow extends StatelessWidget {
               LinearProgressIndicator(
                 value: ratio,
                 minHeight: 5,
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: context.runNowPalette.radius(2),
                 backgroundColor: palette.border,
                 color: completed
-                    ? RunNowSemanticColors.success
+                    ? context.runNowPalette.success
                     : palette.accent,
               ),
             ],
@@ -1763,7 +1862,7 @@ class _ParticipantRow extends StatelessWidget {
             Text(
               _contractValue(contract.metric, participant.progressValue),
               style: TextStyle(
-                color: completed ? RunNowSemanticColors.success : null,
+                color: completed ? context.runNowPalette.success : null,
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -1772,7 +1871,7 @@ class _ParticipantRow extends StatelessWidget {
               completed ? 'Xong' : '${(ratio * 100).toStringAsFixed(0)}%',
               style: TextStyle(
                 color: completed
-                    ? RunNowSemanticColors.success
+                    ? context.runNowPalette.success
                     : Theme.of(
                         context,
                       ).colorScheme.onSurface.withValues(alpha: 0.5),

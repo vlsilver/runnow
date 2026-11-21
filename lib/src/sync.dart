@@ -17,8 +17,12 @@ class SyncResult {
 }
 
 class SyncController extends ChangeNotifier {
-  SyncController(this._repository);
+  SyncController(this._repository, {this.enabled = true});
   final ActivityRepository _repository;
+
+  /// Đồng bộ ở đây là nhờ backend kéo lại từ Strava. Strava đang tắt thì mọi
+  /// lần gọi đều bỏ qua, không gọi backend.
+  final bool enabled;
 
   bool syncing = false;
   String? message;
@@ -35,6 +39,11 @@ class SyncController extends ChangeNotifier {
   }
 
   Future<SyncResult> sync({bool fullResync = false}) {
+    if (!enabled) {
+      return Future.value(
+        const SyncResult(succeeded: false, changedActivities: 0),
+      );
+    }
     final existing = _inFlight;
     if (existing != null) return existing;
     final future = _performSync(fullResync: fullResync);

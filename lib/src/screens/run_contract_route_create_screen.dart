@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
+import 'package:myrun/src/widgets/map_vector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
@@ -35,11 +36,23 @@ const _assumedPaceSecondsPerKm = 370;
 enum _ImportKind { gpx, svg }
 
 class RunContractRouteCreateScreen extends ConsumerStatefulWidget {
-  const RunContractRouteCreateScreen({super.key, this.journey = false});
+  const RunContractRouteCreateScreen({
+    super.key,
+    this.journey = false,
+    this.pickOnly = false,
+    this.startWithGpx = false,
+  });
 
   /// true = tạo KÈO HÀNH TRÌNH (tích luỹ km để phủ hết chiều dài cung tự vẽ),
   /// false = "Theo tuyến" (phải chạy đúng tuyến N lần). Dùng chung công cụ vẽ.
   final bool journey;
+
+  /// Chỉ vẽ tuyến rồi pop về [RunContractRoute], không tạo kèo. Phòng chạy
+  /// dùng chế độ này để gắn tuyến.
+  final bool pickOnly;
+
+  /// Mở bộ chọn file GPX ngay khi vào màn.
+  final bool startWithGpx;
 
   @override
   ConsumerState<RunContractRouteCreateScreen> createState() =>
@@ -71,6 +84,11 @@ class _RunContractRouteCreateScreenState
   void initState() {
     super.initState();
     _loadInitialCenter();
+    if (widget.startWithGpx) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _importGpx();
+      });
+    }
   }
 
   @override
@@ -343,6 +361,10 @@ class _RunContractRouteCreateScreenState
 
   void _goToConfirm() {
     if (!_canContinue) return;
+    if (widget.pickOnly) {
+      Navigator.of(context).pop(_route());
+      return;
+    }
     if (!_titleEdited) {
       final km = (_distanceMeters / 1000).toStringAsFixed(1);
       _titleController.text = _journey ? 'Hành trình $km km' : 'Route $km km';
@@ -538,7 +560,9 @@ class _RunContractRouteCreateScreenState
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: _canContinue ? _goToConfirm : null,
-                    child: const Text('Tiếp tục'),
+                    child: Text(
+                      widget.pickOnly ? 'Dùng tuyến này' : 'Tiếp tục',
+                    ),
                   ),
                 ),
               ],
@@ -564,7 +588,7 @@ class _RunContractRouteCreateScreenState
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
       children: [
         ClipRRect(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: palette.radius(20),
           child: RouteMap.fromRoutePoints(points: routePoints, height: 220),
         ),
         const SizedBox(height: 18),
@@ -671,7 +695,7 @@ class _RunContractRouteCreateScreenState
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: palette.tint,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: palette.radius(14),
         border: Border.all(color: palette.accent.withValues(alpha: 0.35)),
       ),
       child: Row(
@@ -736,8 +760,7 @@ class _RunContractRouteCreateScreenState
             child: _TargetChip(
               label: 'Cá nhân',
               selected: _mode == RunContractMode.individual,
-              onTap: () =>
-                  setState(() => _mode = RunContractMode.individual),
+              onTap: () => setState(() => _mode = RunContractMode.individual),
             ),
           ),
           const SizedBox(width: 8),
@@ -817,19 +840,26 @@ class _RunContractRouteCreateScreenState
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: palette.tint,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: palette.radius(14),
           border: Border.all(color: palette.accent.withValues(alpha: 0.35)),
         ),
         child: Row(
           children: [
-            Icon(Icons.directions_run_rounded, size: 18, color: palette.accentDeep),
+            Icon(
+              Icons.directions_run_rounded,
+              size: 18,
+              color: palette.accentDeep,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 _openEnded
                     ? 'Mỗi buổi chạy cộng dồn km, đi dần tới đích — không giới hạn thời gian.'
                     : 'Tích luỹ đủ km trước hạn để chinh phục trọn cung đường.',
-                style: const TextStyle(fontWeight: FontWeight.w700, height: 1.35),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  height: 1.35,
+                ),
               ),
             ),
           ],
@@ -838,6 +868,17 @@ class _RunContractRouteCreateScreenState
     ];
   }
 
+  RunContractRoute _route() => RunContractRoute(
+    points: [
+      for (final point in _points)
+        RunContractRoutePoint(
+          latitude: point.latitude,
+          longitude: point.longitude,
+        ),
+    ],
+    distanceMeters: _distanceMeters,
+  );
+
   Future<void> _create() async {
     setState(() {
       _working = true;
@@ -845,16 +886,7 @@ class _RunContractRouteCreateScreenState
     });
     try {
       final title = _titleController.text.trim();
-      final route = RunContractRoute(
-        points: [
-          for (final point in _points)
-            RunContractRoutePoint(
-              latitude: point.latitude,
-              longitude: point.longitude,
-            ),
-        ],
-        distanceMeters: _distanceMeters,
-      );
+      final route = _route();
       final now = DateTime.now();
       final draft = _journey
           ? RunContractDraft(
@@ -925,16 +957,10 @@ class _RouteDrawingMap extends StatelessWidget {
   /// trên, tránh xung đột với việc bản đồ tự pan theo ngón tay.
   final bool interactive;
 
-  static const _lightTileTemplate =
-      'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-  static const _darkTileTemplate =
-      'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-
   @override
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tileTemplate = isDark ? _darkTileTemplate : _lightTileTemplate;
     return FlutterMap(
       mapController: controller,
       options: MapOptions(
@@ -946,11 +972,10 @@ class _RouteDrawingMap extends StatelessWidget {
         ),
       ),
       children: [
-        TileLayer(
-          key: ValueKey(tileTemplate),
-          urlTemplate: tileTemplate,
-          userAgentPackageName: 'com.threei.run',
-          retinaMode: RetinaMode.isHighDensity(context),
+        mapBaseLayer(
+          context,
+          dark: isDark,
+          around: points.isNotEmpty ? points : [initialCenter],
         ),
         const MapAttribution(),
         if (points.length >= 2)
@@ -975,7 +1000,7 @@ class _RouteDrawingMap extends StatelessWidget {
                     onLongPress: () => onLongPressPoint(index),
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
+                        shape: context.runNowPalette.round,
                         color: palette.secondary,
                         border: Border.all(color: Colors.white, width: 2),
                         boxShadow: [
@@ -1002,7 +1027,7 @@ class _RouteDrawingMap extends StatelessWidget {
                     onLongPress: () => onLongPressPoint(index),
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
+                        shape: context.runNowPalette.round,
                         color: palette.secondary,
                         border: Border.all(color: Colors.white, width: 1),
                       ),
@@ -1029,7 +1054,9 @@ class _RouteStat extends StatelessWidget {
       children: [
         Text(
           value,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+          style: palette.heading(
+            const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+          ),
         ),
         const SizedBox(height: 2),
         Text(
@@ -1069,7 +1096,7 @@ class _TargetChip extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? palette.accent : palette.glassStart,
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: palette.radius(11),
           border: Border.all(color: selected ? palette.accent : palette.border),
         ),
         child: Text(
@@ -1245,7 +1272,7 @@ class _PlaceSearchFieldState extends State<_PlaceSearchField> {
         Container(
           decoration: BoxDecoration(
             color: surface,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: palette.radius(14),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.14),
@@ -1302,7 +1329,7 @@ class _PlaceSearchFieldState extends State<_PlaceSearchField> {
                       width: 20,
                       height: 20,
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
+                        shape: context.runNowPalette.round,
                         color: palette.textMuted.withValues(alpha: 0.16),
                       ),
                       child: Icon(
@@ -1345,7 +1372,7 @@ class _PlaceSearchFieldState extends State<_PlaceSearchField> {
     return Container(
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: context.runNowPalette.radius(14),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.16),
@@ -1460,7 +1487,7 @@ class _SearchResultTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        color: active ? palette.secondary.withValues(alpha: 0.08) : null,
+        color: active ? palette.wash(palette.secondary, 0.08) : null,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         child: Row(
           children: [
@@ -1470,8 +1497,8 @@ class _SearchResultTile extends StatelessWidget {
               decoration: BoxDecoration(
                 color: muted
                     ? palette.textMuted.withValues(alpha: 0.14)
-                    : palette.secondary.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(9),
+                    : palette.wash(palette.secondary, 0.14),
+                borderRadius: palette.radius(9),
               ),
               child: Icon(
                 icon,
@@ -1657,14 +1684,14 @@ class _ModeButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: InkWell(
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: context.runNowPalette.radius(999),
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: selected ? palette.accent : Colors.transparent,
-            shape: BoxShape.circle,
+            shape: context.runNowPalette.round,
           ),
           child: Icon(
             icon,

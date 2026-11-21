@@ -17,7 +17,7 @@ class PrcBrandMark extends StatelessWidget {
           height: compact ? 5 : 7,
           decoration: BoxDecoration(
             color: accent,
-            shape: BoxShape.circle,
+            shape: context.runNowPalette.round,
             boxShadow: [BoxShadow(color: accent, blurRadius: 8)],
           ),
         ),

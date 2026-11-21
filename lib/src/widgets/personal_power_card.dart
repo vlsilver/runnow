@@ -105,7 +105,7 @@ class _PersonalPowerRangeControl extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: palette.glassStart,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: palette.radius(16),
       ),
       child: Padding(
         padding: const EdgeInsets.all(4),

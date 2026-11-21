@@ -268,8 +268,8 @@ class _VolumeBarChart extends StatelessWidget {
                 BarChartRodData(
                   toY: buckets[index].distanceKm,
                   width: period == TrainingVolumePeriod.week ? 18 : 16,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(8),
+                  borderRadius: BorderRadius.vertical(
+                    top: context.runNowPalette.cornerRadius(8),
                   ),
                   color: palette.accent.withValues(
                     alpha: buckets[index].isCurrent ? 1 : 0.58,
@@ -337,8 +337,8 @@ class _VolumeLineChart extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  palette.accent.withValues(alpha: 0.24),
-                  palette.accent.withValues(alpha: 0.02),
+                  palette.wash(palette.accent, 0.24),
+                  palette.wash(palette.accent, 0.02),
                 ],
               ),
             ),

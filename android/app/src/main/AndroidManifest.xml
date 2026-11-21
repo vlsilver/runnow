@@ -13,8 +13,13 @@
          mà app không thực sự cần. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- Quay video replay 3D bằng MediaProjection (ScreenClipRecorder.kt). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Nói chuyện trong phòng chạy (LiveKit/WebRTC). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <!-- Health Connect (Android): đọc buổi tập/bước/quãng đường từ kho sức khoẻ máy
          mà Garmin/COROS/Google Fit… ghi vào. Khai các quyền này sẽ kích hoạt Google
@@ -59,6 +64,16 @@
                     android:host="localhost"
                     android:path="/oauth"/>
             </intent-filter>
+            <!-- Link mời vào ván Ma Sói: máy đã cài app thì mở thẳng app. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="https"
+                    android:host="threei.run"
+                    android:pathPrefix="/games/"/>
+            </intent-filter>
             <!-- Health Connect BẮT BUỘC app xử lý intent "lý do xin quyền" (hiện màn
                  giải thích + link chính sách). Android 13-: dùng action này. Thiếu
                  khai báo này Health Connect sẽ từ chối / Play review đánh rớt. -->
@@ -77,6 +92,10 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
         </activity-alias>
+        <service
+            android:name=".ScreenClipService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

@@ -6,7 +6,9 @@ import '../providers.dart';
 import '../theme.dart';
 import 'coach_chat_screen.dart';
 import 'coach_roster.dart';
-import 'training_plan_glyph.dart';
+import 'plan_schedule_view.dart';
+import 'plan_share.dart';
+import 'training_plan_detail_sheet.dart';
 import 'training_plan_models.dart';
 import 'training_plan_repository.dart';
 import 'training_plan_screen.dart';
@@ -69,57 +71,78 @@ class CoachDetailScreen extends ConsumerWidget {
           return Scaffold(
             backgroundColor: palette.background,
             appBar: AppBar(
-              title: Text(plan.goal),
               backgroundColor: palette.background,
               elevation: 0,
               actions: [
-                IconButton(
-                  tooltip: plan.visibility.isPublic
-                      ? 'Công khai — chạm để chuyển riêng tư'
-                      : 'Riêng tư — chạm để công khai',
-                  icon: Icon(
-                    plan.visibility.isPublic
-                        ? Icons.groups_rounded
-                        : Icons.lock_rounded,
+                if (plan.visibility.isPublic)
+                  CoachFollowersButton(
+                    plan: plan,
+                    members:
+                        ref.watch(membersProvider).value ??
+                        const <MemberProfile>[],
+                    currentUid: uid,
                   ),
-                  onPressed: () async {
-                    final messenger = ScaffoldMessenger.of(context);
-                    final others = plan.participantCount - 1;
-                    // Công khai → Riêng tư chỉ khi CHƯA có ai khác theo — kẻo họ
-                    // bị kẹt (không tick/rời được khi giáo án riêng tư).
-                    if (plan.visibility.isPublic && others > 0) {
-                      messenger.showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Còn $others người đang theo — chuyển Riêng tư được '
-                            'khi họ rời hết. Công khai → Riêng tư chỉ khi một mình bạn.',
-                          ),
-                        ),
-                      );
-                      return;
-                    }
-                    final next = plan.visibility.isPublic
-                        ? CoachVisibility.private
-                        : CoachVisibility.club;
-                    try {
-                      await ref
-                          .read(coachControllerProvider)
-                          .setVisibility(plan.id, next);
-                      messenger.showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            next.isPublic
-                                ? 'Đã chuyển Công khai — lên feed, cả nhóm tham gia được.'
-                                : 'Đã chuyển Riêng tư — chỉ mình bạn thấy.',
-                          ),
-                        ),
-                      );
-                    } catch (e) {
-                      messenger.showSnackBar(
-                        SnackBar(content: Text('Không đổi được: $e')),
-                      );
-                    }
+                IconButton(
+                  tooltip: 'Khoe giáo án',
+                  icon: const Icon(Icons.ios_share_rounded),
+                  onPressed: () => showPlanShare(
+                    context,
+                    plan: plan,
+                    currentUid: uid,
+                    today: DateTime.now(),
+                  ),
+                ),
+                PopupMenuButton<_OwnerAction>(
+                  tooltip: 'Thêm',
+                  icon: const Icon(Icons.more_horiz_rounded),
+                  onSelected: (action) => switch (action) {
+                    _OwnerAction.visibility => _toggleVisibility(
+                      context,
+                      ref,
+                      plan,
+                    ),
+                    _OwnerAction.end => _confirmEnd(context, ref, plan),
+                    _OwnerAction.delete => confirmDeleteCoachPlan(
+                      context,
+                      ref,
+                      plan,
+                    ),
                   },
+                  itemBuilder: (_) => [
+                    PopupMenuItem(
+                      value: _OwnerAction.visibility,
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          plan.visibility.isPublic
+                              ? Icons.lock_rounded
+                              : Icons.groups_rounded,
+                        ),
+                        title: Text(
+                          plan.visibility.isPublic
+                              ? 'Chuyển riêng tư'
+                              : 'Công khai cho nhóm',
+                        ),
+                      ),
+                    ),
+                    if (!plan.isOver(DateTime.now()))
+                      const PopupMenuItem(
+                        value: _OwnerAction.end,
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.flag_rounded),
+                          title: Text('Kết thúc giáo án'),
+                        ),
+                      ),
+                    const PopupMenuItem(
+                      value: _OwnerAction.delete,
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.delete_outline_rounded),
+                        title: Text('Xoá giáo án'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -130,6 +153,85 @@ class CoachDetailScreen extends ConsumerWidget {
         return _PublicCoachDetail(plan: plan, currentUid: uid);
       },
     );
+  }
+}
+
+enum _OwnerAction { visibility, end, delete }
+
+/// Hỏi lại rồi kết thúc giáo án của mình. Khác xoá: lịch và tiến độ của mọi
+/// người vẫn còn, giáo án chỉ rời "Kèo đang chạy".
+void _confirmEnd(BuildContext context, WidgetRef ref, TrainingPlan plan) {
+  final messenger = ScaffoldMessenger.of(context);
+  final others = (plan.participantCount - 1).clamp(0, 9999);
+  showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Kết thúc giáo án?'),
+      content: Text(
+        others > 0
+            ? 'Giáo án rời Kèo đang chạy của bạn và $others người đang theo. '
+                  'Lịch và tiến độ vẫn giữ.'
+            : 'Giáo án rời Kèo đang chạy. Lịch và tiến độ vẫn giữ.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Huỷ'),
+        ),
+        FilledButton(
+          onPressed: () async {
+            Navigator.pop(dialogContext);
+            try {
+              await ref.read(coachControllerProvider).end(plan.id);
+            } catch (e) {
+              messenger.showSnackBar(
+                SnackBar(content: Text('Không kết thúc được: $e')),
+              );
+            }
+          },
+          child: const Text('Kết thúc'),
+        ),
+      ],
+    ),
+  );
+}
+
+Future<void> _toggleVisibility(
+  BuildContext context,
+  WidgetRef ref,
+  TrainingPlan plan,
+) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final others = plan.participantCount - 1;
+  // Công khai → Riêng tư chỉ khi CHƯA có ai khác theo — kẻo họ
+  // bị kẹt (không tick/rời được khi giáo án riêng tư).
+  if (plan.visibility.isPublic && others > 0) {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Còn $others người đang theo — chuyển Riêng tư được '
+          'khi họ rời hết. Công khai → Riêng tư chỉ khi một mình bạn.',
+        ),
+      ),
+    );
+    return;
+  }
+  final next = plan.visibility.isPublic
+      ? CoachVisibility.private
+      : CoachVisibility.club;
+  try {
+    await ref.read(coachControllerProvider).setVisibility(plan.id, next);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          next.isPublic
+              ? 'Đã chuyển Công khai — lên feed, cả nhóm tham gia được.'
+              : 'Đã chuyển Riêng tư — chỉ mình bạn thấy.',
+        ),
+      ),
+    );
+  } catch (e) {
+    messenger.showSnackBar(SnackBar(content: Text('Không đổi được: $e')));
   }
 }
 
@@ -150,18 +252,36 @@ class _PublicCoachDetailState extends ConsumerState<_PublicCoachDetail> {
     setState(() => _busy = true);
     try {
       final coach = ref.read(coachControllerProvider);
-      await (joined
-          ? coach.leave(widget.plan.id)
-          : coach.join(widget.plan.id));
+      await (joined ? coach.leave(widget.plan.id) : coach.join(widget.plan.id));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Không thực hiện được: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Không thực hiện được: $e')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  void _toggleDone(TrainingPlan plan, TrainingDay day) => ref
+      .read(coachControllerProvider)
+      .toggleDone(plan.id, plan.days.indexOf(day), !day.done);
+
+  void _openDay(TrainingPlan plan, TrainingDay day) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => TrainingDaySheet(
+        day: day,
+        plan: plan,
+        onToggleDone: () {
+          _toggleDone(plan, day);
+          Navigator.of(sheetContext).pop();
+        },
+      ),
+    );
   }
 
   @override
@@ -170,8 +290,10 @@ class _PublicCoachDetailState extends ConsumerState<_PublicCoachDetail> {
     final plan = widget.plan;
     final uid = widget.currentUid;
     final joined = plan.hasJoined(uid);
+    final over = plan.isOver(DateTime.now());
     final members = ref.watch(membersProvider).value ?? const <MemberProfile>[];
-    final ownerName = members
+    final ownerName =
+        members
             .where((m) => m.uid == plan.ownerUid)
             .map((m) => m.displayName)
             .firstOrNull ??
@@ -180,10 +302,21 @@ class _PublicCoachDetailState extends ConsumerState<_PublicCoachDetail> {
     return Scaffold(
       backgroundColor: palette.background,
       appBar: AppBar(
-        title: Text(plan.goal),
         backgroundColor: palette.background,
         elevation: 0,
         actions: [
+          CoachFollowersButton(plan: plan, members: members, currentUid: uid),
+          IconButton(
+            tooltip: 'Khoe giáo án',
+            icon: const Icon(Icons.ios_share_rounded),
+            onPressed: () => showPlanShare(
+              context,
+              plan: plan,
+              currentUid: uid,
+              today: DateTime.now(),
+              coachName: ownerName,
+            ),
+          ),
           if (joined)
             IconButton(
               tooltip: 'Hỏi Coach',
@@ -196,43 +329,23 @@ class _PublicCoachDetailState extends ConsumerState<_PublicCoachDetail> {
             ),
         ],
       ),
+      // Chưa tham gia thì chỉ xem lịch; tham gia rồi mới mở buổi và đánh dấu.
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-          children: [
-            _summary(palette, plan, ownerName, joined),
-            const SizedBox(height: 14),
-            CoachRoster(plan: plan, members: members, currentUid: uid),
-            const SizedBox(height: 20),
-            if (joined)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Text(
-                  'Chạm vào một buổi để đánh dấu bạn đã hoàn thành.',
-                  style: TextStyle(fontSize: 12.5, color: palette.textMuted),
-                ),
-              ),
-            for (var w = 1; w <= plan.weeks; w++) ...[
-              _WeekBlock(
-                plan: plan,
-                week: w,
-                initiallyExpanded: w == plan.currentWeek(DateTime.now()),
-                onToggle: joined
-                    ? (index, done) => ref
-                          .read(coachControllerProvider)
-                          .toggleDone(plan.id, index, done)
-                    : null,
-              ),
-              const SizedBox(height: 14),
-            ],
-          ],
+        child: PlanScheduleView(
+          plan: plan,
+          today: DateTime.now(),
+          coachName: ownerName,
+          onOpenDay: joined ? (d) => _openDay(plan, d) : null,
+          onToggleDone: joined ? (d) => _toggleDone(plan, d) : null,
         ),
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
           child: FilledButton(
-            onPressed: _busy ? null : () => _toggleJoin(joined),
+            onPressed: _busy || (over && !joined)
+                ? null
+                : () => _toggleJoin(joined),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(50),
               backgroundColor: joined ? palette.glassStart : palette.accent,
@@ -248,7 +361,11 @@ class _PublicCoachDetailState extends ConsumerState<_PublicCoachDetail> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : Text(
-                    joined ? 'Rời giáo án' : 'Tham gia giáo án',
+                    joined
+                        ? 'Rời giáo án'
+                        : over
+                        ? 'Giáo án đã kết thúc'
+                        : 'Tham gia giáo án',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -257,252 +374,6 @@ class _PublicCoachDetailState extends ConsumerState<_PublicCoachDetail> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _summary(
-    RunNowPalette palette,
-    TrainingPlan plan,
-    String ownerName,
-    bool joined,
-  ) {
-    final total = plan.totalSessions;
-    final done = joined ? plan.doneSessions : 0;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: palette.border),
-        color: palette.glassStart,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            plan.summary.isEmpty ? 'Giáo án ${plan.weeks} tuần' : plan.summary,
-            style: TextStyle(fontSize: 15, height: 1.45, color: palette.ink),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              _stat(palette, '${plan.weeks}', 'tuần'),
-              _stat(palette, '$total', 'buổi'),
-              _stat(palette, '${plan.participantCount}', 'người theo'),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(Icons.person_rounded, size: 15, color: palette.textMuted),
-              const SizedBox(width: 4),
-              Text(
-                'HLV: $ownerName',
-                style: TextStyle(fontSize: 13, color: palette.textMuted),
-              ),
-              if (joined) ...[
-                const Spacer(),
-                Text(
-                  'Bạn đã xong $done/$total buổi',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: palette.accent,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _stat(RunNowPalette palette, String value, String label) => Expanded(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            color: palette.ink,
-          ),
-        ),
-        Text(label, style: TextStyle(fontSize: 12, color: palette.textMuted)),
-      ],
-    ),
-  );
-}
-
-/// Một tuần trong lịch. Read-only khi chưa tham gia; đã tham gia thì chạm vào
-/// buổi để tick tiến độ của chính mình ([onToggle] nhận index toàn cục + done).
-class _WeekBlock extends StatefulWidget {
-  const _WeekBlock({
-    required this.plan,
-    required this.week,
-    this.onToggle,
-    this.initiallyExpanded = false,
-  });
-
-  final TrainingPlan plan;
-  final int week;
-  final void Function(int index, bool done)? onToggle;
-  final bool initiallyExpanded;
-
-  @override
-  State<_WeekBlock> createState() => _WeekBlockState();
-}
-
-class _WeekBlockState extends State<_WeekBlock> {
-  late bool _expanded = widget.initiallyExpanded;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final plan = widget.plan;
-    final week = widget.week;
-    // Chỉ hiện buổi tập — ngày nghỉ ẩn đi.
-    final days = plan.daysOfWeek(week).where((d) => !d.isRest).toList();
-    if (days.isEmpty) return const SizedBox.shrink();
-    final weekKm = plan.weekKm(week);
-    final done = days.where((d) => d.done).length;
-
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: palette.border),
-      ),
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(16, 12, 12, _expanded ? 8 : 12),
-              child: Row(
-                children: [
-                  Text(
-                    'Tuần $week',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: palette.ink,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  if (weekKm > 0)
-                    Text(
-                      '${weekKm.toStringAsFixed(weekKm % 1 == 0 ? 0 : 1)} km',
-                      style: TextStyle(fontSize: 13, color: palette.textMuted),
-                    ),
-                  const Spacer(),
-                  if (widget.onToggle != null)
-                    Text(
-                      '$done/${days.length}',
-                      style: TextStyle(fontSize: 12.5, color: palette.textMuted),
-                    ),
-                  const SizedBox(width: 4),
-                  AnimatedRotation(
-                    turns: _expanded ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 180),
-                    child: Icon(
-                      Icons.expand_more_rounded,
-                      size: 20,
-                      color: palette.textMuted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (_expanded)
-            for (var i = 0; i < days.length; i++) ...[
-              Divider(height: 1, color: palette.border),
-              _dayRow(context, palette, dark, days[i], plan.days.indexOf(days[i])),
-            ],
-        ],
-      ),
-    );
-  }
-
-  Widget _dayRow(
-    BuildContext context,
-    RunNowPalette palette,
-    bool dark,
-    TrainingDay day,
-    int index,
-  ) {
-    final color = workoutTypeColor(day.type, dark: dark);
-    final interactive = widget.onToggle != null && !day.isRest;
-    final row = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 42,
-            child: Text(
-              day.label,
-              style: TextStyle(fontSize: 12.5, color: palette.textMuted),
-            ),
-          ),
-          SizedBox(
-            width: 30,
-            child: Center(
-              child: day.isRest
-                  ? Container(
-                      width: 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: palette.textMuted.withValues(alpha: 0.5),
-                      ),
-                    )
-                  : WorkoutGlyph(type: day.type, color: color, size: 24),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  day.title,
-                  style: TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w600,
-                    color: day.isRest ? palette.textMuted : palette.ink,
-                  ),
-                ),
-                if (!day.isRest &&
-                    (day.distanceKm != null || day.paceHint != null))
-                  Text(
-                    [
-                      if (day.distanceKm != null)
-                        '${day.distanceKm!.toStringAsFixed(day.distanceKm! % 1 == 0 ? 0 : 1)} km',
-                      if (day.paceHint != null) 'pace ${day.paceHint}',
-                    ].join(' · '),
-                    style: TextStyle(fontSize: 12.5, color: palette.textMuted),
-                  ),
-              ],
-            ),
-          ),
-          if (interactive)
-            Icon(
-              day.done
-                  ? Icons.check_circle_rounded
-                  : Icons.radio_button_unchecked_rounded,
-              size: 24,
-              color: day.done ? palette.accent : palette.border,
-            ),
-        ],
-      ),
-    );
-    if (!interactive) return row;
-    return InkWell(
-      onTap: () => widget.onToggle!(index, !day.done),
-      child: row,
     );
   }
 }

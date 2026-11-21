@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:myrun/src/theme.dart';
 
 /// Nút icon tròn nổi trên bản đồ/ảnh (nền đen mờ, viền trắng mờ) — dùng
 /// chung cho mọi nút hành động nhỏ trong tính năng Hành Trình (điều khiển
@@ -23,7 +24,7 @@ class RoundIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final button = Material(
       color: Colors.transparent,
-      shape: const CircleBorder(),
+      shape: context.runNowPalette.roundBorder,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -32,7 +33,7 @@ class RoundIconButton extends StatelessWidget {
           height: size,
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.55),
-            shape: BoxShape.circle,
+            shape: context.runNowPalette.round,
             border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
           ),
           child: Icon(icon, color: Colors.white, size: iconSize),

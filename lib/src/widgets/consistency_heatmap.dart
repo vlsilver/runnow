@@ -138,7 +138,7 @@ class _HeatmapCell extends StatelessWidget {
                   palette.secondary,
                   strength,
                 ),
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: context.runNowPalette.radius(4),
           border: Border.all(color: onSurface.withValues(alpha: 0.12)),
         ),
       ),

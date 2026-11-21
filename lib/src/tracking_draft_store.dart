@@ -5,11 +5,20 @@ import 'package:myrun/src/tracking_draft_storage_stub.dart'
     if (dart.library.io) 'package:myrun/src/tracking_draft_storage_io.dart';
 
 class TrackingDraft {
-  const TrackingDraft({required this.session, this.gpsWarmup, this.contractId});
+  const TrackingDraft({
+    required this.session,
+    this.gpsWarmup,
+    this.contractId,
+    this.roomId,
+  });
 
   final TrackingSession session;
   final Map<String, dynamic>? gpsWarmup;
   final String? contractId;
+
+  /// Phòng chạy buổi này gắn vào; app tắt giữa chừng mở lại vẫn chạy chung
+  /// phòng.
+  final String? roomId;
 
   TrackingSessionSnapshot snapshot() => session.snapshot();
 
@@ -19,6 +28,7 @@ class TrackingDraft {
       'session': session.toDraftMap(),
       if (gpsWarmup != null) 'gpsWarmup': gpsWarmup,
       if (contractId != null) 'contractId': contractId,
+      if (roomId != null) 'roomId': roomId,
     };
   }
 
@@ -29,6 +39,7 @@ class TrackingDraft {
       ),
       gpsWarmup: map['gpsWarmup'] as Map<String, dynamic>?,
       contractId: map['contractId'] as String?,
+      roomId: map['roomId'] as String?,
     );
   }
 }

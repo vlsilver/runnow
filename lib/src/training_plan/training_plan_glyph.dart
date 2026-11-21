@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 
+import '../theme.dart';
 import 'training_plan_models.dart';
 
 /// Glyph cường độ theo loại bài — các thanh bar (giống SVG trong design):
 /// easy 2 bar thấp dần · long 4 bar bằng · tempo 3 bar tăng · interval 5 bar
 /// cao–thấp xen kẽ · rest 1 thanh ngang · race cột cờ.
 class WorkoutGlyph extends StatelessWidget {
-  const WorkoutGlyph({super.key, required this.type, required this.color, this.size = 26});
+  const WorkoutGlyph({
+    super.key,
+    required this.type,
+    required this.color,
+    this.size = 26,
+  });
 
   final WorkoutType type;
   final Color color;
@@ -17,15 +23,24 @@ class WorkoutGlyph extends StatelessWidget {
     return SizedBox(
       width: size,
       height: size * 0.56,
-      child: CustomPaint(painter: _GlyphPainter(type, color)),
+      child: CustomPaint(
+        painter: _GlyphPainter(
+          type,
+          color,
+          square: context.runNowPalette.squared,
+        ),
+      ),
     );
   }
 }
 
 class _GlyphPainter extends CustomPainter {
-  _GlyphPainter(this.type, this.color);
+  _GlyphPainter(this.type, this.color, {required this.square});
+  final bool square;
   final WorkoutType type;
   final Color color;
+
+  Radius _corner(double r) => square ? Radius.zero : Radius.circular(r);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -44,7 +59,7 @@ class _GlyphPainter extends CustomPainter {
         canvas.drawRRect(
           RRect.fromRectAndRadius(
             Rect.fromLTWH(x, h - bh, bw, bh),
-            Radius.circular(bw * 0.4),
+            _corner(bw * 0.4),
           ),
           p,
         );
@@ -64,8 +79,13 @@ class _GlyphPainter extends CustomPainter {
         final y = h * 0.5;
         canvas.drawRRect(
           RRect.fromRectAndRadius(
-            Rect.fromLTWH(size.width * 0.1, y - h * 0.09, size.width * 0.8, h * 0.18),
-            Radius.circular(h * 0.09),
+            Rect.fromLTWH(
+              size.width * 0.1,
+              y - h * 0.09,
+              size.width * 0.8,
+              h * 0.18,
+            ),
+            _corner(h * 0.09),
           ),
           p,
         );
@@ -75,7 +95,7 @@ class _GlyphPainter extends CustomPainter {
         canvas.drawRRect(
           RRect.fromRectAndRadius(
             Rect.fromLTWH(size.width * 0.14, 0, poleW, h),
-            Radius.circular(poleW * 0.4),
+            _corner(poleW * 0.4),
           ),
           p,
         );

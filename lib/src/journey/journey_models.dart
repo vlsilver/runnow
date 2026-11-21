@@ -117,7 +117,13 @@ class JourneyRouteSummary {
   final double totalLengthMeters;
 }
 
-enum JourneyRouteId { athensMarathon, tourDuMontBlanc, coastal, hcmTrail, dongNamA }
+enum JourneyRouteId {
+  athensMarathon,
+  tourDuMontBlanc,
+  coastal,
+  hcmTrail,
+  dongNamA,
+}
 
 extension JourneyRouteIdInfo on JourneyRouteId {
   /// Trùng với document id trong collection `journeyRoutes` trên Firestore.

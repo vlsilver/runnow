@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:myrun/src/admin/agent_config_screen.dart';
+import 'package:myrun/src/admin/rank_reward_admin_screen.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -34,7 +36,7 @@ const _roles = [
     id: 'bot',
     title: 'Bot cá nhân trong app',
     hint:
-        'Có bot riêng ở mục "Bot của tôi" và vào phòng bot trong app, không '
+        'Có tab MyBot với bot riêng và vào phòng bot trong app, không '
         'liên quan bot Telegram. Admin luôn có quyền này.',
   ),
 ];
@@ -181,6 +183,38 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
               ),
             const SizedBox(height: 24),
           ],
+          Text('BXH chung', style: heading),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Quà BXH'),
+            subtitle: const Text('Treo quà theo hạng, đánh dấu đã trao'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => RankRewardAdminScreen(
+                  admins: {
+                    for (final uid in data.uidsOf('admin'))
+                      uid: names[uid] ?? uid,
+                  },
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text('Bot cá nhân', style: heading),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Trần và giá'),
+            subtitle: const Text('Chi phí hôm nay, trần, số câu, giá model'),
+            trailing: const Icon(Icons.chevron_right),
+            // Push trong nhánh /admin, khỏi thêm route chỉ admin web dùng.
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const AgentConfigScreen(),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
           Text('Telegram', style: heading),
           ListTile(
             contentPadding: EdgeInsets.zero,

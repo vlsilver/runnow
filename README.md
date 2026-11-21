@@ -41,7 +41,9 @@ Các file secret không commit: `.secret/runnow.env`, `GoogleService-Info.plist`
 # App
 flutter pub get
 flutter analyze && flutter test
-flutter run --dart-define-from-file=.secret/runnow.env
+scripts/run_env.sh prod      # hoặc staging; tham số sau đi thẳng vào flutter, vd: scripts/run_env.sh staging build ios --simulator
+# Cấu hình từng môi trường ở env/<tên>.json. iOS staging cần plist riêng:
+#   scripts/configure_ios_secrets.sh <plist staging> staging
 
 # Backend
 cd backend && go vet ./... && go test ./...

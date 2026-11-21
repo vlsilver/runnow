@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/map_tiles.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:myrun/src/theme.dart';
 
 /// Ghi công nguồn bản đồ — bắt buộc, không phải trang trí.
 ///
-/// App dùng tile của CARTO dựng trên dữ liệu OpenStreetMap. OSM phát hành
-/// theo giấy phép ODbL nên **buộc phải** ghi "© OpenStreetMap contributors"
-/// ở nơi người dùng thấy được, và CARTO cũng yêu cầu ghi công tương tự.
+/// Dữ liệu bản đồ là OpenStreetMap, phát hành theo giấy phép ODbL nên **buộc
+/// phải** ghi "© OpenStreetMap contributors" ở nơi người dùng thấy được. Nguồn
+/// tile khác (CARTO…) thì ghi thêm theo [mapTileCredits].
 ///
 /// Đặt widget này vào `children` của mọi `FlutterMap` trong app.
 ///
@@ -26,14 +28,8 @@ class MapAttribution extends StatelessWidget {
         alignment: AttributionAlignment.bottomRight,
         showFlutterMapAttribution: false,
         attributions: [
-          TextSourceAttribution(
-            'OpenStreetMap contributors',
-            onTap: () => _open('https://www.openstreetmap.org/copyright'),
-          ),
-          TextSourceAttribution(
-            'CARTO',
-            onTap: () => _open('https://carto.com/attributions'),
-          ),
+          for (final credit in mapTileCredits(currentMapTileTemplate()))
+            TextSourceAttribution(credit.label, onTap: () => _open(credit.url)),
         ],
       );
     }
@@ -47,7 +43,7 @@ class MapAttribution extends StatelessWidget {
             color: scheme.surface.withValues(alpha: 0.92),
             elevation: 3,
             shadowColor: Colors.black.withValues(alpha: 0.3),
-            shape: const CircleBorder(),
+            shape: context.runNowPalette.roundBorder,
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: () => _showSources(context),
@@ -92,14 +88,11 @@ class MapAttribution extends StatelessWidget {
                   ),
                 ),
               ),
-              ListTile(
-                title: const Text('© OpenStreetMap contributors'),
-                onTap: () => _open('https://www.openstreetmap.org/copyright'),
-              ),
-              ListTile(
-                title: const Text('CARTO'),
-                onTap: () => _open('https://carto.com/attributions'),
-              ),
+              for (final credit in mapTileCredits(currentMapTileTemplate()))
+                ListTile(
+                  title: Text('© ${credit.label}'),
+                  onTap: () => _open(credit.url),
+                ),
             ],
           ),
         ),

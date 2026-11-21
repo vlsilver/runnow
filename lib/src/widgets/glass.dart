@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:myrun/src/theme.dart';
 
@@ -54,17 +55,38 @@ class GlassPanel extends StatelessWidget {
     final palette = context.runNowPalette;
     final effectiveRadius = borderRadius >= 900
         ? borderRadius
-        : math.min(borderRadius, 12).toDouble();
+        : palette.corner(math.min(borderRadius, 12).toDouble());
+    if (palette.isPixel) {
+      // Kiểu Pixel: khối góc bậc thang, viền mực, bóng cứng không nhoè. Ô tròn
+      // (nút biểu tượng, thanh tab) không đổ bóng để không lệch hàng.
+      final frame = PixelBorder(
+        side: BorderSide(color: palette.foreground, width: 2),
+      );
+      return Container(
+        margin: margin,
+        foregroundDecoration: ShapeDecoration(shape: frame),
+        decoration: ShapeDecoration(
+          shape: const PixelBorder(),
+          gradient: gradient,
+          color: gradient == null ? palette.glassStart : null,
+          shadows: borderRadius >= 900
+              ? null
+              : [BoxShadow(color: palette.foreground, offset: pixelShadow)],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(padding: padding ?? EdgeInsets.zero, child: child),
+      );
+    }
     return Container(
       margin: margin,
       decoration: border == null
           ? null
           : BoxDecoration(
               border: border,
-              borderRadius: BorderRadius.circular(effectiveRadius),
+              borderRadius: context.runNowPalette.radius(effectiveRadius),
             ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(effectiveRadius),
+        borderRadius: context.runNowPalette.radius(effectiveRadius),
         clipBehavior: Clip.antiAlias,
         child: DecoratedBox(
           decoration: BoxDecoration(
@@ -75,13 +97,130 @@ class GlassPanel extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-            borderRadius: BorderRadius.circular(effectiveRadius),
+            borderRadius: context.runNowPalette.radius(effectiveRadius),
           ),
           child: Padding(padding: padding ?? EdgeInsets.zero, child: child),
         ),
       ),
     );
   }
+}
+
+/// Ở kiểu Pixel bọc [child] bằng khung góc bậc thang, viền mực và bóng cứng.
+/// Kiểu khác trả lại [child] nguyên vẹn.
+class PixelFrame extends StatelessWidget {
+  const PixelFrame({required this.child, super.key});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    if (!palette.isPixel) return child;
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        shape: const PixelBorder(),
+        shadows: [BoxShadow(color: palette.foreground, offset: pixelShadow)],
+      ),
+      child: ClipPath(
+        clipper: const ShapeBorderClipper(shape: PixelBorder()),
+        child: DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: ShapeDecoration(
+            shape: PixelBorder(
+              side: BorderSide(color: palette.foreground, width: 2),
+            ),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// Ở kiểu Pixel vẽ [child] thành tranh điểm ảnh: chụp hình vẽ, thu nhỏ rồi
+/// phóng lại không làm mịn, nên đường cong thành bậc thang. Chỉ bọc hình vẽ
+/// đứng yên, không bọc chữ: hình động phải chụp lại mỗi khung.
+class PixelArt extends StatefulWidget {
+  const PixelArt({required this.child, super.key});
+
+  final Widget child;
+
+  /// Cạnh một điểm ảnh của tranh, tính bằng điểm logic.
+  static const cell = RunNowThemeTokens.pixelStep;
+
+  @override
+  State<PixelArt> createState() => _PixelArtState();
+}
+
+class _PixelArtState extends State<PixelArt> {
+  final _controller = SnapshotController(allowSnapshotting: true);
+  final _painter = _PixelArtPainter();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _painter.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!context.runNowPalette.isPixel) return widget.child;
+    return SnapshotWidget(
+      controller: _controller,
+      painter: _painter,
+      autoresize: true,
+      child: widget.child,
+    );
+  }
+}
+
+class _PixelArtPainter extends SnapshotPainter {
+  _PixelArtPainter();
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset offset,
+    Size size,
+    void Function(PaintingContext, Offset) painter,
+  ) => painter(context, offset);
+
+  @override
+  void paintSnapshot(
+    PaintingContext context,
+    Offset offset,
+    Size size,
+    ui.Image image,
+    Size sourceSize,
+    double pixelRatio,
+  ) {
+    final w = (size.width / PixelArt.cell).ceil();
+    final h = (size.height / PixelArt.cell).ceil();
+    if (w == 0 || h == 0) return;
+    final grid = Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble());
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder).drawImageRect(
+      image,
+      Offset.zero & sourceSize,
+      grid,
+      Paint()..filterQuality = FilterQuality.none,
+    );
+    final picture = recorder.endRecording();
+    final small = picture.toImageSync(w, h);
+    picture.dispose();
+    context.canvas.drawImageRect(
+      small,
+      grid,
+      offset & Size(w * PixelArt.cell, h * PixelArt.cell),
+      Paint()..filterQuality = FilterQuality.none,
+    );
+    small.dispose();
+  }
+
+  @override
+  bool shouldRepaint(_PixelArtPainter oldDelegate) => false;
 }
 
 class GlassIconButton extends StatelessWidget {

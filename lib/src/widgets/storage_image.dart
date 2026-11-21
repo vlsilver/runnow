@@ -1,20 +1,26 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 
 /// Hiển thị ảnh lưu trên Firebase Storage qua `getDownloadURL()` +
-/// `Image.network` — không dùng `Reference.getData()` vì phương thức đó
-/// không được hỗ trợ trên Flutter Web.
+/// `CachedNetworkImage` — không dùng `Reference.getData()` vì phương thức đó
+/// không được hỗ trợ trên Flutter Web. Ảnh lưu xuống máy theo Cache-Control
+/// của object, nên mở lại app không tải lại.
 class StorageImage extends StatefulWidget {
   const StorageImage({
     required this.path,
     this.fit = BoxFit.cover,
+    this.alignment = Alignment.center,
     this.cacheWidth,
     this.cacheHeight,
+    this.placeholder,
+    this.loading,
     super.key,
   });
 
   final String path;
   final BoxFit fit;
+  final Alignment alignment;
 
   /// Giới hạn kích thước giải mã (physical pixels) — truyền vào khi hiển thị
   /// ảnh ở khung nhỏ (vd marker trên bản đồ) để tránh giải mã ảnh gốc full
@@ -25,12 +31,35 @@ class StorageImage extends StatefulWidget {
   final int? cacheWidth;
   final int? cacheHeight;
 
+  /// Thay ô xám có vòng quay hay icon ảnh hỏng, lúc đang lấy link hoặc lỗi.
+  final Widget? placeholder;
+
+  /// Hiện trong lúc tải ảnh về sau khi đã có link. Null thì để trống.
+  final Widget? loading;
+
+  /// Cho test đặt sẵn link tải của [path] như đã lấy xong trong phiên.
+  @visibleForTesting
+  static void debugPutDownloadUrl(String path, String url) {
+    _StorageImageState._downloadUrlCache[path] = Future.value(url);
+    _StorageImageState._resolvedUrls[path] = url;
+  }
+
+  /// Link tải của [path], dùng chung bộ nhớ đệm với widget, cho chỗ cần tự vẽ
+  /// ảnh thay vì dựng widget.
+  static Future<String> downloadUrl(String path) =>
+      _StorageImageState._urlOf(path);
+
   @override
   State<StorageImage> createState() => _StorageImageState();
 }
 
 class _StorageImageState extends State<StorageImage> {
   static final Map<String, Future<String>> _downloadUrlCache = {};
+
+  /// Link đã lấy xong, đọc được ngay: FutureBuilder luôn dựng một khung chưa
+  /// có data dù future đã xong, nên thiếu cái này thì mở lại màn nào cũng
+  /// thấy placeholder chớp lên trước khi ảnh hiện.
+  static final Map<String, String> _resolvedUrls = {};
 
   late Future<String> _downloadUrl;
 
@@ -46,12 +75,16 @@ class _StorageImageState extends State<StorageImage> {
     if (oldWidget.path != widget.path) _downloadUrl = _loadDownloadUrl();
   }
 
-  Future<String> _loadDownloadUrl() async {
-    return _downloadUrlCache.putIfAbsent(widget.path, () async {
+  Future<String> _loadDownloadUrl() => _urlOf(widget.path);
+
+  static Future<String> _urlOf(String path) {
+    return _downloadUrlCache.putIfAbsent(path, () async {
       try {
-        return await FirebaseStorage.instance.ref(widget.path).getDownloadURL();
+        final url = await FirebaseStorage.instance.ref(path).getDownloadURL();
+        _resolvedUrls[path] = url;
+        return url;
       } catch (error) {
-        _downloadUrlCache.remove(widget.path);
+        _downloadUrlCache.remove(path);
         rethrow;
       }
     });
@@ -61,9 +94,11 @@ class _StorageImageState extends State<StorageImage> {
   Widget build(BuildContext context) {
     return FutureBuilder<String>(
       future: _downloadUrl,
+      initialData: _resolvedUrls[widget.path],
       builder: (context, snapshot) {
         final url = snapshot.data;
         if (url == null) {
+          if (widget.placeholder case final placeholder?) return placeholder;
           return ColoredBox(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             child: Center(
@@ -73,18 +108,28 @@ class _StorageImageState extends State<StorageImage> {
             ),
           );
         }
-        return Image.network(
-          url,
+        return CachedNetworkImage(
+          imageUrl: url,
           fit: widget.fit,
+          alignment: widget.alignment,
           width: double.infinity,
           height: double.infinity,
           // Chỉ dùng 1 chiều để decode giữ đúng tỉ lệ (không bóp méo).
-          cacheWidth: widget.cacheWidth,
-          cacheHeight: widget.cacheWidth == null ? widget.cacheHeight : null,
-          errorBuilder: (context, error, stack) => ColoredBox(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: const Center(child: Icon(Icons.broken_image_outlined)),
-          ),
+          memCacheWidth: widget.cacheWidth,
+          memCacheHeight: widget.cacheWidth == null ? widget.cacheHeight : null,
+          // Ảnh hiện thẳng như Image.network trước đây, không mờ dần.
+          fadeInDuration: Duration.zero,
+          fadeOutDuration: Duration.zero,
+          placeholder: switch (widget.loading) {
+            final loading? => (_, _) => loading,
+            null => null,
+          },
+          errorWidget: (context, url, error) =>
+              widget.placeholder ??
+              ColoredBox(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: const Center(child: Icon(Icons.broken_image_outlined)),
+              ),
         );
       },
     );

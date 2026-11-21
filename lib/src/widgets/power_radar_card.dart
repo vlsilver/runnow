@@ -121,6 +121,7 @@ class _PowerRadar extends StatelessWidget {
               metrics: metrics,
               lineColor: palette.secondary,
               gridColor: palette.gridMajor,
+              square: palette.squared,
             ),
           ),
         ),
@@ -242,7 +243,10 @@ class _PowerRadarPainter extends CustomPainter {
     required this.metrics,
     required this.lineColor,
     required this.gridColor,
+    required this.square,
   });
+
+  final bool square;
 
   final List<PowerRadarMetric> metrics;
   final Color lineColor;
@@ -313,7 +317,7 @@ class _PowerRadarPainter extends CustomPainter {
       ..color = lineColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.6
-      ..strokeJoin = StrokeJoin.round;
+      ..strokeJoin = (square ? StrokeJoin.miter : StrokeJoin.round);
 
     canvas.drawPath(dataPath, glowPaint);
     canvas.drawPath(dataPath, fillPaint);

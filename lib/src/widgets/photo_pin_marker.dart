@@ -76,16 +76,16 @@ class _PhotoPinMarkerState extends State<PhotoPinMarker>
             clipBehavior: Clip.none,
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(9),
+                borderRadius: context.runNowPalette.radius(9),
                 child: Container(
                   width: 34,
                   height: 34,
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: RunNowSemanticColors.warning,
+                      color: context.runNowPalette.warning,
                       width: 2,
                     ),
-                    borderRadius: BorderRadius.circular(9),
+                    borderRadius: context.runNowPalette.radius(9),
                   ),
                   child: StoragePhoto(
                     path: widget.storagePath,
@@ -105,8 +105,8 @@ class _PhotoPinMarkerState extends State<PhotoPinMarker>
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     decoration: BoxDecoration(
-                      color: RunNowSemanticColors.danger,
-                      shape: BoxShape.circle,
+                      color: context.runNowPalette.danger,
+                      shape: context.runNowPalette.round,
                       border: Border.all(color: Colors.black, width: 2),
                     ),
                     child: Center(
@@ -125,13 +125,13 @@ class _PhotoPinMarkerState extends State<PhotoPinMarker>
           ),
           CustomPaint(
             size: const Size(12, 7),
-            painter: _PinTailPainter(color: RunNowSemanticColors.warning),
+            painter: _PinTailPainter(color: context.runNowPalette.warning),
           ),
           if (widget.withAnchorStem)
             Container(
               width: 1.5,
               height: photoPinAnchorGap,
-              color: RunNowSemanticColors.warning.withValues(alpha: 0.7),
+              color: context.runNowPalette.warning.withValues(alpha: 0.7),
             ),
         ],
       ),
