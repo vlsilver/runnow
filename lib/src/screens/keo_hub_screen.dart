@@ -116,6 +116,10 @@ class _KeoHubScreenState extends ConsumerState<KeoHubScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(
+      trackedActivitySavedProvider,
+      (_, _) => _invalidateFetchedLists(),
+    );
     final connected = ref.watch(stravaConnectionProvider);
     final sync = ref.watch(syncControllerProvider);
     return Scaffold(

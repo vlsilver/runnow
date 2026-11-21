@@ -318,6 +318,10 @@ final themeControllerProvider = ChangeNotifierProvider<ThemeController>(
 /// nhưng không nên stream toàn bộ lịch sử Strava vô hạn mỗi lần Firestore đổi.
 const _dashboardActivityLimit = 500;
 
+/// Tăng mỗi lần app lưu xong một buổi tự ghi. Home đọc kèo và buổi chạy của
+/// club qua API một lần nên nghe nó để tải lại.
+final trackedActivitySavedProvider = StateProvider<int>((ref) => 0);
+
 final activitiesProvider = StreamProvider<List<ActivitySummary>>((ref) {
   final uid = ref.watch(firebaseUserProvider).value?.uid;
   if (uid == null) return Stream.value(const []);

@@ -267,6 +267,21 @@ void main() {
     expect(fetches.runs, 2);
   });
 
+  testWidgets('lưu xong buổi chạy thì tải lại danh sách kèo và buổi chạy', (
+    tester,
+  ) async {
+    final fetches = await _pumpHome(tester);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(KeoHubScreen)),
+    );
+
+    container.read(trackedActivitySavedProvider.notifier).state++;
+    await _settle(tester);
+
+    expect(fetches.contracts, 2);
+    expect(fetches.runs, 2);
+  });
+
   testWidgets('Thẻ nổi bật theo thứ tự khoe mới trước, không đếm tim', (
     tester,
   ) async {

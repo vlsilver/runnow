@@ -1108,6 +1108,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       final result = allChunked
           ? await repository.finalizeTrackedActivity(detail)
           : await repository.saveTrackedActivity(detail);
+      ref.read(trackedActivitySavedProvider.notifier).state++;
       if (_liveEnabled && _liveAnnouncedStart) {
         // Buổi đã tường thuật live → chốt bằng tin "về đích". Fire-and-forget.
         unawaited(
