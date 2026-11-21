@@ -129,7 +129,7 @@ func TestRenderStartAndCard(t *testing.T) {
 	out = renderOne(t, r, dmChat("w1"), tplCard, map[string]any{"role": "wolf", "wolves": []string{"w1", "w2"}})
 	want = "<b>Ma Sói: có tin riêng cho bạn</b>\n" +
 		"<tg-spoiler>Lá bài của bạn: <b>Sói</b></tg-spoiler>\n" +
-		"<tg-spoiler>Đêm nào cả phe cũng chọn một người để cắn, từ 22h tới 0h. Lựa chọn bấm sau cùng của phe được tính. Tổng km của sói còn sống phải đủ 2.5 km cho mỗi sói.</tg-spoiler>\n" +
+		"<tg-spoiler>Đêm nào cả phe cũng chọn một người để cắn, từ 22h tới 0h. Lựa chọn bấm sau cùng của phe được tính. Tổng km của sói còn sống phải đủ 2.5 km cho mỗi sói. Km tính 24 tiếng tới lúc chốt cắn.</tg-spoiler>\n" +
 		"<tg-spoiler>Đồng đội: Bình &amp; Co.</tg-spoiler>"
 	if out.chatID != "71" || out.threadID != 0 || out.parts[0] != want || out.markup != nil {
 		t.Fatalf("card sói = %+v", out)
@@ -248,8 +248,8 @@ func TestPrivateDMsShowOnlyTheHeader(t *testing.T) {
 	add(night)
 	closes := time.Date(2026, 10, 12, 17, 0, 0, 0, time.UTC)
 	for kind := range actionTexts {
-		if kind == ww.KindNominate || kind == ww.KindVote {
-			continue // vào topic của group, không DM
+		if kind == ww.KindNominate || kind == ww.KindVote || appOnlyKind(kind) {
+			continue // vào topic của group hoặc chỉ chọn trong app, không DM
 		}
 		for _, a := range []*GameAction{nil, {Kind: string(kind), Enabled: true, ClosesAt: &closes, Options: options("a", "c")}} {
 			text, _, err := promptView{gameID: "g1", turnKey: "r1", st: promptState(), kind: kind, a: a, name: promptNames}.render()

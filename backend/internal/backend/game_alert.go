@@ -177,7 +177,13 @@ func (s *Server) tickAlerts(ctx context.Context, wall time.Time, gameErr error) 
 	if err != nil {
 		return err
 	}
-	a.TickFailed = gameErr != nil
+	// Lỗi của ván khác (ván user ở group riêng) không phải việc của admin ở đây.
+	var perGame *tickGameErrors
+	if errors.As(gameErr, &perGame) {
+		a.TickFailed = perGame.byGame[id] != nil
+	} else {
+		a.TickFailed = gameErr != nil
+	}
 	pending, err := tg.WebhookPendingCount(ctx)
 	if err != nil {
 		return err

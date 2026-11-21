@@ -103,6 +103,9 @@ func (s *BotService) coachPlanContext(ctx context.Context, uid, planId string) s
 	doc, label := map[string]any(nil), ""
 	if snap, err := s.db.Collection("coachPlans").Doc(planId).Get(ctx); err == nil && snap.Exists() {
 		doc, label = snap.Data(), "GIÁO ÁN ĐANG CHẠY"
+		if coachPlanOver(doc, time.Now()) {
+			label = "GIÁO ÁN ĐÃ KẾT THÚC (không còn buổi nào phải tập)"
+		}
 	} else if planId == uid {
 		if snap, err := s.db.Collection("users").Doc(uid).Collection("coach").Doc("draft").Get(ctx); err == nil && snap.Exists() {
 			doc, label = snap.Data(), "BẢN NHÁP CHỜ XÁC NHẬN (user chưa đồng ý)"

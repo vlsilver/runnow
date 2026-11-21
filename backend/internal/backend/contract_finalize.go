@@ -29,7 +29,7 @@ type ContractFinalizeResult struct {
 // (recalc user đó lỗi) thì để lần chạy sau, vì chốt rồi không mở lại được.
 // Lỗi Firestore/Cloud Tasks thì trả ra và dừng; chạy lại an toàn vì kèo đã chốt
 // không còn active.
-func FinalizeDueContracts(ctx context.Context, db *firestore.Client, tasks *TaskPublisher, recalced []ContractRecalcResult, now time.Time, dryRun bool) ([]ContractFinalizeResult, error) {
+func FinalizeDueContracts(ctx context.Context, db *firestore.Client, publish taskPublishFunc, recalced []ContractRecalcResult, now time.Time, dryRun bool) ([]ContractFinalizeResult, error) {
 	it := db.Collection("runContracts").Where("status", "==", "active").Documents(ctx)
 	defer it.Stop()
 	var results []ContractFinalizeResult
@@ -61,19 +61,19 @@ func FinalizeDueContracts(ctx context.Context, db *firestore.Client, tasks *Task
 			results = append(results, res)
 			continue
 		}
-		res, closed, err := finalizeContract(ctx, db, doc.Ref, now)
+		res, closed, err := finalizeContract(ctx, db, doc.Ref, recalced, now)
 		if err != nil {
 			return results, err
 		}
 		if !closed {
 			continue // chủ kèo vừa chốt trên app
 		}
-		if res.Roast && tasks != nil {
+		if res.Roast && publish != nil {
 			// Cùng TaskID với /v1/contracts/announce-result nên không bêu đôi;
 			// bot còn chặn thêm bằng roastedAt. uid = chủ kèo vì bot chỉ nhận
 			// lời gọi từ chủ kèo.
 			payload := map[string]any{"uid": stringValue(d["creatorUid"]), "contractId": doc.Ref.ID}
-			if _, err := tasks.Publish(ctx, PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/contract-roast", Payload: payload, TaskID: StableTaskID("roast", doc.Ref.ID)}); err != nil {
+			if _, err := publish(ctx, PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/contract-roast", Payload: payload, TaskID: StableTaskID("roast", doc.Ref.ID)}); err != nil {
 				return results, err
 			}
 		}
@@ -84,13 +84,18 @@ func FinalizeDueContracts(ctx context.Context, db *firestore.Client, tasks *Task
 }
 
 // finalizeContract đóng 1 kèo trong transaction. closed=false nếu lúc đọc lại kèo
-// đã không còn active (app chốt trước) — không ghi gì.
-func finalizeContract(ctx context.Context, db *firestore.Client, ref *firestore.DocumentRef, now time.Time) (ContractFinalizeResult, bool, error) {
-	var res ContractFinalizeResult
-	closed := false
-	err := db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+// đã không còn active (app chốt trước) — không ghi gì. Kèo có quà thì chia quà
+// theo [recalced] trong cùng transaction; push kết quả quà do
+// SendContractGiftResults hẹn sau.
+func finalizeContract(ctx context.Context, db *firestore.Client, ref *firestore.DocumentRef, recalced []ContractRecalcResult, now time.Time) (res ContractFinalizeResult, closed bool, err error) {
+	giftRef := db.Collection("contractGifts").Doc(ref.ID)
+	err = db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		closed = false
 		snap, err := tx.Get(ref)
+		if err != nil {
+			return err
+		}
+		gift, err := getOptional(tx, giftRef)
 		if err != nil {
 			return err
 		}
@@ -100,6 +105,13 @@ func finalizeContract(ctx context.Context, db *firestore.Client, ref *firestore.
 		}
 		res = finalizeResultFor(ref.ID, d)
 		closed = true
+		if gift.Exists() && gift.Data()["resolvedAt"] == nil {
+			g := gift.Data()
+			entrants := giftEntrantsOf(ref.ID, d, recalced)
+			if err := tx.Update(giftRef, giftResultUpdates(stringValue(g["kind"]), contractGiftItemsFrom(g["items"]), entrants, now)); err != nil {
+				return err
+			}
+		}
 		updates := []firestore.Update{
 			{Path: "status", Value: res.Status},
 			{Path: "finalizedBy", Value: "scheduler"},

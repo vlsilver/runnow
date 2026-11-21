@@ -16,7 +16,15 @@ type StravaGateway struct {
 	clientID, clientSecret string
 	client                 *http.Client
 	baseURL                string
+	// off chặn mọi lệnh gọi ra Strava khi tích hợp đang tắt, kể cả refresh
+	// token và revoke, để không đường nào trong code còn chạm tới Strava.
+	off bool
 }
+
+func (g *StravaGateway) isOff() bool { return g != nil && g.off }
+
+// errStravaOff là lỗi mọi lệnh gọi Strava trả khi tích hợp đang tắt.
+var errStravaOff = &HTTPError{Status: http.StatusServiceUnavailable, Code: "strava_disabled", Message: "3i đang tạm ngừng kết nối Strava."}
 
 func NewStravaGateway(clientID, clientSecret string) *StravaGateway {
 	return &StravaGateway{clientID: clientID, clientSecret: clientSecret, client: &http.Client{Timeout: 25 * time.Second}, baseURL: "https://www.strava.com"}
@@ -89,6 +97,9 @@ func (g *StravaGateway) authorized(ctx context.Context, token, target string, ou
 	return g.doJSON(req, out)
 }
 func (g *StravaGateway) doJSON(req *http.Request, out any) error {
+	if g.off {
+		return errStravaOff
+	}
 	resp, err := g.client.Do(req)
 	if err != nil {
 		return err

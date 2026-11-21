@@ -25,6 +25,11 @@ type AccountService struct {
 	auth    *auth.Client
 	oauth   *OAuthService
 	storage *gcs.BucketHandle
+	// managed hẹn gỡ webhook bot con khi xoá tài khoản; nil khi MyBot trên
+	// Telegram tắt, lúc đó chỉ xoá bản ghi.
+	managed *ManagedBotService
+	// garmin gỡ đăng ký trên Garmin trước khi xoá; nil thì chỉ xoá bản ghi.
+	garmin *GarminService
 }
 
 func NewAccountService(db *firestore.Client, authClient *auth.Client, oauth *OAuthService, bucket *gcs.BucketHandle) *AccountService {
@@ -43,6 +48,10 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 		return invalidRequest()
 	}
 	athleteID := s.stravaAthleteID(ctx, uid)
+	garminUserID, err := garminUserIDOf(ctx, s.db, uid)
+	if err != nil {
+		return err
+	}
 
 	// Lỗi phía Strava không được chặn việc xoá: user đã yêu cầu xoá thì phải
 	// xoá được, kể cả khi Strava đang sập. Token vẫn bị xoá cùng Firestore
@@ -50,12 +59,22 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 	if err := s.oauth.Disconnect(ctx, uid); err != nil {
 		slog.WarnContext(ctx, "account.delete.strava_revoke_failed", "uid", uid, "error", err)
 	}
+	// Garmin cũng vậy: user tự gỡ được tại connect.garmin.com, phần ghi phía
+	// mình do deleteGarmin bên dưới lo.
+	if s.garmin != nil {
+		if err := s.garmin.Disconnect(ctx, uid); err != nil {
+			slog.WarnContext(ctx, "account.delete.garmin_deregister_failed", "uid", uid, "error", err)
+		}
+	}
 
 	if err := s.deleteStorage(ctx, uid); err != nil {
 		return fmt.Errorf("delete storage: %w", err)
 	}
 	if err := s.leaveRunContracts(ctx, uid); err != nil {
 		return fmt.Errorf("leave run contracts: %w", err)
+	}
+	if err := s.deleteContractGifts(ctx, uid); err != nil {
+		return fmt.Errorf("delete contract gifts: %w", err)
 	}
 	if err := s.deleteGameData(ctx, uid); err != nil {
 		return fmt.Errorf("delete game data: %w", err)
@@ -72,15 +91,27 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 	if err := s.deleteOwnedDocuments(ctx, uid, athleteID); err != nil {
 		return fmt.Errorf("delete documents: %w", err)
 	}
+	// Trước khi xoá cây users/{uid}: còn link thì push sau đó ghi lại buổi
+	// chạy vào uid đã xoá.
+	if err := s.deleteGarmin(ctx, uid, garminUserID); err != nil {
+		return fmt.Errorf("delete garmin: %w", err)
+	}
 	// Dọn cả users/{uid} lẫn mọi subcollection bên dưới (activities, stats,
 	// periodStats, trainingGoalHistory, runContractActivityClaims) —
 	// subcollection không tự mất khi xoá document cha.
 	if err := s.deleteDocumentTree(ctx, s.db.Collection("users").Doc(uid)); err != nil {
 		return fmt.Errorf("delete user tree: %w", err)
 	}
-	// Bot cá nhân: hồ sơ, bộ nhớ và chat riêng.
+	// Bot cá nhân: hồ sơ, bộ nhớ và chat riêng của mọi kênh (dm, tgdm).
 	if err := s.deleteDocumentTree(ctx, s.db.Collection("agents").Doc(uid)); err != nil {
 		return fmt.Errorf("delete agent tree: %w", err)
+	}
+	// Cờ "Đừng học về tôi" nằm chung một doc với người khác, nên gỡ riêng uid.
+	if err := s.removeLearnOptOut(ctx, uid); err != nil {
+		return fmt.Errorf("remove learn opt-out: %w", err)
+	}
+	if err := s.deleteAgentReports(ctx, uid); err != nil {
+		return fmt.Errorf("delete agent reports: %w", err)
 	}
 
 	if err := s.auth.DeleteUser(ctx, uid); err != nil && !auth.IsUserNotFound(err) {
@@ -88,6 +119,59 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 	}
 	slog.InfoContext(ctx, "account.delete.completed", "uid", uid)
 	return nil
+}
+
+// deleteManagedBots gỡ mọi bot con Telegram của uid (T6): xoá managedBots/{botId}
+// cùng outbox, rồi hẹn task Sync trên bot. Sync thấy bản ghi mất thì gọi
+// deleteWebhook, vì api không có token 3i để tự gọi. Hẹn task lỗi thì chỉ log,
+// như thu hồi Strava: bot còn sót webhook thì update đầu tiên tới sẽ hẹn lại
+// (routeChildUpdate). Bot vẫn thuộc người dùng trên Telegram, vì Bot API không
+// có hàm xoá bot.
+func (s *AccountService) deleteManagedBots(ctx context.Context, uid string) error {
+	docs, err := s.db.Collection("managedBots").Where("uid", "==", uid).Documents(ctx).GetAll()
+	if err != nil {
+		return err
+	}
+	for _, doc := range docs {
+		if err := s.deleteDocumentTree(ctx, doc.Ref); err != nil {
+			return err
+		}
+		if s.managed == nil {
+			continue
+		}
+		if _, err := s.managed.publish(ctx, managedSyncTaskFor(doc.Ref.ID, "deleted")); err != nil {
+			slog.WarnContext(ctx, "account.delete.mybot_webhook_failed", "uid", uid, "botId", doc.Ref.ID, "error", err)
+		}
+	}
+	return nil
+}
+
+func (s *AccountService) removeLearnOptOut(ctx context.Context, uid string) error {
+	_, err := learnOptOutRef(s.db).Update(ctx, []firestore.Update{{Path: "uids", Value: firestore.ArrayRemove(uid)}})
+	if status.Code(err) == codes.NotFound {
+		return nil
+	}
+	return err
+}
+
+// deleteGarmin xoá connection và link Garmin của uid. Link chỉ bị xoá khi còn
+// trỏ về uid này: sau khi uid ngắt kết nối, người khác có thể đã nối lại đúng
+// tài khoản Garmin đó.
+func (s *AccountService) deleteGarmin(ctx context.Context, uid, garminUserID string) error {
+	if garminUserID != "" {
+		link := s.db.Collection("garminUserLinks").Doc(garminUserID)
+		snap, err := link.Get(ctx)
+		if err != nil && status.Code(err) != codes.NotFound {
+			return err
+		}
+		if err == nil && stringValue(snap.Data()["uid"]) == uid {
+			if _, err := link.Delete(ctx, firestore.LastUpdateTime(snap.UpdateTime)); err != nil {
+				return err
+			}
+		}
+	}
+	_, err := s.db.Collection("garminConnections").Doc(uid).Delete(ctx)
+	return err
 }
 
 func (s *AccountService) stravaAthleteID(ctx context.Context, uid string) string {
@@ -98,25 +182,44 @@ func (s *AccountService) stravaAthleteID(ctx context.Context, uid string) string
 	return stringValue(snap.Data()["athleteId"])
 }
 
-// deleteStorage xoá ảnh buổi chạy và ảnh đại diện. Tất cả nằm dưới cùng một
-// prefix users/{uid}/ (xem storage.rules), nên một vòng quét prefix là đủ.
+// deleteStorage xoá file user tải lên: ảnh buổi chạy và ảnh đại diện dưới
+// users/{uid}/, ảnh quà kèo dưới contractGifts/{uid}/ (xem storage.rules).
 func (s *AccountService) deleteStorage(ctx context.Context, uid string) error {
 	if s.storage == nil {
 		return nil
 	}
-	it := s.storage.Objects(ctx, &gcs.Query{Prefix: "users/" + uid + "/"})
-	for {
-		attrs, err := it.Next()
-		if errors.Is(err, iterator.Done) {
-			return nil
+	for _, prefix := range []string{"users/" + uid + "/", "contractGifts/" + uid + "/"} {
+		it := s.storage.Objects(ctx, &gcs.Query{Prefix: prefix})
+		for {
+			attrs, err := it.Next()
+			if errors.Is(err, iterator.Done) {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			if err := s.storage.Object(attrs.Name).Delete(ctx); err != nil && !errors.Is(err, gcs.ErrObjectNotExist) {
+				return err
+			}
 		}
-		if err != nil {
-			return err
-		}
-		if err := s.storage.Object(attrs.Name).Delete(ctx); err != nil && !errors.Is(err, gcs.ErrObjectNotExist) {
+	}
+	return nil
+}
+
+// deleteContractGifts xoá quà user treo ở các kèo: doc quà mang tên người trao,
+// và người trao đã đi thì quà không còn ai trao. Kèo còn chạy thì chốt như kèo
+// thường.
+func (s *AccountService) deleteContractGifts(ctx context.Context, uid string) error {
+	docs, err := s.db.Collection("contractGifts").Where("creatorUid", "==", uid).Documents(ctx).GetAll()
+	if err != nil {
+		return err
+	}
+	for _, doc := range docs {
+		if _, err := doc.Ref.Delete(ctx); err != nil {
 			return err
 		}
 	}
+	return nil
 }
 
 // leaveRunContracts gỡ user khỏi các kèo đã tham gia.
@@ -184,16 +287,29 @@ func (s *AccountService) deleteOwnedDocuments(ctx context.Context, uid, athleteI
 	queries := []firestore.Query{
 		s.db.Collection("feedPosts").Where("authorUid", "==", uid),
 		s.db.Collection("liveSessions").Where("ownerUid", "==", uid),
+		s.db.Collection("pushTokens").Where("uid", "==", uid),
 		s.db.Collection("activityTombstones").Where("uid", "==", uid),
 		// Liên kết Telegram (L1). Đang trong ván thì người chơi mất tgLinks và bị
 		// tính là đã rời PSC ở mốc chốt kế tiếp (R33).
 		s.db.Collection("tgLinks").Where("uid", "==", uid),
 		s.db.Collection("linkCodes").Where("uid", "==", uid),
-		// Phòng bot: tin của người lẫn tin bot của họ đều mang uid chủ.
-		s.db.Collection("agentRooms").Doc(agentMainRoom).Collection("messages").Where("uid", "==", uid),
+		// Tim user đã thả (hearts/{target}/by/{uid}). Tim người khác thả cho
+		// buổi của user thì để lại: chỉ mang uid người thả, và buổi đã xoá
+		// nên không ai mở tới.
+		s.db.CollectionGroup("by").Where("uid", "==", uid),
+		s.db.Collection("clubCards").Where("ownerUid", "==", uid),
 	}
 	if athleteID != "" {
 		queries = append(queries, s.db.Collection("integrationEvents").Where("ownerId", "==", athleteID))
+	}
+	// Phòng bot, mọi phòng (main, tg-psc): tin của người lẫn tin bot của họ đều
+	// mang uid chủ.
+	rooms, err := s.agentRoomRefs(ctx)
+	if err != nil {
+		return err
+	}
+	for _, room := range rooms {
+		queries = append(queries, room.Collection("messages").Where("uid", "==", uid))
 	}
 	for _, query := range queries {
 		if err := s.deleteQuery(ctx, query); err != nil {

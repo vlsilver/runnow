@@ -94,7 +94,16 @@ func (s *ActivityService) ImportHealthSteps(ctx context.Context, uid string, day
 func (s *ActivityService) officialRunMetersByDay(ctx context.Context, uid string, periods CurrentPeriods) (map[string]float64, error) {
 	start := earliest(periods.Rolling.Start, periods.Week.Start, periods.Month.Start).Add(-24 * time.Hour)
 	end := latest(periods.Rolling.End, periods.Week.End, periods.Month.End)
-	iter := s.db.Collection("users").Doc(uid).Collection("activities").
+	facts, err := activityFactsBetween(ctx, s.db, uid, start, end)
+	if err != nil {
+		return nil, err
+	}
+	return officialMetersByDay(facts), nil
+}
+
+// activityFactsBetween đọc mọi buổi của uid có startedAt trong [start, end).
+func activityFactsBetween(ctx context.Context, db *firestore.Client, uid string, start, end time.Time) ([]ActivityFact, error) {
+	iter := db.Collection("users").Doc(uid).Collection("activities").
 		Where("startedAt", ">=", start.UTC().Format(time.RFC3339Nano)).
 		Where("startedAt", "<", end.UTC().Format(time.RFC3339Nano)).Documents(ctx)
 	defer iter.Stop()
@@ -109,11 +118,16 @@ func (s *ActivityService) officialRunMetersByDay(ctx context.Context, uid string
 		}
 		facts = append(facts, activityFact(doc.Ref.ID, doc.Data()))
 	}
+	return facts, nil
+}
+
+// officialMetersByDay cộng quãng đường các buổi chính thức theo ngày (dateKey VN).
+func officialMetersByDay(facts []ActivityFact) map[string]float64 {
 	byDay := map[string]float64{}
 	for _, a := range SelectOfficialActivities(facts) {
 		byDay[dateKey(a.StartedAt)] += a.DistanceMeters
 	}
-	return byDay, nil
+	return byDay
 }
 
 // rebuildStepLeaderboard tổng bước theo 7 ngày / tuần / tháng (lịch VN, khớp

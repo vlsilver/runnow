@@ -124,9 +124,14 @@ func resolveProfile(ctx context.Context, db *firestore.Client, uid string) (map[
 
 // nonStravaSourcePriority: khi hai buổi non-Strava TRÙNG nhau (cùng một lần
 // chạy ở hai nguồn), giữ nguồn giàu dữ liệu hơn. 3i native có GPS/route/streams
-// nên ưu tiên hơn Apple Health (chỉ có quãng đường + thời gian).
+// nên đứng đầu; Garmin có nhịp tim, cadence từ đồng hồ nên đứng trên Apple
+// Health (chỉ có quãng đường + thời gian). App giữ cùng thứ tự này
+// (activity_eligibility.dart).
 func nonStravaSourcePriority(source string) int {
-	if source == "runnow" {
+	switch source {
+	case "runnow":
+		return 3
+	case "garmin":
 		return 2
 	}
 	return 1 // apple_health & các nguồn phụ khác
@@ -170,14 +175,14 @@ func SelectOfficialActivities(activities []ActivityFact) []ActivityFact {
 	for _, a := range nonStrava {
 		duplicate := false
 		for _, other := range counted {
-			if overlapRatio(a, other) > 0.3 {
+			if sameRun(a, other) {
 				duplicate = true
 				break
 			}
 		}
 		if !duplicate {
 			for _, other := range kept {
-				if overlapRatio(a, other) > 0.3 {
+				if sameRun(a, other) {
 					duplicate = true
 					break
 				}
@@ -190,6 +195,10 @@ func SelectOfficialActivities(activities []ActivityFact) []ActivityFact {
 	}
 	return out
 }
+// sameRun là luật hai bản ghi là cùng một buổi chạy ở hai nguồn: hơn 30% thời
+// gian của candidate trùng other.
+func sameRun(candidate, other ActivityFact) bool { return overlapRatio(candidate, other) > 0.3 }
+
 func overlapRatio(candidate, other ActivityFact) float64 {
 	duration := time.Duration(max64(candidate.ElapsedTimeSeconds, max64(candidate.MovingTimeSeconds, 1))) * time.Second
 	otherDuration := time.Duration(max64(other.ElapsedTimeSeconds, max64(other.MovingTimeSeconds, 1))) * time.Second

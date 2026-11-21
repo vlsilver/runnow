@@ -37,6 +37,31 @@ func TestNonStravaOverlapCountsOncePreferringRunNow(t *testing.T) {
 	}
 }
 
+// Đồng hồ Garmin ghi cả nhịp tim, cadence, nên bản Garmin thắng bản Apple Health
+// của cùng buổi, còn 3i native vẫn thắng Garmin. ID đặt ngược thứ tự ưu tiên để
+// chỉ ưu tiên nguồn mới chọn đúng.
+func TestNonStravaOverlapPrefersGarminOverHealthButNotRunNow(t *testing.T) {
+	start := time.Date(2026, 7, 17, 6, 0, 0, 0, time.UTC)
+	health := ActivityFact{ID: "a-health", Source: "apple_health", SportType: "Run", StartedAt: start, DistanceMeters: 5000, MovingTimeSeconds: 1800, ElapsedTimeSeconds: 1800}
+	garmin := ActivityFact{ID: "m-garmin", Source: "garmin", SportType: "Run", StartedAt: start.Add(time.Minute), DistanceMeters: 5000, MovingTimeSeconds: 1800, ElapsedTimeSeconds: 1800}
+	runnow := ActivityFact{ID: "z-runnow", Source: "runnow", SportType: "Run", StartedAt: start, DistanceMeters: 5000, MovingTimeSeconds: 1800, ElapsedTimeSeconds: 1800}
+	cases := []struct {
+		in   []ActivityFact
+		want string
+	}{
+		{[]ActivityFact{health, garmin}, "m-garmin"},
+		{[]ActivityFact{garmin, health}, "m-garmin"},
+		{[]ActivityFact{garmin, runnow}, "z-runnow"},
+		{[]ActivityFact{health, garmin, runnow}, "z-runnow"},
+	}
+	for _, c := range cases {
+		got := SelectOfficialActivities(c.in)
+		if len(got) != 1 || got[0].ID != c.want {
+			t.Fatalf("in %v: got %#v, want only %s", c.in, got, c.want)
+		}
+	}
+}
+
 // Hai buổi non-Strava KHÔNG trùng thời gian: cả hai đều được tính.
 func TestNonStravaDistinctRunsBothCount(t *testing.T) {
 	base := time.Date(2026, 7, 17, 6, 0, 0, 0, time.UTC)

@@ -12,8 +12,10 @@ import (
 )
 
 // Tường thuật LIVE: app 3i gọi POST /v1/live/announce tại các mốc trong lúc tập
-// (bắt đầu / qua mỗi 5km / về đích). Bot viết 1 câu bằng giọng của nó rồi bắn
-// vào group. Event-driven (app tự biết mốc) nên KHÔNG cần cron poll.
+// (bắt đầu / qua mỗi mốc km người chạy chọn / về đích). Bot viết 1 câu bằng
+// giọng của nó làm dòng bình luận trên thẻ Live (live_card.go): sự kiện đầu
+// gửi thẻ, các sự kiện sau sửa thẻ. Ảnh giữa buổi vẫn là tin ảnh riêng.
+// Event-driven (app tự biết mốc) nên KHÔNG cần cron poll.
 //
 // Chỉ member để hồ sơ công khai mới được tường thuật (như live-view club).
 // Mỗi sự kiện đánh dấu trong liveAnnounceState/{activityID} để app gọi lại
@@ -74,6 +76,11 @@ func (s *ActivityService) LiveAnnounce(ctx context.Context, uid, activityID, eve
 	}
 
 	hasBot := s.broadcast != nil && s.broadcast.Enabled()
+	// Đọc topic trước khi claim: đọc lỗi thì app gọi lại, sự kiện chưa bị đánh dấu.
+	thread, err := liveTrackThread(ctx, s.db)
+	if err != nil {
+		return err
+	}
 
 	// Ảnh: cần bot (tải ảnh từ Storage + caption + SendPhoto). Không có bot thì
 	// bỏ qua êm (ảnh không gửi được bằng thẻ tĩnh).
@@ -90,7 +97,7 @@ func (s *ActivityService) LiveAnnounce(ctx context.Context, uid, activityID, eve
 		if !claimed {
 			return nil
 		}
-		if err := s.broadcast.LivePhotoAnnouncement(ctx, uid, displayName, photoPath, distanceMeters); err != nil {
+		if err := s.broadcast.LivePhotoAnnouncement(ctx, thread, uid, displayName, photoPath, distanceMeters); err != nil {
 			slog.WarnContext(ctx, "live.photo_send_failed_after_claim", "error", err)
 			return nil
 		}
@@ -122,16 +129,24 @@ func (s *ActivityService) LiveAnnounce(ctx context.Context, uid, activityID, eve
 		}
 	}
 
-	// Claim marker TRƯỚC khi gửi để retry không tường thuật lặp.
-	claimed, err := claimOnce(ctx, s.db, stateRef, marker, update)
+	// Claim marker cùng lúc ghi nội dung thẻ, TRƯỚC khi gửi, để retry không
+	// tường thuật lặp. Gửi hay sửa thẻ lỗi sau claim thì mất lần cập nhật này,
+	// còn nội dung đã ghi nên lần sửa sau vẫn đúng.
+	content := liveCardContent{name: displayName, meters: distanceMeters, seconds: movingTimeSeconds, line: text, finished: event == liveEventFinish}
+	claimed, send, err := claimLiveCardEvent(ctx, s.db, stateRef, marker, update, content, time.Now())
 	if err != nil {
 		return err
 	}
 	if !claimed {
 		return nil
 	}
-	if err := s.telegram.SendChatMessage(ctx, s.telegram.ChatID(), text); err != nil {
-		slog.WarnContext(ctx, "live.telegram_send_failed_after_claim", "error", err)
+	if send {
+		err = s.sendLiveCard(ctx, activityID, thread)
+	} else {
+		err = s.SyncLiveCard(ctx, activityID)
+	}
+	if err != nil {
+		slog.WarnContext(ctx, "live.card_failed_after_claim", "activityId", activityID, "error", err)
 		return nil
 	}
 	if hasBot {

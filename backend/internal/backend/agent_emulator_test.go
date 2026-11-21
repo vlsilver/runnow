@@ -180,8 +180,12 @@ func TestEmulatorAgentProfileAndMemory(t *testing.T) {
 	// Thành viên qua agentState/config, chưa tạo bot: tên mặc định theo tên chủ.
 	r := e.call("cuong", "GET", "/v1/agents/me", nil, "")
 	agent, _ := r.body["agent"].(map[string]any)
-	if r.body["enabled"] != true || agent["name"] != "Bot của Cường" || agent["created"] != false || r.body["memoryLimit"] != float64(50) {
+	if _, has := agent["createdAt"]; r.body["enabled"] != true || agent["name"] != "Bot của Cường" || agent["created"] != false || has || r.body["memoryLimit"] != float64(50) {
 		t.Fatalf("chưa tạo bot: %s", r.raw)
+	}
+	// App chỉ gửi look khi thấy key này, nên bot chưa tạo cũng phải có.
+	if look, has := agent["look"]; !has || look != "" {
+		t.Fatalf("chưa tạo bot phải có look rỗng: %s", r.raw)
 	}
 	e.want(e.call("cuong", "POST", "/v1/agents/me/memories", map[string]any{"text": "a"}, ""), 404, "agent_not_found")
 	e.want(e.call("cuong", "POST", "/v1/agents/me/dm", map[string]any{"text": "a"}, ""), 404, "agent_not_found")
@@ -191,10 +195,35 @@ func TestEmulatorAgentProfileAndMemory(t *testing.T) {
 	e.want(e.call("cuong", "POST", "/v1/agents/me", map[string]any{"name": "Cú", "persona": strings.Repeat("a", 1501)}, ""), 400, "invalid_persona")
 	e.want(e.call("cuong", "POST", "/v1/agents/me", map[string]any{"name": "Cú", "extra": 1}, ""), 400, "")
 	e.createBot("cuong", " Cú ", "Hay đùa")
+	// Ngày tạo bot là lần lưu đầu; lưu lại sau đó không dời ngày.
+	created := e.clock.UTC().Format(time.RFC3339)
+	e.tick(26 * time.Hour)
+	e.createBot("cuong", " Cú ", "Hay đùa")
 	r = e.call("cuong", "GET", "/v1/agents/me", nil, "")
 	agent, _ = r.body["agent"].(map[string]any)
-	if agent["name"] != "Cú" || agent["persona"] != "Hay đùa" || agent["created"] != true {
+	if agent["name"] != "Cú" || agent["persona"] != "Hay đùa" || agent["created"] != true || agent["createdAt"] != created {
 		t.Fatalf("sau khi tạo: %s", r.raw)
+	}
+
+	// Kiểu bot: lưu được, lưu lại mà không gửi look (app cũ) thì giữ kiểu cũ,
+	// slug sai thì 400 và không đổi gì.
+	look := func() any {
+		agent, _ := e.call("cuong", "GET", "/v1/agents/me", nil, "").body["agent"].(map[string]any)
+		return agent["look"]
+	}
+	r = e.call("cuong", "POST", "/v1/agents/me", map[string]any{"name": "Cú", "persona": "Hay đùa", "look": "coach"}, "")
+	e.want(r, 200, "")
+	if r.body["look"] != "coach" || look() != "coach" {
+		t.Fatalf("lưu look: %s", r.raw)
+	}
+	r = e.call("cuong", "POST", "/v1/agents/me", map[string]any{"name": "Cú", "persona": "Hay đùa"}, "")
+	e.want(r, 200, "")
+	if r.body["look"] != "coach" || look() != "coach" {
+		t.Fatalf("không gửi look phải giữ kiểu cũ: %s", r.raw)
+	}
+	e.want(e.call("cuong", "POST", "/v1/agents/me", map[string]any{"name": "Cú", "look": "Coach!"}, ""), 400, "invalid_look")
+	if look() != "coach" {
+		t.Fatalf("look sai không được ghi")
 	}
 
 	// Thêm, sửa, xoá mục nhớ; xoá lần hai vẫn 200, sửa mục đã xoá thì 404.
@@ -309,16 +338,18 @@ func TestEmulatorAgentDM(t *testing.T) {
 		t.Fatalf("model lỗi mà không còn chờ: %s", r.raw)
 	}
 
-	// Hết ngân sách ngày: trả câu cố định, không gọi model.
+	// Hết lượt chat riêng hôm nay: tin mới nhận câu nghỉ, không gọi model.
 	e.llm.err = nil
 	calls := len(e.llm.calls)
-	if _, err := e.store.db.Doc("agents/an").Update(context.Background(), []firestore.Update{{Path: "dmDay", Value: vnDay(e.clock)}, {Path: "dmDayCount", Value: agentDMDailyMax}}); err != nil {
+	if _, err := e.store.db.Doc("agents/an").Update(context.Background(), []firestore.Update{{Path: "dmDay", Value: vnDay(e.clock)}, {Path: "dmDayCount", Value: agentDMBaseDaily}}); err != nil {
 		t.Fatal(err)
 	}
-	e.mustRun("/tasks/agent-dm", agentDMTask{UID: "an", Seq: 7})
+	e.tick(time.Second)
+	e.call("an", "POST", "/v1/agents/me/dm", map[string]any{"text": "còn đó không?"}, "")
+	e.mustRun("/tasks/agent-dm", agentDMTask{UID: "an", Seq: 8})
 	msgs = messages(t, e.call("an", "GET", "/v1/agents/me/dm", nil, ""))
-	if len(e.llm.calls) != calls || msgs[0]["text"] != agentBudgetReply {
-		t.Fatalf("hết ngân sách: %v", msgs[0])
+	if len(e.llm.calls) != calls || msgs[0]["text"] != noRunDMLimitReply {
+		t.Fatalf("hết lượt chat riêng: %v", msgs[0])
 	}
 
 	// Cửa sổ 20 tin cắt trúng tin bot: bỏ tin đó để lượt đầu gửi model là user.

@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/vlsilver/runnow/backend/internal/werewolf"
@@ -20,6 +23,13 @@ func (s *Server) gameRoutes() {
 			return err
 		}
 		return writeJSON(w, 200, list)
+	}))
+	s.route("GET /v1/games/history", s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		items, err := s.deps.Games.History(r.Context(), v)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"items": items})
 	}))
 	s.route("POST /v1/games", s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 		var body CreateGameRequest
@@ -68,12 +78,15 @@ func (s *Server) gameRoutes() {
 			return invalidRequest()
 		}
 		id := r.PathValue("id")
-		pinged, err := s.deps.Games.PostChat(r.Context(), id, r.PathValue("key"), body.Text, v, time.Now())
+		res, err := s.deps.Games.PostChat(r.Context(), id, r.PathValue("key"), body.Text, v, time.Now())
 		if err != nil {
 			return err
 		}
-		if pinged {
+		if res.Pinged {
 			s.kickGameFlush(r.Context(), id)
+		}
+		if res.BotSeq > 0 {
+			s.kickRoomBot(r.Context(), id, res.BotSeq)
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	}))
@@ -126,10 +139,10 @@ func (s *Server) gameRoutes() {
 	}))
 
 	// Start (2.4): dryRun trả ai sẽ bị loại; Start thật đặt starting rồi giao bot.
-	s.route("POST /v1/games/{id}/start", s.gameAdmin(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+	s.route("POST /v1/games/{id}/start", s.gameOwner(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 		id := r.PathValue("id")
 		if r.URL.Query().Get("dryRun") == "true" {
-			preview, err := s.deps.Games.StartPreview(r.Context(), id)
+			preview, err := s.deps.Games.StartPreview(r.Context(), id, s.now())
 			if err != nil {
 				return err
 			}
@@ -139,7 +152,7 @@ func (s *Server) gameRoutes() {
 		if publish == nil || s.config.GameInboundQueue == "" {
 			return &HTTPError{Status: http.StatusServiceUnavailable, Code: "tasks_unavailable", Message: "Chưa cấu hình queue game-inbound."}
 		}
-		attempt, err := s.deps.Games.RequestStart(r.Context(), id, v.UID, time.Now())
+		attempt, err := s.deps.Games.RequestStart(r.Context(), id, v.UID, s.now())
 		if err != nil {
 			return err
 		}
@@ -151,7 +164,7 @@ func (s *Server) gameRoutes() {
 		return writeJSON(w, 202, map[string]any{"status": gameStarting, "attempt": attempt})
 	}))
 	for _, action := range []string{"pause", "resume", "cancel"} {
-		s.route("POST /v1/games/{id}/admin/"+action, s.gameAdmin(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		s.route("POST /v1/games/{id}/admin/"+action, s.gameHost(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 			run := map[string]func(context.Context, string, string, time.Time) error{
 				"pause": s.deps.Games.AdminPause, "resume": s.deps.Games.AdminResume, "cancel": s.deps.Games.AdminCancel,
 			}[action]
@@ -167,7 +180,7 @@ func (s *Server) gameRoutes() {
 		}))
 	}
 
-	s.route("POST /v1/games/{id}/admin/extend", s.gameAdmin(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+	s.route("POST /v1/games/{id}/admin/extend", s.gameHost(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 		var body struct {
 			Minutes int `json:"minutes"`
 		}
@@ -372,21 +385,55 @@ func (s *Server) gameAdvance(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, 200, map[string]any{"steps": res.Steps, "status": res.Status, "taskKey": res.TaskKey, "nextAt": res.NextAt})
 }
 
-// tickGame là lưới an toàn của ván hiện tại: chạy bước quá hạn và hẹn lại
-// game-advance (task hẹn bị mất hay enqueue lỗi thì phase trễ tối đa một tick),
-// rồi kick flush nếu outbox còn tin chờ, kể cả ván đã kết thúc.
+// tickGame là lưới an toàn của mọi ván tick cần xem (GameStore.TickGames): chạy
+// bước quá hạn và hẹn lại game-advance (task hẹn bị mất hay enqueue lỗi thì phase
+// trễ tối đa một tick), rồi kick flush nếu outbox còn tin chờ, kể cả ván đã kết
+// thúc. Một ván lỗi không chặn ván khác; lỗi gom lại trả về cho tick báo 5xx.
 func (s *Server) tickGame(ctx context.Context, wall time.Time) error {
 	if s.deps.Games == nil {
 		return nil
 	}
-	id, st, err := s.deps.Games.CurrentGame(ctx)
-	if err != nil || id == "" {
+	games, err := s.deps.Games.TickGames(ctx, wall)
+	if err != nil {
 		return err
+	}
+	failed := map[string]error{}
+	for _, g := range games {
+		if err := s.tickOneGame(ctx, g.ID, g.Status, wall); err != nil {
+			failed[g.ID] = err
+		}
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	return &tickGameErrors{byGame: failed}
+}
+
+// tickGameErrors là lỗi của từng ván trong một tick, để cảnh báo admin chỉ xét
+// ván chính.
+type tickGameErrors struct{ byGame map[string]error }
+
+func (e *tickGameErrors) Error() string {
+	ids := slices.Sorted(maps.Keys(e.byGame))
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = fmt.Sprintf("ván %s: %v", id, e.byGame[id])
+	}
+	return strings.Join(parts, "; ")
+}
+
+func (e *tickGameErrors) Unwrap() []error { return slices.Collect(maps.Values(e.byGame)) }
+
+func (s *Server) tickOneGame(ctx context.Context, id, st string, wall time.Time) error {
+	if st == gameRegistering {
+		if err := s.autoStartGame(ctx, id, wall); err != nil {
+			return err
+		}
 	}
 	if st == gameRunning {
 		res, err := s.advanceGame(ctx, id, wall)
 		if err != nil {
-			return fmt.Errorf("ván %s: %w", id, err)
+			return err
 		}
 		if res.Steps > 0 {
 			slog.WarnContext(ctx, "game.tick_stepped", "gameId", id, "steps", res.Steps, "nextKey", res.TaskKey)
@@ -395,12 +442,28 @@ func (s *Server) tickGame(ctx context.Context, wall time.Time) error {
 	}
 	pending, err := s.deps.Games.HasPendingOutbox(ctx, id)
 	if err != nil {
-		return fmt.Errorf("ván %s: %w", id, err)
+		return err
 	}
 	if pending {
 		s.kickGameFlush(ctx, id)
 	}
 	return nil
+}
+
+// autoStartGame bấm Start thay chủ phòng khi tới startAt, rồi giao bot như route
+// Start. Enqueue lỗi thì ván nằm ở starting, chủ phòng bấm Start lại được.
+func (s *Server) autoStartGame(ctx context.Context, id string, wall time.Time) error {
+	publish := s.enqueueTask()
+	if publish == nil || s.config.GameInboundQueue == "" {
+		return nil
+	}
+	attempt, err := s.deps.Games.AutoStart(ctx, id, wall)
+	if err != nil || attempt == 0 {
+		return err
+	}
+	slog.InfoContext(ctx, "game.auto_start", "gameId", id, "attempt", attempt)
+	_, err = publish(ctx, gameStartTaskFor(id, attempt))
+	return err
 }
 
 // now là Dependencies.Now nếu có, không thì time.Now.
@@ -437,6 +500,27 @@ func (s *Server) gameAdmin(next func(http.ResponseWriter, *http.Request, GameVie
 	})
 }
 
+// gameHost cho admin hoặc chủ ván {id} (người tạo) đi tiếp; người khác 403
+// not_admin như gameAdmin.
+func (s *Server) gameHost(next func(http.ResponseWriter, *http.Request, GameViewer) error) handler {
+	return s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		if err := s.deps.Games.RequireHost(r.Context(), r.PathValue("id"), v.UID); err != nil {
+			return err
+		}
+		return next(w, r, v)
+	})
+}
+
+// gameOwner chỉ cho chủ ván {id} đi tiếp, admin cũng không: xem RequireOwner.
+func (s *Server) gameOwner(next func(http.ResponseWriter, *http.Request, GameViewer) error) handler {
+	return s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
+		if err := s.deps.Games.RequireOwner(r.Context(), r.PathValue("id"), v.UID); err != nil {
+			return err
+		}
+		return next(w, r, v)
+	})
+}
+
 // gameStart là chặng của bot trong Start: hỏi getChatMember ở PSC cho từng
 // người đã liên kết (ghi lại inPsc), rồi chia vai. Payload hỏng thì 204 cho
 // task thôi retry; Telegram hay Firestore lỗi thì trả lỗi để task chạy lại.
@@ -461,6 +545,18 @@ func (s *Server) gameStart(w http.ResponseWriter, r *http.Request) error {
 		}
 		return m.InChat(), nil
 	}
+	// Ván của bot ván: 3i không ở group đó, bot ván hỏi. Không ghi tgLinks.inPsc
+	// vì đó là cờ của PSC.
+	if g, err := s.deps.Games.readStartGame(r.Context(), task.GameID); err == nil {
+		if bot := stringValue(g.Data()["botId"]); bot != "" {
+			if s.deps.ManagedBots == nil {
+				return fmt.Errorf("ván %s của bot ván %s mà bot service chưa có Managed Bots", task.GameID, bot)
+			}
+			inPsc = s.deps.ManagedBots.gameMemberCheck(bot, stringValue(g.Data()["chatId"]))
+		}
+	} else if !errors.Is(err, errGameNotFound) {
+		return err
+	}
 	out, err := s.deps.Games.RunStart(r.Context(), task.GameID, inPsc, time.Now())
 	if err != nil {
 		return err
@@ -471,6 +567,7 @@ func (s *Server) gameStart(w http.ResponseWriter, r *http.Request) error {
 	if out.Result != "reverted" {
 		s.kickGameFlush(r.Context(), task.GameID)
 		s.kickGameAdvance(r.Context(), task.GameID)
+		s.kickGamePush(r.Context(), gamePushStarted, task.GameID)
 	}
 	return writeJSON(w, 200, out)
 }

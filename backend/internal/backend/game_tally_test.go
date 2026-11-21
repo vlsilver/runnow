@@ -98,7 +98,35 @@ func TestTallyViewVote(t *testing.T) {
 	}
 }
 
+// Dòng km đi theo hạn của phiên: ván nhiều vòng có lần chốt không phải 22h.
+func TestTallyViewVoteKmLineUsesClose(t *testing.T) {
+	v := tallyFixture(ww.KindVote, ww.PhaseTrial)
+	v.closes = time.Date(2026, 10, 13, 3, 0, 0, 0, time.UTC) // 10:00 giờ Việt Nam
+	text, _, err := v.render()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "Số phiếu được tính chốt lúc 10h theo km của mỗi bên.") {
+		t.Fatalf("text = %q", text)
+	}
+}
+
 // Nút Treo/Tha đọc lại đúng thành vị trí trong voteChoices.
+// Phiếu không theo km (tắt km, hoặc mỗi người một phiếu) thì không nhắc km.
+func TestTallyViewVoteFlatNoKmLine(t *testing.T) {
+	for _, cfg := range []ww.Config{{KmOff: true}, {Vote: ww.VoteFlat}} {
+		v := tallyFixture(ww.KindVote, ww.PhaseTrial)
+		v.st.Config = cfg
+		text, _, err := v.render()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(text, "km") {
+			t.Fatalf("%+v: %q", cfg, text)
+		}
+	}
+}
+
 func TestGameButtonVoteRoundTrip(t *testing.T) {
 	b, ok := parseGameButton("m1|g1|r2|x|t|1")
 	if !ok || b.Kind != ww.KindVote || voteChoices[b.Idx[0]] != ww.ChoiceSpare {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -24,11 +25,14 @@ import (
 const (
 	excludeNotLinked = "not_linked"
 	excludeNotInPsc  = "not_in_psc"
+	// Ván của bot ván: lúc Start bot ván thấy người đó không ở group của ván.
+	excludeNotInGroup = "not_in_group"
 )
 
 var excludeLabels = map[string]string{
-	excludeNotLinked: "Chưa liên kết Telegram",
-	excludeNotInPsc:  "Không còn ở group PSC",
+	excludeNotLinked:  "Chưa liên kết Telegram",
+	excludeNotInPsc:   "Không còn ở group PSC",
+	excludeNotInGroup: "Không ở group của ván",
 }
 
 var (
@@ -41,7 +45,7 @@ var (
 // để admin so các bộ vai với nhau, không ảnh hưởng luật.
 var roleWeight = map[werewolf.Role]int{
 	werewolf.Villager: 1, werewolf.Wolf: -6, werewolf.Seer: 7, werewolf.Guard: 3,
-	werewolf.Witch: 4, werewolf.Hunter: 3, werewolf.Cupid: -3,
+	werewolf.Witch: 4, werewolf.Hunter: 3, werewolf.Cupid: -3, werewolf.Elder: 3, werewolf.Idiot: 2,
 }
 
 func balanceScore(roles []werewolf.Role) int {
@@ -53,13 +57,15 @@ func balanceScore(roles []werewolf.Role) int {
 }
 
 type StartPreview struct {
-	WillExclude  []StartExcluded `json:"willExclude"`
-	Players      []StartPlayer   `json:"players"`
-	Count        int             `json:"count"`
-	MinPlayers   int             `json:"minPlayers"`
-	MaxPlayers   int             `json:"maxPlayers"`
-	CanStart     bool            `json:"canStart"`
-	BalanceScore *int            `json:"balanceScore"`
+	WillExclude []StartExcluded `json:"willExclude"`
+	Players     []StartPlayer   `json:"players"`
+	Count       int             `json:"count"`
+	MinPlayers  int             `json:"minPlayers"`
+	MaxPlayers  int             `json:"maxPlayers"`
+	CanStart    bool            `json:"canStart"`
+	// StartClosed khác rỗng là chưa tới giờ được Start, kèm chữ để app in nguyên văn.
+	StartClosed  string `json:"startClosed,omitempty"`
+	BalanceScore *int   `json:"balanceScore"`
 }
 
 type StartExcluded struct {
@@ -111,8 +117,10 @@ func (s *GameStore) readStartGame(ctx context.Context, gameID string) (*firestor
 }
 
 // startCandidates xét từng người đã đăng ký theo liên kết đang lưu: liên kết
-// có thể đã đổi hay bị huỷ từ lúc đăng ký. Người giả luôn đạt.
-func (s *GameStore) startCandidates(ctx context.Context, game *firestore.DocumentRef) ([]startCandidate, error) {
+// có thể đã đổi hay bị huỷ từ lúc đăng ký. Người giả luôn đạt; ván không
+// Telegram thì không ai bị loại vì Telegram; psc false (ván của bot ván) thì
+// không xét PSC, bot ván hỏi group của ván lúc Start.
+func (s *GameStore) startCandidates(ctx context.Context, game *firestore.DocumentRef, telegram, psc bool) ([]startCandidate, error) {
 	players, err := s.loadPlayers(ctx, game)
 	if err != nil {
 		return nil, err
@@ -120,14 +128,14 @@ func (s *GameStore) startCandidates(ctx context.Context, game *firestore.Documen
 	out := make([]startCandidate, 0, len(players))
 	for _, p := range players {
 		c := startCandidate{player: p}
-		if !p.fake {
+		if !p.fake && telegram {
 			if c.link, err = s.readLink(ctxGetter(ctx), p.uid); err != nil {
 				return nil, err
 			}
 			switch {
 			case !c.link.linked:
 				c.reason = excludeNotLinked
-			case !c.link.inPsc:
+			case psc && !c.link.inPsc:
 				c.reason = excludeNotInPsc
 			}
 		}
@@ -163,7 +171,7 @@ func gameConfigOf(g map[string]any) (werewolf.Config, error) {
 
 // StartPreview là dryRun của Start: ai sẽ bị loại và vì sao, bảng uid ↔ @tg để
 // admin soát. Theo inPsc đang lưu; lúc Start thật bot hỏi lại Telegram.
-func (s *GameStore) StartPreview(ctx context.Context, gameID string) (StartPreview, error) {
+func (s *GameStore) StartPreview(ctx context.Context, gameID string, wall time.Time) (StartPreview, error) {
 	g, err := s.readStartGame(ctx, gameID)
 	if err != nil {
 		return StartPreview{}, err
@@ -175,11 +183,31 @@ func (s *GameStore) StartPreview(ctx context.Context, gameID string) (StartPrevi
 	if err != nil {
 		return StartPreview{}, err
 	}
-	cands, err := s.startCandidates(ctx, g.Ref)
+	cands, err := s.startCandidates(ctx, g.Ref, !cfg.NoTelegram, gameInPsc(g.Data(), cfg))
 	if err != nil {
 		return StartPreview{}, err
 	}
-	return previewOf(cands, cfg), nil
+	out := previewOf(cands, cfg)
+	out.StartClosed = startClosedReason(cfg, wall)
+	return out, nil
+}
+
+// startClosedReason là lý do chưa Start được lúc at, rỗng là được. Ván chỉ bắt
+// đầu trong pha Ngày theo lịch của nó; ván thử có đồng hồ riêng nên không xét.
+func startClosedReason(cfg werewolf.Config, at time.Time) string {
+	if cfg.TestMode || cfg.InDayPhase(at) {
+		return ""
+	}
+	clocks := cfg.RoundClocks(at)
+	windows := make([]string, len(clocks))
+	for i, k := range clocks {
+		windows[i] = hm(k.Dawn) + "–" + hm(k.NominateClose)
+	}
+	return "Ván này chỉ bắt đầu được trong pha Ngày: " + strings.Join(windows, ", ") + "."
+}
+
+func startNotInDay(reason string) *HTTPError {
+	return &HTTPError{Status: http.StatusUnprocessableEntity, Code: "start_not_in_day", Message: reason}
 }
 
 // RequestStart đặt status=starting và trả số lần Start, để TaskID của mỗi lần
@@ -188,34 +216,93 @@ func (s *GameStore) StartPreview(ctx context.Context, gameID string) (StartPrevi
 // lại (enqueue lần trước lỗi) thì được; bot chỉ chạy khi còn starting, nên hai
 // task cùng chạy thì một bên thấy ván đã chạy và thôi.
 func (s *GameStore) RequestStart(ctx context.Context, gameID, by string, wall time.Time) (int64, error) {
-	preview, err := s.StartPreview(ctx, gameID)
+	preview, err := s.StartPreview(ctx, gameID, wall)
 	if err != nil {
 		return 0, err
 	}
-	if preview.Count < werewolf.MinPlayers {
-		return 0, &HTTPError{Status: http.StatusUnprocessableEntity, Code: "not_enough_players",
-			Message: fmt.Sprintf("Mới có %d người đủ điều kiện, cần ít nhất %d.", preview.Count, werewolf.MinPlayers),
-			Extra:   map[string]any{"count": preview.Count, "willExclude": preview.WillExclude}}
+	if preview.StartClosed != "" {
+		return 0, startNotInDay(preview.StartClosed)
 	}
-	game := s.gameRef(gameID)
+	if preview.Count < werewolf.MinPlayers {
+		return 0, notEnoughPlayers(preview)
+	}
 	var attempt int64
 	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
-		g, err := tx.Get(game)
+		g, err := tx.Get(s.gameRef(gameID))
 		if err != nil {
 			return err
 		}
 		if st := stringValue(g.Data()["status"]); st != gameRegistering && st != gameStarting {
 			return errStartClosed
 		}
-		attempt = int64(number(g.Data()["startAttempt"])) + 1
-		return tx.Update(game, []firestore.Update{
-			{Path: "status", Value: gameStarting}, {Path: "startAttempt", Value: attempt},
-			{Path: "startRequestedBy", Value: by}, {Path: "startRequestedAt", Value: wall},
-			{Path: "startError", Value: nil}, {Path: "version", Value: firestore.Increment(1)},
-			{Path: "updatedAt", Value: wall},
-		})
+		attempt, err = markStarting(tx, g, by, wall)
+		return err
 	})
 	return attempt, err
+}
+
+// startDue: ván đang đăng ký có startAt đã tới.
+func startDue(g map[string]any, wall time.Time) bool {
+	t := timeValue(g["startAt"])
+	return stringValue(g["status"]) == gameRegistering && !t.IsZero() && !wall.Before(t)
+}
+
+// AutoStart là Start do tick bấm khi tới startAt; attempt 0 là không Start.
+// Transaction kiểm lại startDue nên hai tick chạy cùng lúc chỉ một cái Start.
+// Thiếu người hay ngoài pha Ngày thì bỏ startAt và ghi startError: ván chờ chủ
+// phòng bấm Start.
+func (s *GameStore) AutoStart(ctx context.Context, gameID string, wall time.Time) (int64, error) {
+	g, err := s.readStartGame(ctx, gameID)
+	if err != nil || !startDue(g.Data(), wall) {
+		return 0, err
+	}
+	preview, err := s.StartPreview(ctx, gameID, wall)
+	if err != nil {
+		return 0, err
+	}
+	var failure *HTTPError
+	switch {
+	case preview.StartClosed != "":
+		failure = startNotInDay(preview.StartClosed)
+	case preview.Count < werewolf.MinPlayers:
+		failure = notEnoughPlayers(preview)
+	}
+	var attempt int64
+	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		attempt = 0
+		g, err := tx.Get(s.gameRef(gameID))
+		if err != nil || !startDue(g.Data(), wall) {
+			return err
+		}
+		if failure != nil {
+			return tx.Update(g.Ref, []firestore.Update{
+				{Path: "startAt", Value: nil},
+				{Path: "startError", Value: map[string]any{"code": failure.Code, "message": failure.Message, "at": wall}},
+				{Path: "version", Value: firestore.Increment(1)}, {Path: "updatedAt", Value: wall},
+			})
+		}
+		attempt, err = markStarting(tx, g, "auto", wall)
+		return err
+	})
+	return attempt, err
+}
+
+func notEnoughPlayers(p StartPreview) *HTTPError {
+	return &HTTPError{Status: http.StatusUnprocessableEntity, Code: "not_enough_players",
+		Message: fmt.Sprintf("Mới có %d người đủ điều kiện, cần ít nhất %d.", p.Count, werewolf.MinPlayers),
+		Extra:   map[string]any{"count": p.Count, "willExclude": p.WillExclude}}
+}
+
+// markStarting đưa ván sang starting với lượt Start mới. startAt bỏ đi: bot trả
+// ván về đăng ký thì chủ phòng bấm lại, tick không tự Start nữa.
+func markStarting(tx *firestore.Transaction, g *firestore.DocumentSnapshot, by string, wall time.Time) (int64, error) {
+	attempt := int64(number(g.Data()["startAttempt"])) + 1
+	return attempt, tx.Update(g.Ref, []firestore.Update{
+		{Path: "status", Value: gameStarting}, {Path: "startAttempt", Value: attempt},
+		{Path: "startRequestedBy", Value: by}, {Path: "startRequestedAt", Value: wall},
+		{Path: "startError", Value: nil}, {Path: "startAt", Value: nil},
+		{Path: "version", Value: firestore.Increment(1)}, {Path: "updatedAt", Value: wall},
+	})
 }
 
 // gameStartTask là payload của /tasks/game-start. Bot decode chặt, nên thêm
@@ -240,7 +327,8 @@ type StartOutcome struct {
 	Excluded []StartExcluded `json:"excluded"`
 }
 
-// pscMembership hỏi Telegram một tg có đang ở PSC không, và ghi lại kết quả.
+// pscMembership hỏi Telegram một tg có đang ở group của ván không (PSC, hay
+// group của bot ván), và ghi lại kết quả nếu là PSC.
 type pscMembership func(ctx context.Context, tgUserID int64) (bool, error)
 
 // RunStart là phần của bot trong Start. Ván không còn starting (đã chạy, admin
@@ -258,9 +346,17 @@ func (s *GameStore) RunStart(ctx context.Context, gameID string, inPsc pscMember
 	if stringValue(g.Data()["status"]) != gameStarting {
 		return out, nil
 	}
-	cands, err := s.startCandidates(ctx, g.Ref)
+	cfg, err := gameConfigOf(g.Data())
 	if err != nil {
 		return out, err
+	}
+	cands, err := s.startCandidates(ctx, g.Ref, !cfg.NoTelegram, gameInPsc(g.Data(), cfg))
+	if err != nil {
+		return out, err
+	}
+	notIn := excludeNotInPsc
+	if !gameInPsc(g.Data(), cfg) {
+		notIn = excludeNotInGroup
 	}
 	roster := &startRoster{tgUserID: map[string]int64{}}
 	var uids []string
@@ -272,7 +368,7 @@ func (s *GameStore) RunStart(ctx context.Context, gameID string, inPsc pscMember
 			}
 			c.reason = ""
 			if !ok {
-				c.reason = excludeNotInPsc
+				c.reason = notIn
 			}
 			roster.tgUserID[c.player.uid] = c.link.tgUserID
 		}

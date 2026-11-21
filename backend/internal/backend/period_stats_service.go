@@ -55,15 +55,60 @@ func saneStartedAt(instant time.Time) bool {
 	return instant.Year() >= 2000 && instant.Year() <= time.Now().Year()+1
 }
 
+// runPaceMinMeters: pace nhanh nhất chỉ xét buổi chạy từ 1 km, để vài trăm mét
+// chạy nước rút hay GPS nhảy không thành kỷ lục.
+const runPaceMinMeters = 1000
+
+// addRunStats thêm phần chỉ tính chạy (runSportTypes) vào doc của kỳ. StatsFor
+// tính cả đi bộ vì bảng xếp hạng đếm cả đi bộ, nên pace và kỷ lục của trang hồ
+// sơ đọc các field run*. Nguồn phụ trong official đều là Run.
+func addRunStats(stats map[string]any, official []ActivityFact, period Period) {
+	var runs, paced []ActivityFact
+	for _, a := range official {
+		if runSportTypes[a.SportType] {
+			runs = append(runs, a)
+			if a.DistanceMeters >= runPaceMinMeters {
+				paced = append(paced, a)
+			}
+		}
+	}
+	all := StatsFor(runs, period)
+	stats["runDistanceMeters"] = all["distanceMeters"]
+	stats["runMovingTimeSeconds"] = all["movingTimeSeconds"]
+	stats["runCount"] = all["activityCount"]
+	stats["runActiveDays"] = all["activeDays"]
+	stats["runLongestDistanceMeters"] = all["longestDistanceMeters"]
+	// Doc ghi bằng MergeAll: kỳ không còn buổi nào đủ 1 km thì phải xoá kỷ lục
+	// cũ, không để nguyên.
+	stats["runFastestPaceSecondsPerKm"] = firestore.Delete
+	if pace, ok := StatsFor(paced, period)["fastestPaceSecondsPerKm"]; ok {
+		stats["runFastestPaceSecondsPerKm"] = pace
+	}
+}
+
 // RebuildForInstant recomputes the day/week/month periodStats docs that
 // [instant] falls into.
 func (s *PeriodStatsService) RebuildForInstant(ctx context.Context, uid string, instant time.Time) error {
-	if !saneStartedAt(instant) {
-		return nil
-	}
-	for _, period := range periodsFor(instant) {
-		if err := s.rebuildPeriod(ctx, uid, period); err != nil {
-			return err
+	return s.RebuildForInstants(ctx, uid, []time.Time{instant})
+}
+
+// RebuildForInstants dựng lại các doc ngày/tuần/tháng chứa các mốc trong
+// instants, mỗi doc một lần dù nhiều mốc rơi vào cùng kỳ.
+func (s *PeriodStatsService) RebuildForInstants(ctx context.Context, uid string, instants []time.Time) error {
+	done := map[string]bool{}
+	for _, instant := range instants {
+		if !saneStartedAt(instant) {
+			continue
+		}
+		for _, period := range periodsFor(instant) {
+			key := period.Type + ":" + period.Key
+			if done[key] {
+				continue
+			}
+			done[key] = true
+			if err := s.rebuildPeriod(ctx, uid, period); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -104,6 +149,7 @@ func (s *PeriodStatsService) BackfillUser(ctx context.Context, uid string) (int,
 	for key, period := range bounds {
 		official := SelectOfficialActivities(factsByPeriod[key])
 		stats := StatsFor(official, Period{Start: period.Start, End: period.End})
+		addRunStats(stats, official, Period{Start: period.Start, End: period.End})
 		stats["uid"] = uid
 		stats["periodType"] = period.Type
 		stats["periodKey"] = period.Key
@@ -139,6 +185,7 @@ func (s *PeriodStatsService) rebuildPeriod(ctx context.Context, uid string, peri
 	// StatsFor never double-counts an overlapping session.
 	official := SelectOfficialActivities(facts)
 	stats := StatsFor(official, Period{Start: period.Start, End: period.End})
+	addRunStats(stats, official, Period{Start: period.Start, End: period.End})
 	stats["uid"] = uid
 	stats["periodType"] = period.Type
 	stats["periodKey"] = period.Key

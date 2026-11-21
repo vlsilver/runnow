@@ -57,7 +57,7 @@ func TestParseGameButtonRejectsTampered(t *testing.T) {
 
 // promptState: 4 người, xếp theo uid là a, b, c, d (vị trí 0..3 trong callback).
 func promptState() *ww.State {
-	return &ww.State{Round: 1, Phase: ww.PhaseNight, Players: map[string]*ww.Player{
+	return &ww.State{Round: 1, Phase: ww.PhaseNight, NightAt: time.Date(2026, 10, 12, 22, 0, 0, 0, vietnam), Players: map[string]*ww.Player{
 		"a": {Role: ww.Seer, Alive: true}, "b": {Role: ww.Wolf, Alive: true},
 		"c": {Role: ww.Cupid, Alive: true}, "d": {Role: ww.Villager, Alive: true},
 	}}
@@ -181,6 +181,26 @@ func TestPromptViewWitchSaveDisabledAndClosed(t *testing.T) {
 	text, markup, _ = v.render()
 	if !strings.HasSuffix(text, "\n<tg-spoiler>Lượt này đã đóng.</tg-spoiler>") || len(keyboard(t, markup)) != 0 {
 		t.Fatalf("đã đóng = %q", text)
+	}
+}
+
+// Sói cắn hai người: tin Telegram của phù thuỷ hiện nút từng người bị cắn thay
+// cho nút Dùng bình cứu không kèm ai (nút đó sẽ bị từ chối).
+func TestPromptViewWitchSavePicksWhenTwoBitten(t *testing.T) {
+	st := promptState()
+	st.Bites, st.Bitten = []string{"b", "a"}, "b"
+	a := &GameAction{Kind: "witch_save", Enabled: true, Input: "single_target", Options: options("a", "b")}
+	v := promptView{gameID: "g1", turnKey: "r1", st: st, kind: ww.KindWitchSave, a: a, name: promptNames}
+	_, markup, err := v.render()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kb := keyboard(t, markup)
+	if len(kb) != 1 || len(kb[0]) != 2 || kb[0][0] != "An=m1|g1|r1|w|t|0" || kb[0][1] != "Bình <b>=m1|g1|r1|w|t|1" {
+		t.Fatalf("nút = %v", kb)
+	}
+	if targetsNeeded(st, ww.KindWitchSave) != 1 || targetsNeeded(promptState(), ww.KindWitchSave) != 0 {
+		t.Fatal("bình cứu: số người phải chọn sai")
 	}
 }
 
