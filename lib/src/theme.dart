@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:myrun/src/theme_tokens.dart';
 
 export 'package:myrun/src/theme_tokens.dart';
@@ -591,6 +592,13 @@ ThemeData buildRunNowTheme(
     brightness: appearance.brightness,
     scaffoldBackgroundColor: palette.background,
     appBarTheme: AppBarTheme(
+      // Nền trong suốt thì Flutter coi là nền tối và đặt icon trắng. Trang
+      // không có AppBar (Home) giữ kiểu của trang trước, nên đặt theo nền app.
+      systemOverlayStyle:
+          (appearance == RunNowAppearance.light
+                  ? SystemUiOverlayStyle.dark
+                  : SystemUiOverlayStyle.light)
+              .copyWith(statusBarColor: Colors.transparent),
       backgroundColor: Colors.transparent,
       foregroundColor: palette.foreground,
       surfaceTintColor: Colors.transparent,
