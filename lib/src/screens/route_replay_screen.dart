@@ -654,6 +654,9 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
   /// Có thay đổi tới lúc [_sending] nên chưa sang được map.
   bool _stale = false;
 
+  /// Xong khi map tải hết tile và đứng yên lần kế tiếp.
+  Completer<void>? _idle;
+
   // Góc nhìn người xem tự chỉnh: chụm để zoom, vuốt ngang để xoay quanh
   // người chạy, vuốt dọc để nghiêng.
   // Mặc định lùi ra đủ xa để thấy cả tuyến cùng các ghim trên đó.
@@ -893,17 +896,10 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
   /// Phát lại từ đầu. Tầm nhìn kiểu phim có thêm đoạn bay vào và đoạn kết.
   /// Gọi lần nữa giữa chừng thì lượt cũ ném [TickerCanceled] và dừng.
   Future<void> _play() async {
-    _stopPlayback();
-    _reachFloor = 0;
-    _picked = null;
+    _toStart();
     if (_view != ReplayView.film) {
-      _part = FilmPart.run;
       return _progress.forward(from: 0).orCancel;
     }
-    _part = FilmPart.intro;
-    _progress.value = 0;
-    // Báo cho tem tổng kết và trời của đoạn kết lượt trước tắt đi.
-    _outro.value = 0;
     await _intro.forward(from: 0).orCancel;
     for (final (i, stop) in _stops.indexed) {
       _part = FilmPart.run;
@@ -917,6 +913,18 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
     await _progress.forward().orCancel;
     _part = FilmPart.outro;
     await _outro.forward(from: 0).orCancel;
+  }
+
+  /// Dừng lượt đang phát và đặt cảnh về khung đầu của [_play].
+  void _toStart() {
+    _stopPlayback();
+    _reachFloor = 0;
+    _picked = null;
+    _part = _view == ReplayView.film ? FilmPart.intro : FilmPart.run;
+    _progress.value = 0;
+    // Báo cho tem tổng kết và trời của đoạn kết lượt trước tắt đi.
+    _outro.value = 0;
+    _intro.value = 0;
   }
 
   void _replay() => _play().catchError(
@@ -1216,6 +1224,21 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
         overlays: shown ? SystemUiOverlay.values : const [],
       );
 
+  /// Chờ map tải tile của khung đầu tối đa chừng này rồi quay luôn.
+  static const _clipWarmup = Duration(seconds: 3);
+
+  /// Dựng sẵn khung đầu trước khi quay. Quay ngay thì video mở bằng cảnh
+  /// đang dừng, rồi giật sang khung đầu với nền trống chờ tile.
+  Future<void> _showFirstFrame() async {
+    // Tâm camera lúc quay tính theo bảng số đã dời vào khung quay.
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    setState(_toStart);
+    await _syncMap();
+    final idle = _idle = Completer<void>();
+    await idle.future.timeout(_clipWarmup, onTimeout: () => _idle = null);
+  }
+
   /// Giữ khung cuối của video chừng này.
   static const _clipHold = Duration(milliseconds: 500);
 
@@ -1255,6 +1278,8 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
     final path = '${(await getTemporaryDirectory()).path}/replay-3d.mp4';
     try {
       if (hideStatusBar) await _showStatusBar(false);
+      await _showFirstFrame();
+      if (_clipCancelled || !mounted) throw const TickerCanceled();
       await _screenClip.invokeMethod<void>('start', {
         'path': path,
         'left': clip.left,
@@ -1362,6 +1387,10 @@ class _RouteReplayScreenState extends State<RouteReplayScreen>
               initialCameraPosition: _camera(0),
               onMapCreated: (controller) => _map = controller,
               onStyleLoadedCallback: _onStyleLoaded,
+              onMapIdle: () {
+                _idle?.complete();
+                _idle = null;
+              },
               compassEnabled: false,
               rotateGesturesEnabled: false,
               scrollGesturesEnabled: false,
