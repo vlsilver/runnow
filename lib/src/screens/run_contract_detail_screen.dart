@@ -138,7 +138,10 @@ class _RunContractDetailScreenState
     required String? uid,
     required bool syncing,
   }) {
+    // Nút đồng bộ chỉ kéo lại từ Strava, nên chỉ hiện khi Strava đang bật và
+    // user có nối.
     if (lifecycle == RunContractLifecycle.syncGrace) {
+      if (!ref.watch(stravaConnectionProvider)) return null;
       return _PinnedSyncButton(
         syncing: syncing,
         onPressed: () =>

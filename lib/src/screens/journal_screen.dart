@@ -507,7 +507,7 @@ class _JournalPagedListState extends State<_JournalPagedList> {
           if (widget.error == null)
             RunNowEmpty(
               message: widget.emptyMessage,
-              hint: 'Buổi từ 3i, Strava, Garmin, Apple Health sẽ hiện ở đây.',
+              hint: 'Buổi từ 3i, Garmin, Apple Health sẽ hiện ở đây.',
             )
           else
             Padding(

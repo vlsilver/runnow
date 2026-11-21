@@ -1134,7 +1134,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                 TrackedActivitySaveStatus.belowMinimumDistance =>
                   'Đã lưu để xem lại nhưng không tính vì chưa đủ 500 m.',
                 TrackedActivitySaveStatus.duplicateOfStrava =>
-                  'Đã lưu route 3I nhưng thành tích ưu tiên buổi Strava trùng thời gian.',
+                  'Đã lưu route 3I nhưng thành tích tính theo buổi khác trùng thời gian.',
               };
       });
       HapticFeedback.heavyImpact();

@@ -147,7 +147,10 @@ final stravaAuthProvider = ChangeNotifierProvider<StravaAuthController>(
   ),
 );
 
+/// Đang tắt Strava ([stravaEnabledProvider] false) thì coi như chưa nối, kể cả
+/// user còn liên kết cũ, để không hiện nút đồng bộ Strava nào.
 final stravaConnectionProvider = Provider<bool>((ref) {
+  if (!(ref.watch(stravaEnabledProvider).value ?? false)) return false;
   return ref.watch(stravaAuthProvider).connected;
 });
 
@@ -232,9 +235,10 @@ final trackingConfigProvider = StreamProvider<TrackingConfig>((ref) async* {
   } catch (_) {}
 });
 
-/// Cờ HIỆN/ẨN Strava ở Settings — Remote Config `strava_enabled`. Tạm ẩn khi app
-/// Strava đang Inactive (không kết nối được); đặt true trên console khi xong việc
-/// với Strava để hiện lại (áp realtime). Mặc định/khi chưa fetch = false (ẩn).
+/// Cờ bật Strava — Remote Config `strava_enabled`. Tắt thì app không hiện chữ,
+/// nút hay link Strava nào và không gọi đồng bộ Strava; buổi Strava cũ vẫn hiện
+/// với nhãn nguồn trung tính. Đặt true trên console khi backend bật lại Strava
+/// (áp realtime). Mặc định/khi chưa fetch = false (tắt).
 final stravaEnabledProvider = StreamProvider<bool>((ref) async* {
   final rc = FirebaseRemoteConfig.instance;
   bool read() {
@@ -330,7 +334,10 @@ final activityDetailProvider = FutureProvider.family<ActivityDetail, String>((
 });
 
 final syncControllerProvider = ChangeNotifierProvider<SyncController>(
-  (ref) => SyncController(ref.watch(activityRepositoryProvider)),
+  (ref) => SyncController(
+    ref.watch(activityRepositoryProvider),
+    enabled: ref.watch(stravaEnabledProvider).value ?? false,
+  ),
 );
 
 /// Không autoDispose — cache trang Nhật ký sống suốt phiên app, xem

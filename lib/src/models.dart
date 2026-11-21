@@ -796,7 +796,7 @@ class FeedPost {
     return FeedPost(
       id: map['id'] as String,
       authorUid: map['authorUid'] as String,
-      authorName: map['authorName'] as String? ?? 'Strava athlete',
+      authorName: map['authorName'] as String? ?? 'Thành viên',
       activity: ActivitySummary.fromMap(
         (map['activity'] as Map<String, dynamic>?) ?? const {},
       ),

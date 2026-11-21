@@ -404,8 +404,8 @@ class _RunContractCreateScreenState
                 'Nguồn',
                 _draft.metric == RunContractMetric.activityCount ||
                         _draft.metric == RunContractMetric.activeDays
-                    ? 'Strava/3i Run > 1 km · không tính manual'
-                    : 'Strava/3i Run · không tính manual',
+                    ? '3i Run, Garmin, Health > 1 km · không tính manual'
+                    : '3i Run, Garmin, Health · không tính manual',
               ),
               if (_preview?.hardTarget == true)
                 const _ConfirmRow(

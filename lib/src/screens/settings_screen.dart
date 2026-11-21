@@ -1325,24 +1325,32 @@ class _DeleteAccountSectionState extends ConsumerState<_DeleteAccountSection> {
   }
 
   Future<bool> _showWarning() async {
+    final stravaOn = ref.read(stravaEnabledProvider).value ?? false;
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Xoá tài khoản?'),
-        content: const SingleChildScrollView(
+        content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Những dữ liệu sau sẽ bị xoá vĩnh viễn:'),
-              SizedBox(height: 10),
-              Text('• Toàn bộ buổi chạy, tuyến đường GPS và ảnh đính kèm'),
-              Text('• Thống kê, tiến độ hành trình và bảng xếp hạng'),
-              Text('• Kèo chạy bạn đã tạo hoặc tham gia'),
-              Text('• Liên kết Strava (token sẽ bị thu hồi)'),
-              Text('• Tài khoản đăng nhập của bạn'),
-              SizedBox(height: 12),
-              Text('Dữ liệu trên tài khoản Strava của bạn không bị ảnh hưởng.'),
+              const Text('Những dữ liệu sau sẽ bị xoá vĩnh viễn:'),
+              const SizedBox(height: 10),
+              const Text(
+                '• Toàn bộ buổi chạy, tuyến đường GPS và ảnh đính kèm',
+              ),
+              const Text('• Thống kê, tiến độ hành trình và bảng xếp hạng'),
+              const Text('• Kèo chạy bạn đã tạo hoặc tham gia'),
+              if (stravaOn)
+                const Text('• Liên kết Strava (token sẽ bị thu hồi)'),
+              const Text('• Tài khoản đăng nhập của bạn'),
+              if (stravaOn) ...const [
+                SizedBox(height: 12),
+                Text(
+                  'Dữ liệu trên tài khoản Strava của bạn không bị ảnh hưởng.',
+                ),
+              ],
             ],
           ),
         ),

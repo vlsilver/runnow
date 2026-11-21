@@ -199,7 +199,11 @@ class ClubRunPost extends ConsumerWidget {
                             foreground: muted,
                           ),
                         _Chip(
-                          label: _sourceLabel(activity.source),
+                          label: _sourceLabel(
+                            activity.source,
+                            stravaOn:
+                                ref.watch(stravaEnabledProvider).value ?? false,
+                          ),
                           background: ownSource
                               ? (isLight ? ramp[4] : ramp[1])
                               : palette.border,
@@ -250,13 +254,15 @@ class ClubRunPost extends ConsumerWidget {
   }
 }
 
-String _sourceLabel(ActivitySource source) => switch (source) {
-  ActivitySource.runnow => '3I RUN',
-  ActivitySource.strava => 'STRAVA',
-  ActivitySource.garmin => 'GARMIN',
-  ActivitySource.appleHealth => 'APPLE HEALTH',
-  ActivitySource.healthConnect => 'HEALTH CONNECT',
-};
+/// Strava đang tắt thì buổi Strava cũ ghi "NHẬP".
+String _sourceLabel(ActivitySource source, {required bool stravaOn}) =>
+    switch (source) {
+      ActivitySource.runnow => '3I RUN',
+      ActivitySource.strava => stravaOn ? 'STRAVA' : 'NHẬP',
+      ActivitySource.garmin => 'GARMIN',
+      ActivitySource.appleHealth => 'APPLE HEALTH',
+      ActivitySource.healthConnect => 'HEALTH CONNECT',
+    };
 
 class _Chip extends StatelessWidget {
   const _Chip({

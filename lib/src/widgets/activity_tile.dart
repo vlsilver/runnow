@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
+import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/run_now_avatar.dart';
@@ -197,7 +199,7 @@ class _StravaOverlapFlag extends StatelessWidget {
               Icon(Icons.link_rounded, size: 14, color: palette.accentDeep),
               const SizedBox(width: 6),
               Text(
-                'TRÙNG · ƯU TIÊN STRAVA',
+                'TRÙNG · TÍNH THEO BUỔI KHÁC',
                 style: TextStyle(
                   color: palette.accentDeep,
                   fontSize: 9.5,
@@ -334,15 +336,17 @@ class _TimelineRail extends StatelessWidget {
 /// trong màu cam thương hiệu `#FC5200`, đúng cỡ nhỏ hơn tên hoạt động như
 /// guideline yêu cầu. Garmin cũng ghi bằng chữ, màu trung tính theo theme vì
 /// brand guideline của Garmin chỉ đòi ghi tên "Garmin". Phía 3i thì dùng thẳng
-/// app icon.
-class _SourceBadge extends StatelessWidget {
+/// app icon. Strava đang tắt thì buổi Strava cũ ghi "NHẬP", màu trung tính,
+/// để không ai tưởng 3i còn nối Strava.
+class _SourceBadge extends ConsumerWidget {
   const _SourceBadge({required this.source});
 
   final ActivitySource source;
 
   @override
-  Widget build(BuildContext context) {
-    if (source == ActivitySource.strava) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final stravaOn = ref.watch(stravaEnabledProvider).value ?? false;
+    if (source == ActivitySource.strava && stravaOn) {
       return DecoratedBox(
         decoration: BoxDecoration(
           color: context.runNowPalette.wash(RunNowBrandColors.strava, 0.14),
@@ -362,7 +366,7 @@ class _SourceBadge extends StatelessWidget {
         ),
       );
     }
-    if (source == ActivitySource.garmin) {
+    if (source == ActivitySource.garmin || source == ActivitySource.strava) {
       final color = Theme.of(context).colorScheme.onSurface;
       return DecoratedBox(
         decoration: BoxDecoration(
@@ -372,7 +376,7 @@ class _SourceBadge extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
           child: Text(
-            'GARMIN',
+            source == ActivitySource.garmin ? 'GARMIN' : 'NHẬP',
             style: TextStyle(
               color: color,
               fontSize: 8,

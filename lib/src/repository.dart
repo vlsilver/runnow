@@ -830,7 +830,7 @@ class FirestoreFeedRepository implements FeedRepository {
   Future<void> publish(ActivitySummary activity) async {
     await _firestore.collection('feedPosts').doc('$_uid:${activity.id}').set({
       'authorUid': _uid,
-      'authorName': 'Strava athlete',
+      'authorName': 'Thành viên',
       'activity': _summaryToMap(activity, includePolyline: false),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
