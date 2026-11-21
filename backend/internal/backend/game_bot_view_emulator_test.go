@@ -105,7 +105,7 @@ func TestEmulatorBotWerewolfShowsOnlyPublicGame(t *testing.T) {
 	if got := sortedCopy(v.Game.NotChosenYet); !reflect.DeepEqual(got, []string{"GUARD", "HUNTER", "V2", "V3", "W2", "WITCH"}) {
 		t.Fatalf("notChosenYet = %v", got)
 	}
-	if !reflect.DeepEqual(v.Game.Dead, []string{"V4: Dân, chết vòng 1"}) || len(v.Game.News) == 0 || v.Game.News[0].Title != "Bản tin đêm 1" {
+	if !reflect.DeepEqual(v.Game.Dead, []string{"V4: Phe Dân, chết vòng 1"}) || len(v.Game.News) == 0 || v.Game.News[0].Title != "Bản tin đêm 1" {
 		t.Fatalf("game = %s", raw)
 	}
 

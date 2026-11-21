@@ -251,8 +251,10 @@ func TestEmulatorNightThroughFirestoreAndReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Chết đêm cũng chỉ lộ phe, không lật lá bài.
 	revealed, _ := pub.Data()["revealed"].(map[string]any)
-	if len(revealed) != 4 || revealed["v1"] != "villager" || revealed["guard"] != "guard" || pub.Data()["phaseKey"] != "r1/day" {
+	teams, _ := pub.Data()["revealedTeams"].(map[string]any)
+	if len(revealed) != 0 || len(teams) != 4 || teams["v1"] != "village" || teams["guard"] != "village" || pub.Data()["phaseKey"] != "r1/day" {
 		t.Fatalf("games/%s = %v", g.id, pub.Data())
 	}
 	if n := g.count("feed"); n != 3 {

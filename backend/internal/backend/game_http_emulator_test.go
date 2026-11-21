@@ -297,7 +297,9 @@ func withoutSetup(t *testing.T, body map[string]any) []byte {
 	t.Helper()
 	rest := map[string]any{}
 	for k, v := range body {
-		if k != "setup" {
+		// Luật in sẵn tên vai (rulesText nói về Thợ săn) như nhau ở mọi ván,
+		// không phải vai của ai.
+		if k != "setup" && k != "rulesText" && k != "rulesCard" {
 			rest[k] = v
 		}
 	}
