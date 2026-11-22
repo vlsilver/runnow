@@ -1035,11 +1035,8 @@ void main() {
   ) async {
     backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
     await pumpMyBot(tester);
-    // Chạm sát góc ngoài của nút: nút đè góc thẻ, phần nào lòi ra ngoài khung
-    // thì không bấm được.
-    await tester.tapAt(
-      tester.getBottomRight(find.byTooltip('Khoe thẻ')) - const Offset(6, 6),
-    );
+    await tester.ensureVisible(find.text('Khoe thẻ'));
+    await tester.tap(find.text('Khoe thẻ'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     // Cùng màn khoe với thẻ chạy, Hành trình và Ma Sói: chọn bộ màu, gửi ảnh
@@ -1056,9 +1053,8 @@ void main() {
   ) async {
     backend.agent = {'name': 'Cú', 'persona': '', 'created': true};
     await pumpMyBot(tester);
-    await tester.tapAt(
-      tester.getBottomLeft(find.byTooltip('Bộ màu thẻ')) + const Offset(6, -6),
-    );
+    await tester.ensureVisible(find.text('Bộ màu'));
+    await tester.tap(find.text('Bộ màu'));
     await tester.pumpAndSettle();
     expect(find.byType(RunCardSkinSheet), findsOneWidget);
   });

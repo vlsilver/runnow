@@ -530,45 +530,63 @@ class _BotCardSection extends StatelessWidget {
                     ),
                   ),
                 ),
-                Stack(
-                  children: [
-                    // Đệm đều bốn phía cho nút đè góc thẻ vẫn nằm trong khung
-                    // Stack: phần lòi ra ngoài khung thì Flutter không nhận
-                    // chạm. Đệm đều để thẻ vẫn ở giữa.
-                    Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: AgentBotCardView(data: data, width: width),
-                    ),
-                    // Nút nhỏ đè góc thẻ thay cho một hàng nút riêng: bộ màu
-                    // bên trái, khoe bên phải.
-                    Positioned(
-                      left: 0,
-                      bottom: 0,
-                      child: IconButton.filled(
-                        tooltip: 'Bộ màu thẻ',
-                        onPressed: () => showRunCardSkinSheet(
-                          context,
-                          sample: agentCardData(data),
-                        ),
-                        icon: const Icon(Icons.palette_outlined, size: 20),
-                      ),
-                    ),
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: IconButton.filled(
-                        tooltip: 'Khoe thẻ',
-                        onPressed: () => showAgentCardShare(context, data),
-                        icon: const Icon(Icons.ios_share_rounded, size: 20),
-                      ),
-                    ),
-                  ],
-                ),
+                AgentBotCardView(data: data, width: width),
               ],
             );
           },
         ),
+        const SizedBox(height: 10),
+        // Hàng nút riêng dưới thẻ: nút đè góc thẻ che mất tên và chữ ký.
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _CardButton(
+              icon: Icons.palette_outlined,
+              label: 'Bộ màu',
+              onPressed: () =>
+                  showRunCardSkinSheet(context, sample: agentCardData(data)),
+            ),
+            const SizedBox(width: 10),
+            _CardButton(
+              icon: Icons.ios_share_rounded,
+              label: 'Khoe thẻ',
+              onPressed: () => showAgentCardShare(context, data),
+            ),
+          ],
+        ),
       ],
+    );
+  }
+}
+
+class _CardButton extends StatelessWidget {
+  const _CardButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: palette.ink,
+        backgroundColor: palette.glassStart,
+        side: BorderSide(color: palette.border),
+        minimumSize: const Size(0, 44),
+        textStyle: Theme.of(
+          context,
+        ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+        shape: RoundedRectangleBorder(borderRadius: palette.radius(12)),
+      ),
+      icon: Icon(icon, size: 18),
+      label: Text(label),
     );
   }
 }
