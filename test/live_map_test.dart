@@ -84,23 +84,25 @@ void main() {
     expect(find.text('Xem live'), findsNothing);
   });
 
-  test('người gần nhau trên màn gộp một cụm, xa thì tách', () {
-    // Toạ độ dùng thẳng làm pixel để tính tay khoảng cách.
-    final groups = groupNearby(
-      [
+  test(
+    'người có avatar chồng lên nhau thì gộp một cụm, không chồng thì tách',
+    () {
+      // Toạ độ dùng thẳng làm pixel. Avatar 46px, số cụm lòi ra 8px: hai người
+      // lệch nhau dưới 56px theo cả hai chiều thì avatar chạm nhau.
+      final groups = groupNearby([
         session('a', 'a', 0, 0),
-        session('b', 'b', 30, 0), // cách a 30px < 44: chung cụm
-        session('c', 'c', 60, 0), // cách a 60px: cụm riêng, dù cách b 30px
-        session('d', 'd', 200, 200),
-      ],
-      (p) => Offset(p.latitude, p.longitude),
-      radius: 44,
-    );
-    expect(
-      [for (final g in groups) g.map((s) => s.id).join()],
-      ['ab', 'c', 'd'],
-    );
-  });
+        session('b', 'b', 50, 0), // lệch ngang 50: chạm a
+        session('c', 'c', 40, -40), // chéo ~57px nhưng hai ô vẫn chồng
+        session('d', 'd', 60, 0), // lệch ngang 60: tách, dù chạm b
+        session('e', 'e', 0, 60), // lệch dọc 60: tách
+        session('f', 'f', 200, 200),
+      ], (p) => Offset(p.latitude, p.longitude));
+      expect(
+        [for (final g in groups) g.map((s) => s.id).join()],
+        ['abc', 'd', 'e', 'f'],
+      );
+    },
+  );
 
   testWidgets('cả nước: cụm HCM hiện số người, chạm thì tách ra từng người', (
     tester,

@@ -548,6 +548,10 @@ class LiveTrackingSession {
 
   bool isExpired(DateTime now) =>
       isActive && now.difference(updatedAt) > const Duration(minutes: 3);
+
+  /// Còn đang chạy thật tại [now]: chưa dừng và chưa mất tín hiệu quá 3 phút.
+  bool isLiveAt(DateTime now) =>
+      status == LiveTrackingStatus.running && !isExpired(now);
 }
 
 DateTime? _dateTimeFromLiveValue(Object? value) {

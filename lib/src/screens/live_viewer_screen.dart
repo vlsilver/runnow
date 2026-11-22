@@ -7,6 +7,7 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/hearts.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/rooms/live_share.dart';
 import 'package:myrun/src/rooms/run_together_button.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/theme.dart';
@@ -36,7 +37,10 @@ class LiveViewerScreen extends ConsumerWidget {
       body: live.when(
         data: (session) => session == null
             ? const _Gone(message: 'Buổi chạy này không còn.')
-            : _LiveView(session: session),
+            : _LiveView(
+                session: session,
+                uid: ref.watch(firebaseUserProvider).value?.uid,
+              ),
         // Rules trả permission-denied cả khi document không tồn tại, nên
         // không tách được "không có quyền" với "không còn".
         error: (error, _) {
@@ -68,9 +72,12 @@ List<({int km, LatLng point})> routeKmMarks(List<LatLng> points) {
 }
 
 class _LiveView extends StatefulWidget {
-  const _LiveView({required this.session});
+  const _LiveView({required this.session, required this.uid});
 
   final LiveTrackingSession session;
+
+  /// Người đang xem, để biết có phải chủ buổi không.
+  final String? uid;
 
   @override
   State<_LiveView> createState() => _LiveViewState();
@@ -149,6 +156,15 @@ class _LiveViewState extends State<_LiveView> {
                       child: _WhoPill(session: session),
                     ),
                   ),
+                  if (canShareLive(session, widget.uid, DateTime.now()))
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: _CircleButton(
+                        icon: Icons.ios_share_rounded,
+                        tooltip: 'Khoe live',
+                        onTap: () => _share(context, session),
+                      ),
+                    ),
                   if (_manual && points.isNotEmpty)
                     _CircleButton(
                       icon: Icons.my_location_rounded,
@@ -177,12 +193,23 @@ class _LiveViewState extends State<_LiveView> {
     );
   }
 
+  /// Nút chỉ dựng lại khi doc đổi; mất tín hiệu thì doc đứng yên nên kiểm lại
+  /// lúc bấm, kẻo ảnh in LIVE lên vị trí cũ.
+  void _share(BuildContext context, LiveTrackingSession session) {
+    if (!canShareLive(session, widget.uid, DateTime.now())) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Buổi này không còn live.')));
+      setState(() {});
+      return;
+    }
+    showLiveSessionShare(context, session);
+  }
+
   Widget _buildMap(BuildContext context, List<LatLng> points) {
     final palette = context.runNowPalette;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final running =
-        widget.session.status == LiveTrackingStatus.running &&
-        !widget.session.isExpired(DateTime.now());
+    final running = widget.session.isLiveAt(DateTime.now());
     return FlutterMap(
       mapController: _map,
       options: MapOptions(

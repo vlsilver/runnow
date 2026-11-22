@@ -6,6 +6,7 @@ import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rooms/live_board.dart';
 import 'package:myrun/src/rooms/live_map.dart';
+import 'package:myrun/src/rooms/live_share.dart';
 import 'package:myrun/src/rooms/run_room_create_sheet.dart';
 import 'package:myrun/src/rooms/run_room_models.dart';
 import 'package:myrun/src/rooms/run_room_repository.dart';
@@ -43,6 +44,16 @@ class _LiveScreenState extends ConsumerState<LiveScreen> {
             const Text('Live'),
           ],
         ),
+        actions: [
+          if (board case AsyncData(
+            :final value,
+          ) when value.everyoneOnMap.any((s) => s.lastLocation != null))
+            IconButton(
+              tooltip: 'Khoe live',
+              icon: const Icon(Icons.ios_share_rounded),
+              onPressed: () => showLiveBoardShare(context, value.everyoneOnMap),
+            ),
+        ],
       ),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -87,13 +98,10 @@ class _LiveScreenState extends ConsumerState<LiveScreen> {
         for (final room in board.upcomingRooms)
           LiveRoomTile(room: room, myState: board.myStates[room.id]),
     ];
-    final liveRoomIds = {for (final room in board.liveRooms) room.id};
     final soloIds = {for (final solo in board.solos) solo.session.id};
     final onMap = [
-      for (final session in board.runners)
-        if ((showRooms && liveRoomIds.contains(session.roomId)) ||
-            (showSolo && soloIds.contains(session.id)))
-          session,
+      for (final session in board.everyoneOnMap)
+        if (soloIds.contains(session.id) ? showSolo : showRooms) session,
     ];
     // Bản đồ đứng yên trên danh sách: đặt trong ListView thì kéo bản đồ lẫn
     // với cuộn trang.

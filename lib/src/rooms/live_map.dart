@@ -16,22 +16,27 @@ final vietnamBounds = LatLngBounds(
   const LatLng(23.5, 109.6),
 );
 
-LatLng _at(LiveTrackingSession s) =>
+/// Vị trí mới nhất của một buổi có [LiveTrackingSession.lastLocation].
+LatLng liveAt(LiveTrackingSession s) =>
     LatLng(s.lastLocation!.latitude, s.lastLocation!.longitude);
 
-/// Gộp người đứng gần nhau trên màn: ai cách người mở cụm dưới [radius] px
-/// thì vào cụm đó, giữ thứ tự đầu vào. [project] đổi toạ độ ra pixel ở mức
-/// zoom đang xem, nên zoom vào thì cụm tự tách.
+/// Gộp người có avatar chồng lên nhau trên màn: ai lệch người mở cụm dưới
+/// [extent] px theo cả chiều ngang lẫn dọc thì vào cụm đó, giữ thứ tự đầu
+/// vào. [extent] là ô avatar 46px cộng phần số cụm lòi ra, nên cụm nào đứng
+/// riêng thì avatar không đè nhau. [project] đổi toạ độ ra pixel ở mức zoom
+/// đang xem, nên zoom vào thì cụm tự tách.
 List<List<LiveTrackingSession>> groupNearby(
   List<LiveTrackingSession> sessions,
   Offset Function(LatLng) project, {
-  double radius = 44,
+  double extent = 56,
 }) {
   final groups = <List<LiveTrackingSession>>[];
   final anchors = <Offset>[];
   for (final s in sessions) {
-    final p = project(_at(s));
-    final i = anchors.indexWhere((a) => (a - p).distance < radius);
+    final p = project(liveAt(s));
+    final i = anchors.indexWhere(
+      (a) => (a.dx - p.dx).abs() < extent && (a.dy - p.dy).abs() < extent,
+    );
     if (i < 0) {
       anchors.add(p);
       groups.add([s]);
@@ -109,7 +114,7 @@ class _LiveRunnersMapState extends State<LiveRunnersMap> {
     setState(() => _selectedId = session.id);
     final route = liveRoutePoints(session);
     if (route.length < 2) {
-      _map.move(_at(session), 16);
+      _map.move(liveAt(session), 16);
       return;
     }
     _map.fitCamera(
@@ -139,7 +144,7 @@ class _LiveRunnersMapState extends State<LiveRunnersMap> {
     }
     _map.fitCamera(
       CameraFit.coordinates(
-        coordinates: [for (final s in group) _at(s)],
+        coordinates: [for (final s in group) liveAt(s)],
         padding: const EdgeInsets.all(60),
         maxZoom: _maxZoom,
       ),
@@ -194,7 +199,7 @@ class _LiveRunnersMapState extends State<LiveRunnersMap> {
         ? [vietnamBounds.southWest, vietnamBounds.northEast]
         : route.length > 1
         ? route
-        : [_at(selected)];
+        : [liveAt(selected)];
     final credit = mapTileCredits(
       currentMapTileTemplate(),
     ).map((c) => c.label).join(' · ');
@@ -314,7 +319,7 @@ class _RunnerMarkers extends StatelessWidget {
     final groups = groupNearby(sorted, camera.projectAtZoom);
     Marker marker(LiveTrackingSession s, Widget child, VoidCallback onTap) =>
         Marker(
-          point: _at(s),
+          point: liveAt(s),
           width: 46,
           height: 46,
           child: GestureDetector(onTap: onTap, child: child),
@@ -328,7 +333,7 @@ class _RunnerMarkers extends StatelessWidget {
                 })
               : marker(
                   g.first,
-                  _ClusterMarker(lead: g.first, count: g.length),
+                  LiveClusterMarker(lead: g.first, count: g.length),
                   () => onCluster(g),
                 ),
         if (selected case final s?)
@@ -340,8 +345,9 @@ class _RunnerMarkers extends StatelessWidget {
   }
 }
 
-class _ClusterMarker extends StatelessWidget {
-  const _ClusterMarker({required this.lead, required this.count});
+/// Avatar người đứng đầu cụm kèm số người trong cụm.
+class LiveClusterMarker extends StatelessWidget {
+  const LiveClusterMarker({required this.lead, required this.count, super.key});
 
   final LiveTrackingSession lead;
   final int count;

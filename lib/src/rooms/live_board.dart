@@ -53,6 +53,18 @@ class LiveBoard {
   /// Mọi buổi live của người khác, cả trong phòng group lẫn chạy riêng; bản
   /// đồ Live vẽ từ đây.
   final List<LiveTrackingSession> runners;
+
+  /// Người lên bản đồ ở chip "Tất cả": trong phòng đã bắt đầu hoặc chạy riêng.
+  /// Buổi trong phòng chưa tới giờ thì có trong [runners] mà không lên màn.
+  List<LiveTrackingSession> get everyoneOnMap {
+    final roomIds = {for (final room in liveRooms) room.id};
+    final soloIds = {for (final solo in solos) solo.session.id};
+    return [
+      for (final session in runners)
+        if (roomIds.contains(session.roomId) || soloIds.contains(session.id))
+          session,
+    ];
+  }
 }
 
 /// Chia phòng và buổi live thành các mục của [LiveBoard]. Buổi live nằm
