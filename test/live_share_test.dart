@@ -63,6 +63,24 @@ void main() {
     );
   });
 
+  test('link live mở đúng màn Live hoặc màn xem một người', () {
+    expect(liveLinkLocation(Uri.parse('https://threei.run/live')), '/live');
+    expect(liveLinkLocation(Uri.parse('https://threei.run/live/')), '/live');
+    expect(
+      liveLinkLocation(Uri.parse('https://threei.run/live/s%201')),
+      '/live/s%201',
+    );
+    for (final link in [
+      'https://threei.run/live/a/b',
+      'https://threei.run/lively',
+      'https://evil.example/live/s1',
+      'http://threei.run/live/s1',
+      'https://threei.run/games/g1',
+    ]) {
+      expect(liveLinkLocation(Uri.parse(link)), isNull, reason: link);
+    }
+  });
+
   test('chỉ khoe được khi đang live, có vị trí, và là club hoặc chính chủ', () {
     final soon = at.add(const Duration(minutes: 2));
     expect(canShareLive(session('a', 'A'), 'u-x', soon), isTrue);

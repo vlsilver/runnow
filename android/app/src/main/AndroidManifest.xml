@@ -74,6 +74,15 @@
                     android:host="threei.run"
                     android:pathPrefix="/games/"/>
             </intent-filter>
+            <!-- Link khoe live: màn Live chung và màn xem live một người. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="threei.run"/>
+                <data android:path="/live"/>
+                <data android:pathPrefix="/live/"/>
+            </intent-filter>
             <!-- Health Connect BẮT BUỘC app xử lý intent "lý do xin quyền" (hiện màn
                  giải thích + link chính sách). Android 13-: dùng action này. Thiếu
                  khai báo này Health Connect sẽ từ chối / Play review đánh rớt. -->

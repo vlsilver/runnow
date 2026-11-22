@@ -19,6 +19,19 @@ class _FakeLinks extends Fake implements AppLinks {
 }
 
 void main() {
+  test('app mở link mời vào ván và link khoe live, link khác thì không', () {
+    expect(
+      webLinkLocation(Uri.parse('https://threei.run/games/g1')),
+      '/games/g1',
+    );
+    expect(webLinkLocation(Uri.parse('https://threei.run/live')), '/live');
+    expect(
+      webLinkLocation(Uri.parse('https://threei.run/live/s1')),
+      '/live/s1',
+    );
+    expect(webLinkLocation(Uri.parse('https://threei.run/support')), isNull);
+  });
+
   test('the link that launched the app opens once', () async {
     final uri = Uri.parse('https://threei.run/games/g1');
     final links = _FakeLinks(uri);

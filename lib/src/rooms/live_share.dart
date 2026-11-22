@@ -26,6 +26,21 @@ Uri liveBoardLink() => Uri.parse('${AppConfig.webBaseUrl}/live');
 Uri liveSessionLink(String sessionId) =>
     Uri.parse('${AppConfig.webBaseUrl}/live/${Uri.encodeComponent(sessionId)}');
 
+/// Màn cần mở cho link live web 3i: màn Live chung hoặc màn xem một người;
+/// null nếu không phải link live.
+String? liveLinkLocation(Uri link) {
+  final web = Uri.parse(AppConfig.webBaseUrl);
+  if (link.scheme != web.scheme || link.host != web.host) return null;
+  final path = [...link.pathSegments];
+  if (path.isNotEmpty && path.last.isEmpty) path.removeLast();
+  if (path.isEmpty || path.first != 'live') return null;
+  return switch (path.length) {
+    1 => '/live',
+    2 => '/live/${Uri.encodeComponent(path.last)}',
+    _ => null,
+  };
+}
+
 /// Được khoe buổi live này không. Buổi riêng tư chỉ chủ buổi được khoe, vì
 /// người chạy chọn không cho người ngoài thấy vị trí. Buổi phải còn live và có
 /// vị trí để ảnh có bản đồ.
