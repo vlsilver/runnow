@@ -131,7 +131,7 @@ class PushController {
         _registered = null;
         return;
       }
-      unawaited(_guard(_registerIfGranted));
+      unawaited(_guard(refresh));
     });
     _refreshSubscription = _messaging.tokenRefresh.listen((token) {
       if (_auth.currentUser == null) return;
@@ -152,9 +152,12 @@ class PushController {
   /// Token đã ghi lên backend cho người đang đăng nhập.
   String? _registered;
 
-  Future<void> _registerIfGranted() async {
-    if (await _messaging.permission() != PushPermission.granted) return;
-    await _registerCurrent();
+  /// Đọc lại quyền mà không hỏi, có quyền thì đăng ký token; trả quyền đọc được.
+  /// Màn cài đặt thông báo gọi khi người dùng bật ở Cài đặt của máy rồi quay về.
+  Future<PushPermission> refresh() async {
+    final permission = await _messaging.permission();
+    if (permission == PushPermission.granted) await _registerCurrent();
+    return permission;
   }
 
   /// iOS chưa có APNs token thì chưa lấy được token FCM, và lần đó không báo lại

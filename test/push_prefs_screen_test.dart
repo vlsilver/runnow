@@ -17,13 +17,22 @@ class _FakeMessaging implements PushMessaging {
   _FakeMessaging(this.status);
 
   PushPermission status;
+  bool failRead = false;
 
   @override
-  Future<PushPermission> permission() async => status;
+  Future<PushPermission> permission() async {
+    if (failRead) throw StateError('settings unavailable');
+    return status;
+  }
+
+  /// Có thì hỏi quyền chờ tới khi nó xong, để test rời màn giữa chừng.
+  Completer<void>? asking;
 
   @override
-  Future<PushPermission> requestPermission() async =>
-      status = PushPermission.granted;
+  Future<PushPermission> requestPermission() async {
+    await asking?.future;
+    return status = PushPermission.granted;
+  }
 
   @override
   Future<String?> token() async => 'fcm-a';
@@ -44,11 +53,13 @@ void main() {
   late List<http.Request> requests;
   late Set<String> off;
   late bool failPut;
+  late bool savedButFailed;
 
   setUp(() {
     requests = [];
     off = {};
     failPut = false;
+    savedButFailed = false;
   });
 
   String view() => jsonEncode({
@@ -75,6 +86,7 @@ void main() {
       if (request.method == 'PUT') {
         if (failPut) return http.Response('{"error":"x"}', 500);
         off = {...(jsonDecode(request.body)['off'] as List).cast<String>()};
+        if (savedButFailed) return http.Response('{"error":"x"}', 502);
       }
       return http.Response(view(), 200, headers: _json);
     }),
@@ -124,7 +136,7 @@ void main() {
     failPut = true;
     await tester.tap(find.byType(RunNowSwitch).first);
     await tester.pumpAndSettle();
-    expect(find.text('Chưa lưu được, thử lại sau.'), findsOneWidget);
+    expect(find.text('Lưu bị lỗi, đã tải lại cài đặt.'), findsOneWidget);
     expect(off, isEmpty);
 
     failPut = false;
@@ -132,6 +144,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(puts().last, '{"off":["live"]}');
   });
+
+  testWidgets(
+    'a save that failed after the server stored it shows the server',
+    (tester) async {
+      await pump(tester, _FakeMessaging(PushPermission.granted));
+      savedButFailed = true;
+      await tester.tap(find.byType(RunNowSwitch).first);
+      await tester.pumpAndSettle();
+      expect(find.text('Lưu bị lỗi, đã tải lại cài đặt.'), findsOneWidget);
+      // Server đã lưu "live" tắt; màn phải đọc lại chứ không bật lại công tắc.
+      expect(off, {'live'});
+      expect(
+        tester.widget<RunNowSwitch>(find.byType(RunNowSwitch).first).value,
+        isFalse,
+      );
+    },
+  );
 
   testWidgets('not asked yet: the button asks and registers the token', (
     tester,
@@ -149,5 +178,46 @@ void main() {
     await pump(tester, _FakeMessaging(PushPermission.denied));
     expect(find.textContaining('Cài đặt của máy'), findsOneWidget);
     expect(find.text('Bật thông báo'), findsNothing);
+  });
+
+  testWidgets('turned back on in the OS: coming back hides the denied card', (
+    tester,
+  ) async {
+    final fcm = _FakeMessaging(PushPermission.denied);
+    await pump(tester, fcm);
+    expect(find.textContaining('Cài đặt của máy'), findsOneWidget);
+
+    expect(requests.where((r) => r.url.path == '/v1/push-token'), isEmpty);
+
+    fcm.status = PushPermission.granted;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Cài đặt của máy'), findsNothing);
+    // Lúc mở app chưa có quyền nên chưa đăng ký; quay về thì phải đăng ký.
+    expect(requests.where((r) => r.url.path == '/v1/push-token'), hasLength(1));
+  });
+
+  testWidgets('permission unreadable: groups still load, no permission card', (
+    tester,
+  ) async {
+    await pump(tester, _FakeMessaging(PushPermission.denied)..failRead = true);
+    expect(tester.takeException(), isNull);
+    expect(find.text('Người trong club chạy live'), findsOneWidget);
+    expect(find.textContaining('Cài đặt của máy'), findsNothing);
+  });
+
+  testWidgets('leaving while asking, then asking fails: no error after close', (
+    tester,
+  ) async {
+    final fcm = _FakeMessaging(PushPermission.notAsked)
+      ..asking = Completer<void>();
+    await pump(tester, fcm);
+    await tester.tap(find.text('Bật thông báo'));
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox());
+    fcm.asking!.completeError(StateError('denied by the OS'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
 }

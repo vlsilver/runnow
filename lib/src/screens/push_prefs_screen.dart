@@ -15,7 +15,8 @@ class PushPrefsScreen extends ConsumerStatefulWidget {
   ConsumerState<PushPrefsScreen> createState() => _PushPrefsScreenState();
 }
 
-class _PushPrefsScreenState extends ConsumerState<PushPrefsScreen> {
+class _PushPrefsScreenState extends ConsumerState<PushPrefsScreen>
+    with WidgetsBindingObserver {
   List<PushPrefGroup>? _groups;
   Object? _loadError;
   bool _saving = false;
@@ -24,8 +25,23 @@ class _PushPrefsScreenState extends ConsumerState<PushPrefsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
     _readPermission();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Người dùng sang Cài đặt của máy bật lại thông báo rồi quay về.
+    // Có quyền rồi thì đăng ký token luôn, vì lúc mở app chưa có quyền nên
+    // chưa đăng ký.
+    if (state == AppLifecycleState.resumed) _sync((push) => push.refresh());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -39,17 +55,34 @@ class _PushPrefsScreenState extends ConsumerState<PushPrefsScreen> {
   }
 
   Future<void> _readPermission() async {
+    if (!mounted) return;
     final push = ref.read(pushControllerProvider);
     if (push == null) return;
-    final permission = await push.permission();
-    if (mounted) setState(() => _permission = permission);
+    try {
+      final permission = await push.permission();
+      if (mounted) setState(() => _permission = permission);
+    } catch (error, stack) {
+      // Không đọc được thì giữ thẻ quyền như cũ; danh sách nhóm vẫn dùng được.
+      debugPrint('push_prefs.permission_failed: $error\n$stack');
+    }
   }
 
-  Future<void> _ask() async {
+  Future<void> _ask() => _sync((push) => push.ask());
+
+  /// Chạy một thao tác trả quyền rồi vẽ lại thẻ quyền. Thao tác có thể hỏng sau
+  /// khi máy đã cho quyền (lúc đăng ký token), nên hỏng thì đọc lại quyền.
+  Future<void> _sync(
+    Future<PushPermission> Function(PushController push) action,
+  ) async {
     final push = ref.read(pushControllerProvider);
     if (push == null) return;
-    final permission = await push.ask();
-    if (mounted) setState(() => _permission = permission);
+    try {
+      final permission = await action(push);
+      if (mounted) setState(() => _permission = permission);
+    } catch (error, stack) {
+      debugPrint('push_prefs.permission_sync_failed: $error\n$stack');
+      await _readPermission();
+    }
   }
 
   Future<void> _toggle(PushPrefGroup group, bool on) async {
@@ -72,8 +105,11 @@ class _PushPrefsScreenState extends ConsumerState<PushPrefsScreen> {
       if (!mounted) return;
       setState(() => _groups = before);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Chưa lưu được, thử lại sau.')),
+        const SnackBar(content: Text('Lưu bị lỗi, đã tải lại cài đặt.')),
       );
+      // Lỗi có thể tới sau khi server đã lưu, nên đọc lại cho công tắc khớp.
+      // Đọc xong mới mở lại công tắc, để kết quả cũ không đè lần bấm sau.
+      await _load();
     } finally {
       if (mounted) setState(() => _saving = false);
     }
