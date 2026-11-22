@@ -56,6 +56,10 @@ void main() {
       myStates: const {},
       meLive: false,
     );
+    // Cao như máy thật: bản đồ chiếm phần trên, danh sách vẫn dựng hết.
+    tester.view.physicalSize = const Size(400, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [

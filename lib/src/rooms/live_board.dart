@@ -35,6 +35,7 @@ class LiveBoard {
     required this.solos,
     required this.myStates,
     required this.meLive,
+    this.runners = const [],
   });
 
   final List<RunRoom> liveRooms;
@@ -48,6 +49,10 @@ class LiveBoard {
 
   /// Chính mình đang chạy live.
   final bool meLive;
+
+  /// Mọi buổi live của người khác, cả trong phòng group lẫn chạy riêng; bản
+  /// đồ Live vẽ từ đây.
+  final List<LiveTrackingSession> runners;
 }
 
 /// Chia phòng và buổi live thành các mục của [LiveBoard]. Buổi live nằm
@@ -99,6 +104,10 @@ LiveBoard buildLiveBoard({
     solos: solos,
     myStates: myStates,
     meLive: sessions.any((s) => s.ownerUid == uid),
+    runners: [
+      for (final session in sessions)
+        if (session.ownerUid != uid) session,
+    ],
   );
 }
 

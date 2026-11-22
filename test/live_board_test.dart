@@ -63,6 +63,8 @@ void main() {
 
     expect(board.liveRooms.map((r) => r.id), ['g1']);
     expect(board.solos.map((s) => s.session.id), ['b', 'c']);
+    // Bản đồ có cả người trong phòng group.
+    expect(board.runners.map((s) => s.id), ['a', 'b', 'c']);
     expect(board.solos.map((s) => s.policyLabel(now)), [
       'Nhận chạy cùng · cần duyệt',
       'Chỉ xem',
@@ -88,5 +90,6 @@ void main() {
     expect(board.upcomingRooms.map((r) => r.id), ['soon', 'late']);
     expect(board.solos, isEmpty);
     expect(board.meLive, isTrue);
+    expect(board.runners, isEmpty);
   });
 }

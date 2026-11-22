@@ -750,7 +750,7 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
                   point: LatLng(location.latitude, location.longitude),
                   width: 42,
                   height: 42,
-                  child: _LiveRunnerMarker(session: runner),
+                  child: LiveRunnerMarker(session: runner),
                 ),
           ],
         ),
@@ -850,16 +850,23 @@ class _TelemetryMapMarker extends StatelessWidget {
   }
 }
 
-class _LiveRunnerMarker extends StatefulWidget {
-  const _LiveRunnerMarker({required this.session});
+/// Avatar người đang chạy live trên bản đồ, viền nhấp nháy. [selected] thì
+/// viền đổi màu để nổi giữa nhiều người.
+class LiveRunnerMarker extends StatefulWidget {
+  const LiveRunnerMarker({
+    required this.session,
+    this.selected = false,
+    super.key,
+  });
 
   final LiveTrackingSession session;
+  final bool selected;
 
   @override
-  State<_LiveRunnerMarker> createState() => _LiveRunnerMarkerState();
+  State<LiveRunnerMarker> createState() => _LiveRunnerMarkerState();
 }
 
-class _LiveRunnerMarkerState extends State<_LiveRunnerMarker>
+class _LiveRunnerMarkerState extends State<LiveRunnerMarker>
     with SingleTickerProviderStateMixin {
   late final _pulseController = AnimationController(
     vsync: this,
@@ -876,6 +883,9 @@ class _LiveRunnerMarkerState extends State<_LiveRunnerMarker>
   Widget build(BuildContext context) {
     final avatarUrl = widget.session.ownerAvatarUrl;
     final ownerName = widget.session.ownerName;
+    final ring = widget.selected
+        ? context.runNowPalette.danger
+        : context.runNowPalette.info;
     return Semantics(
       label: '$ownerName đang chạy live',
       child: Stack(
@@ -885,12 +895,9 @@ class _LiveRunnerMarkerState extends State<_LiveRunnerMarker>
           DecoratedBox(
             decoration: BoxDecoration(
               shape: context.runNowPalette.round,
-              border: Border.all(color: context.runNowPalette.info, width: 2.5),
+              border: Border.all(color: ring, width: 2.5),
               boxShadow: [
-                BoxShadow(
-                  color: context.runNowPalette.info.withValues(alpha: 0.45),
-                  blurRadius: 10,
-                ),
+                BoxShadow(color: ring.withValues(alpha: 0.45), blurRadius: 10),
               ],
             ),
             child: RunNowRoundClip(

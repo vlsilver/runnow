@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rooms/live_board.dart';
+import 'package:myrun/src/rooms/live_map.dart';
 import 'package:myrun/src/rooms/run_room_create_sheet.dart';
 import 'package:myrun/src/rooms/run_room_models.dart';
 import 'package:myrun/src/rooms/run_room_repository.dart';
@@ -86,13 +87,46 @@ class _LiveScreenState extends ConsumerState<LiveScreen> {
         for (final room in board.upcomingRooms)
           LiveRoomTile(room: room, myState: board.myStates[room.id]),
     ];
+    final liveRoomIds = {for (final room in board.liveRooms) room.id};
+    final soloIds = {for (final solo in board.solos) solo.session.id};
+    final onMap = [
+      for (final session in board.runners)
+        if ((showRooms && liveRoomIds.contains(session.roomId)) ||
+            (showSolo && soloIds.contains(session.id)))
+          session,
+    ];
+    // Bản đồ đứng yên trên danh sách: đặt trong ListView thì kéo bản đồ lẫn
+    // với cuộn trang.
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+          child: SizedBox(
+            height: (MediaQuery.sizeOf(context).height * 0.36).clamp(220, 340),
+            child: LiveRunnersMap(
+              sessions: onMap,
+              onOpen: (session) => context.push('/live/${session.id}'),
+            ),
+          ),
+        ),
+        Expanded(child: _list(board, running, upcoming, roomCount)),
+      ],
+    );
+  }
+
+  Widget _list(
+    LiveBoard board,
+    List<Widget> running,
+    List<Widget> upcoming,
+    int roomCount,
+  ) {
     return RefreshIndicator(
       onRefresh: () async {
         ref.invalidate(clubLiveSessionsProvider);
         ref.invalidate(publicRunRoomsProvider);
       },
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
         children: [
           _FilterBar(
             selected: _filter,
