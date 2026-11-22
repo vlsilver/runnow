@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/achievements/run_card_skin_sheet.dart';
@@ -177,6 +178,13 @@ class SettingsScreen extends ConsumerWidget {
                       }
                     },
                   ),
+                  // Web và desktop không nhận push nên không có dòng này.
+                  if (ref.watch(pushControllerProvider) != null)
+                    _SettingsRow(
+                      icon: Icons.notifications_none_rounded,
+                      title: 'Thông báo',
+                      onTap: () => context.push('/me/notifications'),
+                    ),
                 ],
               ),
               const SizedBox(height: 18),

@@ -86,6 +86,30 @@ class TrackedActivityBackendResult {
   final String? stravaActivityId;
 }
 
+/// Một nhóm thông báo người dùng bật tắt được. Nhãn do backend đặt, để thêm
+/// nhóm không cần ra bản app.
+class PushPrefGroup {
+  const PushPrefGroup({
+    required this.id,
+    required this.label,
+    required this.on,
+  });
+
+  static List<PushPrefGroup> listFrom(Map<String, dynamic> json) => [
+    for (final raw in json['groups'] as List<dynamic>? ?? const [])
+      if (raw is Map<String, dynamic>)
+        PushPrefGroup(
+          id: raw['id'] as String? ?? '',
+          label: raw['label'] as String? ?? '',
+          on: raw['on'] as bool? ?? true,
+        ),
+  ];
+
+  final String id;
+  final String label;
+  final bool on;
+}
+
 class RunNowApiException implements Exception {
   const RunNowApiException({
     required this.statusCode,
@@ -447,6 +471,18 @@ class RunNowApiClient {
   /// Gỡ token lúc đăng xuất. Token đã sang tài khoản khác thì backend để nguyên.
   Future<void> unregisterPushToken(String token) =>
       _send('DELETE', '/v1/push-token', body: {'token': token});
+
+  /// Các nhóm thông báo và nhóm nào người dùng đang bật; backend giữ danh sách.
+  Future<List<PushPrefGroup>> getPushPrefs() async =>
+      PushPrefGroup.listFrom(_jsonObject(await _send('GET', _pushPrefsPath)));
+
+  /// Ghi các nhóm người dùng tắt, trả lại danh sách sau khi ghi.
+  Future<List<PushPrefGroup>> setPushPrefs(List<String> off) async =>
+      PushPrefGroup.listFrom(
+        _jsonObject(await _send('PUT', _pushPrefsPath, body: {'off': off})),
+      );
+
+  static const _pushPrefsPath = '/v1/me/push-prefs';
 
   // ---- Liên kết Telegram ----
 

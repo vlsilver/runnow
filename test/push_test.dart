@@ -62,6 +62,31 @@ void main() {
     expect(pushLocation({'kind': 'game_started'}), isNull);
   });
 
+  test('a live push opens that live session', () {
+    expect(
+      pushLocation({'kind': 'live_start', 'sessionId': 'act 1'}),
+      '/live/act%201',
+    );
+    expect(pushLocation({'kind': 'live_start'}), isNull);
+  });
+
+  test('top 3 and given rank gift open the rank card of that board', () {
+    for (final kind in ['rank_top', 'gift_given']) {
+      expect(
+        pushLocation({'kind': kind, 'boardId': 'week_2026-11-16_run'}),
+        '/club?board=week_2026-11-16_run',
+      );
+    }
+  });
+
+  test('a given contract gift opens that contract', () {
+    expect(
+      pushLocation({'kind': 'gift_given', 'contractId': 'k1'}),
+      '/contracts/k1',
+    );
+    expect(pushLocation({'kind': 'gift_given'}), isNull);
+  });
+
   late List<http.Request> requests;
   late RunNowApiClient api;
 

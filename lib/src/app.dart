@@ -39,6 +39,7 @@ import 'package:myrun/src/screens/live_viewer_screen.dart';
 import 'package:myrun/src/screens/member_profile_screen.dart';
 import 'package:myrun/src/screens/onboarding_screen.dart';
 import 'package:myrun/src/screens/public_activity_screen.dart';
+import 'package:myrun/src/screens/push_prefs_screen.dart';
 import 'package:myrun/src/screens/run_contract_create_screen.dart';
 import 'package:myrun/src/screens/run_contract_detail_screen.dart';
 import 'package:myrun/src/training_plan/coach_detail_screen.dart';
@@ -129,6 +130,10 @@ final _router = GoRouter(
                 GoRoute(
                   path: 'cards',
                   builder: (context, state) => const RunCardCollectionScreen(),
+                ),
+                GoRoute(
+                  path: 'notifications',
+                  builder: (context, state) => const PushPrefsScreen(),
                 ),
                 // Màn MyBot tự vẽ tiêu đề to; AppBar chỉ để có nút back.
                 GoRoute(

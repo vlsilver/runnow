@@ -87,12 +87,19 @@ String? pushLocation(Map<String, dynamic> data) {
       gameId.isNotEmpty) {
     return '/games/${Uri.encodeComponent(gameId)}';
   }
+  final sessionId = data['sessionId'];
+  if (kind == 'live_start' && sessionId is String && sessionId.isNotEmpty) {
+    return '/live/${Uri.encodeComponent(sessionId)}';
+  }
+  // Quà BXH, top 3 và quà BXH đã trao đều mở thẻ hạng của bảng đó.
   final boardId = data['boardId'];
-  if (kind == 'rank_reward' && boardId is String && boardId.isNotEmpty) {
+  if ((kind == 'rank_reward' || kind == 'rank_top' || kind == 'gift_given') &&
+      boardId is String &&
+      boardId.isNotEmpty) {
     return Uri(path: '/club', queryParameters: {'board': boardId}).toString();
   }
   final contractId = data['contractId'];
-  if (kind == 'contract_gift' &&
+  if ((kind == 'contract_gift' || kind == 'gift_given') &&
       contractId is String &&
       contractId.isNotEmpty) {
     return '/contracts/${Uri.encodeComponent(contractId)}';
@@ -171,13 +178,21 @@ class PushController {
 
   /// Gọi sau khi người dùng tạo hay vào phòng chạy, ván. Chỉ hỏi quyền nếu chưa hỏi
   /// lần nào; đã từ chối thì thôi, hệ điều hành cũng không hiện hỏi lại.
-  Future<void> askAfterJoining() => _guard(() async {
+  Future<void> askAfterJoining() => _guard(ask);
+
+  /// Quyền thông báo hiện tại của máy.
+  Future<PushPermission> permission() => _messaging.permission();
+
+  /// Hỏi quyền nếu chưa hỏi lần nào, có quyền thì đăng ký token; trả quyền sau
+  /// cùng. Màn cài đặt thông báo gọi thẳng để biết kết quả mà vẽ lại.
+  Future<PushPermission> ask() async {
     var permission = await _messaging.permission();
     if (permission == PushPermission.notAsked) {
       permission = await _messaging.requestPermission();
     }
     if (permission == PushPermission.granted) await _registerCurrent();
-  });
+    return permission;
+  }
 
   /// Gỡ token trước khi đăng xuất, lúc còn ID token để gọi API. Gỡ hỏng thì
   /// máy này còn nhận push của người cũ tới khi có người đăng nhập lại.
