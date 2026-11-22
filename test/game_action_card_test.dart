@@ -45,6 +45,34 @@ void main() {
     now = DateTime.utc(2026, 10, 17, 14);
   });
 
+  testWidgets('a MyBot pick says so and shows its reason', (tester) async {
+    await pumpCard(
+      tester,
+      _action({
+        'input': 'single_target',
+        'selected': {
+          'targets': ['u2'],
+          'by': 'agent',
+          'reason': 'Bình im lặng cả ngày',
+        },
+      }),
+    );
+    expect(find.text('MyBot đã chọn Bình'), findsOneWidget);
+    expect(find.text('Bình im lặng cả ngày'), findsOneWidget);
+
+    await pumpCard(
+      tester,
+      _action({
+        'input': 'single_target',
+        'selected': {
+          'targets': ['u2'],
+        },
+      }),
+    );
+    expect(find.text('Đã chọn Bình'), findsOneWidget);
+    expect(find.byKey(const ValueKey('stand-in-reason')), findsNothing);
+  });
+
   testWidgets('two choices are the big buttons, picked one is marked', (
     tester,
   ) async {

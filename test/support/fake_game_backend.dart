@@ -38,6 +38,9 @@ class FakeGameBackend {
   /// POST /v1/games/telegram/check: backend có hẹn kiểm không.
   bool gameTelegramCheckQueued = false;
 
+  /// GET /v1/agents/me. Rỗng thì `enabled` là false, màn ván ẩn nút MyBot.
+  Map<String, dynamic> agentMe = {};
+
   /// Trả cho `start?dryRun=true`.
   Map<String, dynamic> startPreview = {};
 
@@ -102,6 +105,12 @@ class FakeGameBackend {
             (game['playerCount'] as int? ?? 0) + (registered ? 1 : -1);
         game = {...game, 'isRegistered': registered, 'playerCount': count};
         body = {'isRegistered': registered, 'playerCount': count};
+      } else if (path == '/v1/agents/me') {
+        body = agentMe;
+      } else if (path.endsWith('/me/stand-in')) {
+        final on = (jsonDecode(request.body) as Map)['on'] == true;
+        me = {...me, 'standIn': on};
+        body = {'standIn': on};
       } else if (path.endsWith('/me')) {
         // Trả state lúc server đọc, dù câu trả lời tới muộn.
         body = me;

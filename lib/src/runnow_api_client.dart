@@ -293,6 +293,11 @@ class RunNowApiClient {
     return GameRegistration.fromJson(_jsonObject(response));
   }
 
+  /// Bật hay tắt MyBot chơi thay trong ván. Bật cần MyBot đã tạo và đã đồng ý
+  /// AI; backend trả lỗi `agent_not_found`, `consent_required` nếu chưa.
+  Future<void> setGameStandIn(String gameId, {required bool on}) =>
+      _send('PUT', '${_gamePath(gameId)}/me/stand-in', body: {'on': on});
+
   /// Gửi một hành động. [clear] là bỏ lựa chọn đang lưu. Trả `/me` mới để
   /// màn hình vẽ lại ngay.
   Future<GameMe> submitGameAction(

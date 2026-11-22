@@ -1052,6 +1052,7 @@ class GameMe {
     this.cardOwned = false,
     this.cardRounds = 0,
     this.summary,
+    this.standIn = false,
   });
 
   factory GameMe.fromJson(Map<String, dynamic> json) {
@@ -1076,10 +1077,15 @@ class GameMe {
       cardOwned: json['cardOwned'] == true,
       cardRounds: _int(json['cardRounds']),
       summary: _obj(json['summary'], GameSummary.fromJson),
+      standIn: json['standIn'] == true,
     );
   }
 
   final String status;
+
+  /// Người xem đã bật MyBot chơi thay ở ván này: sát giờ đóng mà chưa bấm thì
+  /// MyBot chọn thay.
+  final bool standIn;
 
   /// null khi chưa chia vai.
   final String? role;
@@ -1701,17 +1707,30 @@ class GameOption {
 }
 
 class GameSelected {
-  const GameSelected({required this.targets, required this.choice});
+  const GameSelected({
+    required this.targets,
+    required this.choice,
+    this.by,
+    this.reason,
+  });
 
   factory GameSelected.fromJson(Map<String, dynamic> json) {
     return GameSelected(
       targets: _strings(json['targets']),
       choice: _optString(json['choice']),
+      by: _optString(json['by']),
+      reason: _optString(json['reason']),
     );
   }
 
   final List<String> targets;
   final String? choice;
+
+  /// "agent" khi MyBot chọn thay; reason là lý do bot nói với chủ.
+  final String? by;
+  final String? reason;
+
+  bool get byAgent => by == 'agent';
 }
 
 class GameRoleReveal {

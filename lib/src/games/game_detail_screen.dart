@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/agents/agent_consent_screen.dart';
+import 'package:myrun/src/agents/agent_providers.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_chat_seen.dart';
@@ -19,6 +21,7 @@ import 'package:myrun/src/games/game_player_card.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/games/game_invite_share.dart';
 import 'package:myrun/src/games/game_rules_page.dart';
+import 'package:myrun/src/games/game_stand_in_tile.dart';
 import 'package:myrun/src/games/game_village.dart';
 import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/games/telegram_link_section.dart';
@@ -55,6 +58,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
   late final GameDetailController _controller;
   late final TelegramLinkController _telegram;
   bool _registering = false;
+  bool _standInBusy = false;
   bool _starting = false;
   bool _cancelling = false;
   bool _faking = false;
@@ -308,6 +312,19 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
       }
     } finally {
       if (mounted) setState(() => _registering = false);
+    }
+  }
+
+  /// Chưa đồng ý AI thì mở màn xin phép rồi bật lại; chưa tạo MyBot thì báo
+  /// lỗi backend trả ("Bạn chưa tạo bot.").
+  Future<void> _setStandIn(bool on) async {
+    setState(() => _standInBusy = true);
+    try {
+      await withAgentConsent(context, ref, () => _controller.setStandIn(on));
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _standInBusy = false);
     }
   }
 
@@ -616,6 +633,16 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                                   onOpenChat: _openChat,
                                 ),
                               ],
+                              if (me != null &&
+                                  detail.isRegistered &&
+                                  myBotVisible(ref) &&
+                                  (detail.status == 'registering' ||
+                                      (detail.status == 'running' && me.alive)))
+                                GameStandInTile(
+                                  on: me.standIn,
+                                  busy: _standInBusy,
+                                  onChanged: _setStandIn,
+                                ),
                               if (detail.status == 'registering') ...[
                                 if (detail.lobby?.roles case final roles?
                                     when roles.isNotEmpty) ...[

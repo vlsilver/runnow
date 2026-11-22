@@ -214,6 +214,19 @@ class _GameActionCardState extends State<GameActionCard> {
                 ),
               ],
             ),
+            if (selected.reason case final reason?
+                when selected.byAgent && reason.isNotEmpty)
+              Text(
+                reason,
+                key: const ValueKey('stand-in-reason'),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.4,
+                  color: palette.textMuted,
+                ),
+              ),
           ],
           if (action.tally case final tally?) ...[
             const SizedBox(height: 14),
@@ -240,8 +253,10 @@ class _GameActionCardState extends State<GameActionCard> {
         labels[choice] ?? choice,
       for (final id in selected.targets) ?labels[id],
     ];
-    if (names.isEmpty) return null;
-    return 'Đã chọn ${names.join(', ')}';
+    // Bot chọn thay thì ghi rõ, chủ thấy ngay để còn đổi hay bỏ chọn.
+    final who = selected.byAgent ? 'MyBot đã chọn' : 'Đã chọn';
+    if (names.isEmpty) return selected.byAgent ? who : null;
+    return '$who ${names.join(', ')}';
   }
 
   List<Widget> _input(GameAction action, bool active) {

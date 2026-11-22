@@ -679,6 +679,84 @@ void main() {
     await close(tester);
   });
 
+  group('MyBot chơi thay', () {
+    const putRoute = 'PUT /v1/games/g1/me/stand-in';
+    final tile = find.byKey(const ValueKey('game-stand-in'));
+    bool switchOn(WidgetTester tester) => tester
+        .widget<SwitchListTile>(
+          find.descendant(of: tile, matching: find.byType(SwitchListTile)),
+        )
+        .value;
+
+    setUp(() {
+      backend.game = {
+        'id': 'g1',
+        'title': 'Ma Sói tuần 42',
+        'status': 'running',
+        'statusLabel': 'Đang chơi',
+        'isRegistered': true,
+      };
+      backend.agentMe = {
+        'enabled': true,
+        'agent': {'name': 'Cú'},
+      };
+    });
+
+    testWidgets('the player turns it on and the switch shows it', (
+      tester,
+    ) async {
+      await pumpScreen(tester);
+      await tester.scrollUntilVisible(tile, 200);
+      expect(switchOn(tester), isFalse);
+
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+
+      expect(backend.calls, contains(putRoute));
+      final put = backend.requests.lastWhere(
+        (r) => '${r.method} ${r.url.path}' == putRoute,
+      );
+      expect(jsonDecode(put.body), {'on': true});
+      expect(switchOn(tester), isTrue);
+      await close(tester);
+    });
+
+    testWidgets('no MyBot yet: the backend message shows, switch stays off', (
+      tester,
+    ) async {
+      backend.failures[putRoute] = (
+        404,
+        {'error': 'agent_not_found', 'message': 'Bạn chưa tạo bot.'},
+      );
+      await pumpScreen(tester);
+      await tester.scrollUntilVisible(tile, 200);
+
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bạn chưa tạo bot.'), findsOneWidget);
+      expect(switchOn(tester), isFalse);
+      await close(tester);
+    });
+
+    testWidgets('hidden for a dead player and when MyBot is off', (
+      tester,
+    ) async {
+      backend.me = {'status': 'running', 'alive': false};
+      await pumpScreen(tester);
+      await tester.pumpAndSettle();
+      expect(tile, findsNothing);
+      await close(tester);
+
+      backend.me = {'status': 'running', 'alive': true};
+      backend.agentMe = {'enabled': false};
+      await pumpScreen(tester);
+      await tester.pumpAndSettle();
+      expect(tile, findsNothing);
+      await close(tester);
+    });
+  });
+
   testWidgets('reads Telegram again when the app comes back', (tester) async {
     backend.game = {
       'id': 'g1',
