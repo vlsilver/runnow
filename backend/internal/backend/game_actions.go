@@ -24,12 +24,18 @@ type ActionRequest struct {
 	Targets    []string
 	Choice     string
 	Clear      bool
-	Source     string // app | telegram | admin
+	Source     string // app | telegram | admin | agent
 	TgUpdateID int64  // update_id của Telegram, 0 nếu từ app
 	// TurnKey khác rỗng: nút Telegram vẽ cho vòng này (turnKey). Ván đã sang vòng
 	// khác thì từ chối (errStaleButton), kể cả khi kind cùng tên đang mở ở vòng mới.
 	TurnKey    string
 	ReceivedAt time.Time
+	// OnlyIfEmpty: chỉ ghi khi người này chưa có doc hành động kind ở vòng này,
+	// kể cả doc đã bỏ chọn. MyBot chơi thay dùng để không đè lựa chọn chủ vừa bấm
+	// giữa lúc bot đọc Me và lúc bot ghi.
+	OnlyIfEmpty bool
+	// AgentReason là lý do MyBot chọn, chỉ chủ thấy trong Me.
+	AgentReason string
 	// ActAs: admin bấm thay người chơi giả của ván thử (X1). Ván thật hoặc người
 	// chơi thật thì bị từ chối, nên admin không bấm thay được người nào đang chơi.
 	ActAs bool
@@ -146,6 +152,10 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 			}
 		}
 
+		if req.OnlyIfEmpty && cur != nil {
+			res.Current, res.Peek = storedAction(cur)
+			return nil
+		}
 		// Telegram gửi lại update cũ, hoặc hai cú bấm tới lệch thứ tự (webhook
 		// mở nhiều kết nối song song): update_id không lớn hơn bản đã lưu thì bỏ.
 		lastTg := int64(number(cur["lastTgUpdateId"]))
@@ -153,8 +163,11 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 			res.Current, res.Peek = storedAction(cur)
 			return nil
 		}
-		// Hai kênh cùng ghi một doc: bản có receivedAt muộn hơn thắng.
-		if t, ok := cur["receivedAt"].(time.Time); ok && t.After(now) {
+		// Hai kênh cùng ghi một doc: bản có receivedAt muộn hơn thắng. Riêng chủ
+		// luôn đè lựa chọn MyBot ghi thay: bot lấy giờ trước khi gọi model, nên
+		// cú bấm của chủ commit sau bot vẫn có thể mang giờ sớm hơn.
+		ownerOverAgent := req.Source != "agent" && stringValue(cur["source"]) == "agent"
+		if t, ok := cur["receivedAt"].(time.Time); ok && t.After(now) && !ownerOverAgent {
 			res.Current, res.Peek = storedAction(cur)
 			return nil
 		}
@@ -194,6 +207,9 @@ func (s *GameStore) SubmitAction(ctx context.Context, req ActionRequest) (Action
 			"uid": req.UID, "kind": string(req.Kind), "targets": req.Targets, "choice": req.Choice,
 			"cleared": req.Clear, "receivedAt": now, "source": req.Source, "kmChecked": kmChecked,
 			"lastTgUpdateId": max(lastTg, req.TgUpdateID), "phaseKey": st.PhaseKey(), "updatedAt": req.ReceivedAt,
+		}
+		if req.AgentReason != "" {
+			doc["agentReason"] = req.AgentReason
 		}
 		if req.Kind == werewolf.KindSeerPeek {
 			dark, err := pendingDark(tx, game, view)

@@ -1244,6 +1244,8 @@ type GameMe struct {
 	CardVariant string `json:"cardVariant,omitempty"`
 	CardOwned   bool   `json:"cardOwned"`
 	CardRounds  int    `json:"cardRounds,omitempty"`
+	// StandIn: người chơi đã bật MyBot chơi thay ở ván này.
+	StandIn bool `json:"standIn"`
 }
 
 type GamePotions struct {
@@ -1303,6 +1305,9 @@ type GameOption struct {
 type GameSelected struct {
 	Targets []string `json:"targets,omitempty"`
 	Choice  string   `json:"choice,omitempty"`
+	// By là "agent" khi MyBot chọn thay; Reason là lý do bot nói với chủ.
+	By     string `json:"by,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 
 type GameRoleReveal struct {
@@ -1329,6 +1334,11 @@ func (s *GameStore) Me(ctx context.Context, gameID string, v GameViewer, wall ti
 	}
 	data := g.Data()
 	out := GameMe{Status: apiStatus(data), Alive: true, Notes: []GameNote{}, InviteLinks: []GameInvite{}, Chats: []GameChatLink{}, Actions: []GameAction{}}
+	p, err := g.Ref.Collection("players").Doc(v.UID).Get(ctx)
+	if err != nil {
+		return GameMe{}, err
+	}
+	out.StandIn = p.Data()["standIn"] == true
 	st, err := s.loadState(ctx, g.Ref)
 	if err != nil {
 		return out, err
@@ -1529,6 +1539,9 @@ func meActions(st *werewolf.State, uid string, mine []werewolf.Action, raw map[w
 		}
 		if d, ok := raw[kind]; ok {
 			sel := &GameSelected{Choice: stringValue(d["choice"])}
+			if stringValue(d["source"]) == "agent" {
+				sel.By, sel.Reason = "agent", stringValue(d["agentReason"])
+			}
 			for _, t := range anyList(d["targets"]) {
 				sel.Targets = append(sel.Targets, stringValue(t))
 			}

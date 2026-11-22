@@ -63,6 +63,7 @@ func (s *Server) gameRoutes() {
 		}
 		return writeJSON(w, 200, me)
 	}))
+	s.route("PUT /v1/games/{id}/me/stand-in", s.gameHandler(s.standInRoute))
 	s.route("GET /v1/games/{id}/chats/{key}", s.gameHandler(func(w http.ResponseWriter, r *http.Request, v GameViewer) error {
 		chat, err := s.deps.Games.Chat(r.Context(), r.PathValue("id"), r.PathValue("key"), r.URL.Query().Get("cursor"), r.URL.Query().Get("after"), v)
 		if err != nil {
@@ -430,24 +431,28 @@ func (s *Server) tickOneGame(ctx context.Context, id, st string, wall time.Time)
 			return err
 		}
 	}
+	var standInErr error
 	if st == gameRunning {
 		res, err := s.advanceGame(ctx, id, wall)
 		if err != nil {
 			return err
 		}
+		// Sau advance để xét lượt của phase vừa mở. Lỗi ở đây không chặn flush,
+		// nhưng vẫn trả ra cho tick báo.
+		standInErr = s.enqueueStandIns(ctx, id, wall)
 		if res.Steps > 0 {
 			slog.WarnContext(ctx, "game.tick_stepped", "gameId", id, "steps", res.Steps, "nextKey", res.TaskKey)
-			return nil // advanceGame đã kick flush
+			return standInErr // advanceGame đã kick flush
 		}
 	}
 	pending, err := s.deps.Games.HasPendingOutbox(ctx, id)
 	if err != nil {
-		return err
+		return errors.Join(standInErr, err)
 	}
 	if pending {
 		s.kickGameFlush(ctx, id)
 	}
-	return nil
+	return standInErr
 }
 
 // autoStartGame bấm Start thay chủ phòng khi tới startAt, rồi giao bot như route
