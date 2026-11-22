@@ -48,8 +48,8 @@ import 'package:myrun/src/screens/run_contract_route_create_screen.dart';
 import 'package:myrun/src/screens/profile_screen.dart';
 import 'package:myrun/src/screens/tracking_screen.dart';
 import 'package:myrun/src/theme.dart';
-import 'package:myrun/src/games/game_links.dart';
 import 'package:myrun/src/web_layout.dart';
+import 'package:myrun/src/web_links.dart';
 import 'package:myrun/src/widgets/activity_overview.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
@@ -499,7 +499,7 @@ class _AuthenticatedSessionState extends ConsumerState<_AuthenticatedSession> {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         ref.read(pushControllerProvider)?.handleTaps(_router.push);
-        ref.read(gameLinkOpenerProvider)?.start(_router.push);
+        ref.read(webLinkOpenerProvider)?.start(_router.push);
         // Prefetch BXH ngay lúc mở app → tới lúc mở tab Club đã có sẵn, khỏi chờ
         // round-trip (số vẫn TƯƠI từ server, không phải disk-cache cũ). keepAlive
         // giữ giá trị tới khi Club watch; stepLeaderboardDocs dùng chung

@@ -13,7 +13,7 @@ import 'package:myrun/src/health_sync.dart';
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/profile_stats.dart';
-import 'package:myrun/src/games/game_links.dart';
+import 'package:myrun/src/web_links.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -101,7 +101,8 @@ void main() {
             return agent;
           }),
           agentRoomPreviewProvider.overrideWith(
-            (ref) async => (messages: const <AgentRoomMessage>[], bots: const <String>[]),
+            (ref) async =>
+                (messages: const <AgentRoomMessage>[], bots: const <String>[]),
           ),
           firebaseUserProvider.overrideWith(
             (ref) => Stream.value(
@@ -109,7 +110,7 @@ void main() {
             ),
           ),
           pushControllerProvider.overrideWithValue(null),
-          gameLinkOpenerProvider.overrideWithValue(null),
+          webLinkOpenerProvider.overrideWithValue(null),
           // Tab MyBot dựng client API ngay khi mở; client thật cần Firebase.
           // Hồ sơ bot đã override ở trên nên không request nào tới được đây.
           runNowApiClientProvider.overrideWithValue(
