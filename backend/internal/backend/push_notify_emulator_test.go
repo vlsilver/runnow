@@ -5,8 +5,12 @@ package backend
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func sentTokens(f *fakePushSender) []string {
@@ -89,7 +93,8 @@ func TestEmulatorLivePushToClub(t *testing.T) {
 	seed(t, h.store.db, "liveSessions/act1", map[string]any{"ownerUid": "runner", "visibility": "club", "status": "running"})
 
 	ctx, db := context.Background(), h.store.db
-	if err := DeliverLivePush(ctx, db, push, livePushTask{UID: "runner", ActivityID: "act1"}); err != nil {
+	now := time.Date(2026, 11, 22, 6, 0, 0, 0, time.UTC)
+	if err := DeliverLivePush(ctx, db, push, now, livePushTask{UID: "runner", ActivityID: "act1"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := sentTokens(sender); len(got) != 1 || got[0] != "tok-fan" {
@@ -97,7 +102,7 @@ func TestEmulatorLivePushToClub(t *testing.T) {
 	}
 	// Task chạy lại (Cloud Tasks gửi lại, app báo start lần nữa) thì không báo
 	// thêm lần nào.
-	if err := DeliverLivePush(ctx, db, push, livePushTask{UID: "runner", ActivityID: "act1"}); err != nil {
+	if err := DeliverLivePush(ctx, db, push, now, livePushTask{UID: "runner", ActivityID: "act1"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := sentTokens(sender); len(got) != 1 {
@@ -111,12 +116,28 @@ func TestEmulatorLivePushToClub(t *testing.T) {
 	seed(t, h.store.db, "liveSessions/act2", map[string]any{"ownerUid": "runner", "visibility": "private", "status": "running"})
 	seed(t, h.store.db, "liveSessions/act3", map[string]any{"ownerUid": "runner", "visibility": "club", "status": "finished"})
 	for _, id := range []string{"act2", "act3", "missing"} {
-		if err := DeliverLivePush(ctx, db, push, livePushTask{UID: "runner", ActivityID: id}); err != nil {
+		if err := DeliverLivePush(ctx, db, push, now, livePushTask{UID: "runner", ActivityID: id}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if got := sentTokens(sender); len(got) != 1 {
 		t.Fatalf("buổi riêng tư, đã xong hay không có thì không báo: %v", got)
+	}
+
+	// Một người mở buổi mới liên tục thì trong 2 giờ chỉ báo club một lần.
+	seed(t, h.store.db, "liveSessions/act4", map[string]any{"ownerUid": "runner", "visibility": "club", "status": "running"})
+	seed(t, h.store.db, "liveSessions/act5", map[string]any{"ownerUid": "runner", "visibility": "club", "status": "running"})
+	if err := DeliverLivePush(ctx, db, push, now.Add(119*time.Minute), livePushTask{UID: "runner", ActivityID: "act4"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := sentTokens(sender); len(got) != 1 {
+		t.Fatalf("buổi mới trong 2 giờ không báo lại: %v", got)
+	}
+	if err := DeliverLivePush(ctx, db, push, now.Add(2*time.Hour), livePushTask{UID: "runner", ActivityID: "act5"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := sentTokens(sender); len(got) != 2 {
+		t.Fatalf("đủ 2 giờ thì báo buổi mới: %v", got)
 	}
 }
 
@@ -206,5 +227,51 @@ func TestEmulatorGiftGivenPush(t *testing.T) {
 	}
 	if title, data := lastSent(t, sender); title != "Tất chạy đã được trao cho bạn" || data["contractId"] != "k1" {
 		t.Fatalf("nội dung quà kèo sai: %q %v", title, data)
+	}
+}
+
+// Gửi hỏng thì trả chỗ như trước khi nhận task, để Cloud Tasks gửi lại được.
+func TestEmulatorLivePushRestoresOnFailedSend(t *testing.T) {
+	h := newRoomHarness(t)
+	push, sender := newFakePush(h.store.db)
+	h.deps.Push = push
+	for _, uid := range []string{"runner", "fan"} {
+		h.want(h.call(uid, "PUT", "/v1/push-token", map[string]any{"token": "tok-" + uid, "platform": "android"}, ""), 200, "")
+	}
+	ctx, db := context.Background(), h.store.db
+	seed(t, db, "publicProfiles/runner", map[string]any{"nickname": "Nâu", "profileVisibility": "public"})
+	seed(t, db, "liveSessions/act1", map[string]any{"ownerUid": "runner", "visibility": "club", "status": "running"})
+	now := time.Date(2026, 11, 22, 6, 0, 0, 0, time.UTC)
+	task := livePushTask{UID: "runner", ActivityID: "act1"}
+
+	// Chưa từng báo: hỏng thì xoá chỗ đã giữ.
+	sender.fail["tok-fan"] = errors.New("unavailable")
+	if err := DeliverLivePush(ctx, db, push, now, task); err == nil {
+		t.Fatal("gửi hỏng phải trả lỗi để Cloud Tasks gửi lại")
+	}
+	if _, err := db.Doc("livePushRunners/runner").Get(ctx); status.Code(err) != codes.NotFound {
+		t.Fatalf("chưa từng báo thì phải xoá chỗ giữ, được %v", err)
+	}
+
+	// Đã báo buổi trước 3 giờ: hỏng thì giữ nguyên buổi trước.
+	old := now.Add(-3 * time.Hour)
+	seed(t, db, "livePushRunners/runner", map[string]any{"activityId": "act0", "at": old})
+	if err := DeliverLivePush(ctx, db, push, now, task); err == nil {
+		t.Fatal("gửi hỏng phải trả lỗi")
+	}
+	snap, err := db.Doc("livePushRunners/runner").Get(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if at, _ := snap.Data()["at"].(time.Time); snap.Data()["activityId"] != "act0" || !at.Equal(old) {
+		t.Fatalf("phải trả lại buổi trước, được %v", snap.Data())
+	}
+
+	delete(sender.fail, "tok-fan")
+	if err := DeliverLivePush(ctx, db, push, now.Add(time.Minute), task); err != nil {
+		t.Fatal(err)
+	}
+	if got := sentTokens(sender); len(got) != 1 || got[0] != "tok-fan" {
+		t.Fatalf("gửi lại phải tới fan một lần, được %v", got)
 	}
 }

@@ -274,6 +274,8 @@ func (s *AccountService) deleteOwnedDocuments(ctx context.Context, uid, athleteI
 		s.db.Collection("leaderboardEntries").Doc(uid),
 		s.db.Collection("stravaConnections").Doc(uid),
 		s.db.Collection("telegramLinks").Doc(uid),
+		s.db.Collection("pushPrefs").Doc(uid),
+		s.db.Collection("livePushRunners").Doc(uid),
 	}
 	if athleteID != "" {
 		refs = append(refs, s.db.Collection("stravaAthleteLinks").Doc(athleteID))
