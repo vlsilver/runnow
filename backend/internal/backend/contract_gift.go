@@ -352,8 +352,10 @@ func giftResultUpdates(kind string, items []ContractGiftItem, entrants []giftEnt
 
 // SetGiven: chủ kèo đánh dấu đã trao hay bỏ đánh dấu cho một người trúng. Bỏ
 // được khi quà chưa tính là nhận (rewardReceived).
-func (s *ContractGiftService) SetGiven(ctx context.Context, by, contractID, uid string, given bool, now time.Time) error {
-	err := s.updateWinner(ctx, contractID, uid, func(gift map[string]any, w map[string]any) error {
+// marked báo lần gọi này vừa ghi givenAt, để chỗ gọi báo người trúng một lần.
+func (s *ContractGiftService) SetGiven(ctx context.Context, by, contractID, uid string, given bool, now time.Time) (marked bool, err error) {
+	err = s.updateWinner(ctx, contractID, uid, func(gift map[string]any, w map[string]any) error {
+		marked = false
 		if stringValue(gift["creatorUid"]) != by {
 			return errContractGiftOwner
 		}
@@ -369,14 +371,15 @@ func (s *ContractGiftService) SetGiven(ctx context.Context, by, contractID, uid 
 		}
 		if w["givenAt"] == nil {
 			w["givenAt"] = now
+			marked = true
 		}
 		return nil
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	slog.InfoContext(ctx, "contract_gift.given", "by", by, "contract", contractID, "uid", uid, "given", given)
-	return nil
+	return marked, nil
 }
 
 // MarkReceived: người trúng báo đã nhận. Chưa ai bấm đã trao thì ghi luôn
@@ -615,8 +618,13 @@ func (s *Server) contractGiftRoutes() {
 	}))
 	for method, given := range map[string]bool{"POST": true, "DELETE": false} {
 		s.route(method+" /v1/contracts/{contractId}/gifts/winners/{uid}/given", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
-			if err := s.deps.ContractGifts.SetGiven(r.Context(), uid, r.PathValue("contractId"), r.PathValue("uid"), given, s.now()); err != nil {
+			now := s.now()
+			marked, err := s.deps.ContractGifts.SetGiven(r.Context(), uid, r.PathValue("contractId"), r.PathValue("uid"), given, now)
+			if err != nil {
 				return err
+			}
+			if marked {
+				s.notifyGiftGiven(r.Context(), giftGivenTask(giftFromContract, r.PathValue("contractId"), r.PathValue("uid"), now))
 			}
 			return writeJSON(w, 200, map[string]any{"ok": true})
 		}))

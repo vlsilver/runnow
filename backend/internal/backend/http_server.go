@@ -83,6 +83,9 @@ func (s *Server) botRoutes() {
 	s.route("POST "+runCardArtQueuePath, s.runCardArt)
 	s.route("POST "+roomPushPath, s.roomPush)
 	s.route("POST "+gamePushPath, s.gamePush)
+	s.route("POST "+livePushPath, s.livePush)
+	s.route("POST "+rankTopPushPath, s.rankTopPush)
+	s.route("POST "+giftGivenPushPath, s.giftGivenPush)
 }
 
 // roomPush: task push của phòng chạy, hẹn từ RunRoomStore.notify.
@@ -669,6 +672,7 @@ func (s *Server) apiRoutes() {
 	s.agentRoutes()
 	s.runRoomRoutes()
 	s.pushRoutes()
+	s.pushPrefRoutes()
 	s.adminRoutes()
 	s.agentConfigRoutes()
 	s.rankRewardRoutes()
@@ -765,6 +769,13 @@ func (s *Server) apiRoutes() {
 		dedup := map[string]any{"activityId": body.ActivityID, "event": body.Event, "km": body.MilestoneKm, "photo": body.PhotoPath}
 		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/live-announce", Payload: payload, TaskID: StableTaskID("live", dedup)}); err != nil {
 			return err
+		}
+		if body.Event == liveEventStart {
+			// Push cho cả club đi riêng hàng notify; hẹn hỏng thì chỉ mất push,
+			// không làm hỏng tường thuật nên chỉ log.
+			if _, err := s.deps.Tasks.Publish(r.Context(), livePushTaskFor(uid, body.ActivityID)); err != nil {
+				slog.ErrorContext(r.Context(), "live.push_enqueue_failed", "activityId", body.ActivityID, "error", err)
+			}
 		}
 		return writeJSON(w, 202, map[string]any{"ok": true})
 	}))

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
+	"slices"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -85,9 +86,7 @@ type pushNote struct {
 }
 
 // Send gửi note tới mọi máy của uids; uids tối đa 30 (trần của truy vấn in),
-// phòng chạy tối đa roomMaxRunners người. Token FCM báo đã chết thì xoá.
-// Không gửi được tới máy nào thì trả lỗi để Cloud Tasks gửi lại; hỏng một phần
-// thì chỉ log, vì gửi lại cả lượt thì máy đã nhận sẽ nhận hai lần.
+// phòng chạy tối đa roomMaxRunners người. Người đã tắt nhóm của note thì bỏ qua.
 func (s *PushService) Send(ctx context.Context, uids []string, note pushNote) error {
 	if len(uids) == 0 {
 		return nil
@@ -96,41 +95,87 @@ func (s *PushService) Send(ctx context.Context, uids []string, note pushNote) er
 	if err != nil {
 		return err
 	}
-	if len(docs) == 0 {
-		return nil
-	}
-	msgs := make([]*messaging.Message, len(docs))
-	for i, d := range docs {
-		msgs[i] = &messaging.Message{
-			Token:        stringValue(d.Data()["token"]),
-			Notification: &messaging.Notification{Title: note.Title, Body: note.Body},
-			Data:         note.Data,
-			APNS:         &messaging.APNSConfig{Payload: &messaging.APNSPayload{Aps: &messaging.Aps{Sound: "default"}}},
-		}
-	}
-	res, err := s.sender.SendEach(ctx, msgs)
+	return s.sendDocs(ctx, docs, note)
+}
+
+// SendAll gửi note tới mọi máy đã đăng ký, trừ máy của except (người gây ra
+// sự kiện). Đọc hết pushTokens nên chỉ dùng cho thông báo chung cả club.
+func (s *PushService) SendAll(ctx context.Context, except string, note pushNote) error {
+	all, err := s.db.Collection("pushTokens").Documents(ctx).GetAll()
 	if err != nil {
 		return err
 	}
-	var failed []error
-	for i, r := range res.Responses {
-		if r.Success {
-			continue
+	docs := slices.DeleteFunc(all, func(d *firestore.DocumentSnapshot) bool {
+		return stringValue(d.Data()["uid"]) == except
+	})
+	return s.sendDocs(ctx, docs, note)
+}
+
+// fcmBatchMax là trần số tin của một lần SendEach.
+const fcmBatchMax = 500
+
+// sendDocs gửi note tới các token trong docs, bỏ người đã tắt nhóm của note.
+// Token FCM báo đã chết thì xoá. Không gửi được tới máy nào thì trả lỗi để
+// Cloud Tasks gửi lại; hỏng một phần thì chỉ log, vì gửi lại cả lượt thì máy đã
+// nhận sẽ nhận hai lần.
+func (s *PushService) sendDocs(ctx context.Context, docs []*firestore.DocumentSnapshot, note pushNote) error {
+	var uids []string
+	for _, d := range docs {
+		if uid := stringValue(d.Data()["uid"]); !slices.Contains(uids, uid) {
+			uids = append(uids, uid)
 		}
-		if s.deadToken(r.Error) {
-			if _, err := docs[i].Ref.Delete(ctx); err != nil {
+	}
+	off, err := s.optedOut(ctx, uids, note.Data["kind"])
+	if err != nil {
+		return err
+	}
+	docs = slices.DeleteFunc(docs, func(d *firestore.DocumentSnapshot) bool { return off[stringValue(d.Data()["uid"])] })
+	if len(docs) == 0 {
+		return nil
+	}
+	var failed []error
+	sent := 0
+	for start := 0; start < len(docs); start += fcmBatchMax {
+		batch := docs[start:min(start+fcmBatchMax, len(docs))]
+		msgs := make([]*messaging.Message, len(batch))
+		for i, d := range batch {
+			msgs[i] = &messaging.Message{
+				Token:        stringValue(d.Data()["token"]),
+				Notification: &messaging.Notification{Title: note.Title, Body: note.Body},
+				Data:         note.Data,
+				APNS:         &messaging.APNSConfig{Payload: &messaging.APNSPayload{Aps: &messaging.Aps{Sound: "default"}}},
+			}
+		}
+		res, err := s.sender.SendEach(ctx, msgs)
+		if err != nil {
+			if sent == 0 {
 				return err
 			}
+			failed = append(failed, err)
 			continue
 		}
-		failed = append(failed, r.Error)
+		sent += res.SuccessCount
+		for i, r := range res.Responses {
+			if r.Success {
+				continue
+			}
+			if s.deadToken(r.Error) {
+				// Xoá lỗi thì để lần gửi sau xoá; trả lỗi ở đây làm Cloud Tasks gửi
+				// lại cả lượt cho những máy đã nhận.
+				if _, err := batch[i].Ref.Delete(ctx); err != nil {
+					slog.WarnContext(ctx, "push.dead_token_delete_failed", "token_doc", batch[i].Ref.ID, "error", err)
+				}
+				continue
+			}
+			failed = append(failed, r.Error)
+		}
 	}
 	if len(failed) == 0 {
 		return nil
 	}
-	if res.SuccessCount == 0 {
+	if sent == 0 {
 		return errors.Join(failed...)
 	}
-	slog.WarnContext(ctx, "push.partial_failure", "sent", res.SuccessCount, "failed", len(failed), "error", errors.Join(failed...))
+	slog.WarnContext(ctx, "push.partial_failure", "sent", sent, "failed", len(failed), "error", errors.Join(failed...))
 	return nil
 }

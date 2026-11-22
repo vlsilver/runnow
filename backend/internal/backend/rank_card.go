@@ -325,7 +325,22 @@ func (s *RankCardService) writeBoard(ctx context.Context, r rankRange, sport ran
 	if winners > 0 {
 		s.notifyWinners(ctx, boardID)
 	}
+	s.notifyTop(ctx, boardID, entries)
 	return nil
+}
+
+// notifyTop hẹn push top 3 cho từng người, cùng cách xử lý lỗi với notifyWinners.
+func (s *RankCardService) notifyTop(ctx context.Context, boardID string, entries []map[string]any) {
+	if s.enqueue == nil {
+		return
+	}
+	for _, uid := range rankTopPushUIDs(entries) {
+		t := rankTopPushTask{BoardID: boardID, UID: uid}
+		task := PublishTask{Queue: QueueNotify, HandlerPath: rankTopPushPath, Payload: t, TaskID: StableTaskID("rank-top-push", t)}
+		if _, err := s.enqueue(context.WithoutCancel(ctx), task); err != nil {
+			slog.ErrorContext(ctx, "rank_top.push_enqueue_failed", "board", boardID, "uid", uid, "error", err)
+		}
+	}
 }
 
 // notifyWinners hẹn push quà sau khi bảng đã ghi. Hẹn hỏng (Publish đã tự thử

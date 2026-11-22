@@ -487,9 +487,11 @@ func timePtr(v any) *time.Time {
 
 // SetGiven: admin đánh dấu đã trao (given=true) hoặc bỏ đánh dấu. Bỏ được khi
 // quà chưa tính là nhận (rewardReceived). Gọi lại bao nhiêu lần cũng vậy.
-func (s *RankRewardService) SetGiven(ctx context.Context, by, boardID, uid string, given bool, now time.Time) error {
+// marked báo lần gọi này vừa ghi givenAt, để chỗ gọi báo người trúng một lần.
+func (s *RankRewardService) SetGiven(ctx context.Context, by, boardID, uid string, given bool, now time.Time) (marked bool, err error) {
 	ref := s.db.Collection("users").Doc(uid).Collection("rankCards").Doc(boardID)
-	err := s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		marked = false
 		cfg, err := getOptional(tx, s.db.Collection("gameState").Doc("config"))
 		if err != nil {
 			return err
@@ -510,13 +512,14 @@ func (s *RankRewardService) SetGiven(ctx context.Context, by, boardID, uid strin
 		if reward["givenAt"] != nil {
 			return nil
 		}
+		marked = true
 		return tx.Update(ref, []firestore.Update{{Path: "reward.givenAt", Value: now}})
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	slog.InfoContext(ctx, "rank_reward.given", "by", by, "board", boardID, "uid", uid, "given", given)
-	return nil
+	return marked, nil
 }
 
 // MarkReceived: người trúng báo đã nhận quà. Chưa ai bấm đã trao thì ghi luôn
@@ -624,8 +627,13 @@ func (s *Server) rankRewardRoutes() {
 	}))
 	for method, given := range map[string]bool{"POST": true, "DELETE": false} {
 		s.route(method+" /v1/admin/rank-rewards/{board}/winners/{uid}/given", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
-			if err := s.deps.RankRewards.SetGiven(r.Context(), uid, r.PathValue("board"), r.PathValue("uid"), given, s.now()); err != nil {
+			now := s.now()
+			marked, err := s.deps.RankRewards.SetGiven(r.Context(), uid, r.PathValue("board"), r.PathValue("uid"), given, now)
+			if err != nil {
 				return err
+			}
+			if marked {
+				s.notifyGiftGiven(r.Context(), giftGivenTask(giftFromRank, r.PathValue("board"), r.PathValue("uid"), now))
 			}
 			return read(w, r)
 		}))
