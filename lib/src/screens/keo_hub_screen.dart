@@ -35,6 +35,7 @@ import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/club_run_row.dart';
 import 'package:myrun/src/widgets/live_bits.dart';
 import 'package:myrun/src/widgets/live_map_preview.dart';
+import 'package:myrun/src/widgets/map_tiles.dart';
 import 'package:myrun/src/widgets/rank_mountain.dart';
 import 'package:myrun/src/widgets/keo_scene.dart';
 import 'package:myrun/src/widgets/run_now_avatar.dart';
@@ -542,48 +543,66 @@ class LiveSessionCard extends StatelessWidget {
                   left: 10,
                   right: 10,
                   bottom: 10,
-                  child: _GlassPill(
-                    radius: 18,
-                    padding: const EdgeInsets.fromLTRB(10, 9, 14, 9),
-                    child: Row(
-                      children: [
-                        _Avatar(
-                          url: session.ownerAvatarUrl,
-                          name: session.ownerName,
-                          size: 34,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                session.ownerName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              Text(
-                                formatPace(session.averagePaceSecondsPerKm),
-                                style: TextStyle(
-                                  color: onSurface.withValues(alpha: 0.55),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      // Ghi nguồn bản đồ là bắt buộc (ODbL). Chung cột với
+                      // tấm tên nên tấm cao lên (chữ to) cũng không đè.
+                      if (liveRoutePoints(session).isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6, bottom: 4),
+                          child: Text(
+                            '© ${mapTileCredits(currentMapTileTemplate()).map((c) => c.label).join(' · ')}',
+                            style: TextStyle(
+                              fontSize: 8,
+                              color: onSurface.withValues(alpha: 0.6),
+                            ),
                           ),
                         ),
-                        _BigNumber(
-                          value: (session.distanceMeters / 1000)
-                              .toStringAsFixed(2),
-                          unit: 'km',
-                          size: 34,
+                      _GlassPill(
+                        radius: 18,
+                        padding: const EdgeInsets.fromLTRB(10, 9, 14, 9),
+                        child: Row(
+                          children: [
+                            _Avatar(
+                              url: session.ownerAvatarUrl,
+                              name: session.ownerName,
+                              size: 34,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    session.ownerName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  Text(
+                                    formatPace(session.averagePaceSecondsPerKm),
+                                    style: TextStyle(
+                                      color: onSurface.withValues(alpha: 0.55),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            _BigNumber(
+                              value: (session.distanceMeters / 1000)
+                                  .toStringAsFixed(2),
+                              unit: 'km',
+                              size: 34,
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ],
