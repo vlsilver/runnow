@@ -96,6 +96,13 @@ void main() {
       ),
     );
 
-    expect(find.text('30:00'), findsOneWidget);
+    // Dòng thời gian tự đếm theo giờ thật (EverySecond), nên chạy chậm vài
+    // giây thì thành 30:01; chỉ cần đúng là thời gian và không kèm pace.
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is Text && RegExp(r'^3\d:\d\d$').hasMatch(w.data ?? ''),
+      ),
+      findsOneWidget,
+    );
   });
 }
