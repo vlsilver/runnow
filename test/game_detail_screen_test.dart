@@ -1225,6 +1225,8 @@ void main() {
       'status': 'ended',
       'alive': true,
       'role': 'seer',
+      'cardTier': 'legendary',
+      'cardOwned': true,
       'summary': {
         'winner': 'village',
         'winnerLabel': 'Phe Dân thắng',
@@ -1240,6 +1242,16 @@ void main() {
     await tester.tap(find.byTooltip('Chia sẻ tóm tắt'));
     await tester.pumpAndSettle();
     expect(find.byType(GameEndedCard), findsOneWidget);
+    // Phe thắng giữ thẻ thì lá in đúng bậc đã bốc.
+    final sheetCard = find.descendant(
+      of: find.byType(BottomSheet),
+      matching: find.byType(AchievementCard),
+    );
+    expect(sheetCard, findsOneWidget);
+    expect(
+      tester.widget<AchievementCard>(sheetCard).data.tier,
+      GameCardTier.legendary,
+    );
 
     await tester.tap(find.text('Chia sẻ'));
     await tester.runAsync(
@@ -1254,6 +1266,65 @@ void main() {
     );
     expect(share.shared.last.files!.single.mimeType, 'image/png');
     await close(tester);
+  });
+
+  group('the ended share', () {
+    Future<Finder> openSheet(
+      WidgetTester tester,
+      Map<String, dynamic> me,
+    ) async {
+      FlutterSecureStorage.setMockInitialValues({});
+      backend.game = {
+        'id': 'g1',
+        'title': 'Ma Sói tuần 42',
+        'status': 'ended',
+        'statusLabel': 'Đã kết thúc',
+        'refreshAfterSeconds': 300,
+        'winner': 'village',
+        'isRegistered': true,
+        'players': [
+          {'uid': 'a', 'name': 'An', 'alive': true},
+        ],
+      };
+      backend.me = {
+        'status': 'ended',
+        'alive': true,
+        ...me,
+        'summary': {'winner': 'village', 'winnerLabel': 'Phe Dân thắng'},
+      };
+      await pumpScreen(tester);
+      await tester.pump();
+      await tester.tap(find.byTooltip('Chia sẻ tóm tắt'));
+      await tester.pumpAndSettle();
+      return find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.byType(AchievementCard),
+      );
+    }
+
+    testWidgets('a loser shares a plain card, not the tier they drew', (
+      tester,
+    ) async {
+      final card = await openSheet(tester, {
+        'role': 'wolf',
+        'cardTier': 'legendary',
+        'cardVariant': 'secret.fire',
+        'cardOwned': false,
+      });
+
+      final data = tester.widget<AchievementCard>(card).data;
+      expect(data.tier, GameCardTier.common);
+      expect(data.secret, isNull);
+      await close(tester);
+    });
+
+    testWidgets('someone with no role shares only the result', (tester) async {
+      final card = await openSheet(tester, {});
+
+      expect(find.byType(GameEndedCard), findsOneWidget);
+      expect(card, findsNothing);
+      await close(tester);
+    });
   });
 
   group('requirements', () {

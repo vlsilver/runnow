@@ -452,8 +452,22 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
     GamePlayer? player,
   ) => gameCardData(
     GamePlayerCard.fromMe(detail: detail, me: me, player: player),
-    owner: player?.name ?? 'Bạn',
+    owner: _ownerName(player),
   );
+
+  String _ownerName(GamePlayer? player) => player?.name ?? 'Bạn';
+
+  /// Lá bài kèm ảnh khoe cuối ván; người không có vai trong ván thì không có.
+  AchievementCardData? _endedCardFor(
+    GameDetail detail,
+    GameMe? me,
+    GamePlayer? player,
+  ) => me?.role == null
+      ? null
+      : gameEndedCardData(
+          GamePlayerCard.fromMe(detail: detail, me: me!, player: player),
+          owner: _ownerName(player),
+        );
 
   bool _hasTelegramRow(GameDetail detail) =>
       !detail.isRegistered &&
@@ -553,6 +567,7 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                           detail,
                           summary,
                           rounds: me?.cardRounds ?? 0,
+                          card: _endedCardFor(detail, me, myPlayer),
                         ),
                       ),
                     ),

@@ -121,6 +121,23 @@ class GamePlayerCard {
   /// Người phe thắng, ván đã xong: được khoe và nằm trong bộ thẻ.
   final bool owned;
 
+  /// Bản bậc Thường, không bản Ẩn; mọi thứ khác giữ nguyên.
+  GamePlayerCard _plain() => GamePlayerCard(
+    gameId: gameId,
+    tier: GameCardTier.common,
+    role: role,
+    roleLabel: roleLabel,
+    team: team,
+    winner: winner,
+    alive: alive,
+    round: round,
+    playerCount: playerCount,
+    deathRound: deathRound,
+    endedAt: endedAt,
+    testMode: testMode,
+    owned: owned,
+  );
+
   bool get ended => winner != null;
   String get label => roleLabel ?? gameRoleStyle(role).label;
   String get teamLabel => _teamLabels[team] ?? gameRoleStyle(role).team;
@@ -179,6 +196,13 @@ AchievementCardData gameCardData(GamePlayerCard card, {required String owner}) {
     date: date,
   );
 }
+
+/// Lá bài kèm ảnh khoe cuối ván. Phe thua không giữ thẻ, nên lá in ra để bậc
+/// Thường, không mang bậc đã bốc, để không ai tưởng đó là thẻ đã sưu tầm.
+AchievementCardData gameEndedCardData(
+  GamePlayerCard card, {
+  required String owner,
+}) => gameCardData(card.owned ? card : card._plain(), owner: owner);
 
 /// Thẻ Ma Sói đem khoe. Chỉ thẻ đã sở hữu mới khoe được, lúc đó ván đã xong
 /// nên vai không còn bí mật.

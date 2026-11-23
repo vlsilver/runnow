@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:intl/intl.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/games/game_card_art.dart';
 import 'package:myrun/src/games/game_links.dart';
 import 'package:myrun/src/games/game_models.dart';
@@ -88,15 +89,17 @@ Future<void> showGameEnded(
   GameDetail game,
   GameSummary summary, {
   int rounds = 0,
+  AchievementCardData? card,
 }) async {
   final caption = gameEndedCaption(game, summary);
   if (kIsWeb) {
     await SharePlus.instance.share(ShareParams(text: caption));
     return;
   }
+  final ended = GameEndedCard(game: game, summary: summary, rounds: rounds);
   await _showShareSheet(
     context,
-    card: GameEndedCard(game: game, summary: summary, rounds: rounds),
+    card: card == null ? ended : GameEndedWithCard(card: card, ended: ended),
     caption: caption,
     button: 'Chia sẻ',
   );
@@ -516,6 +519,50 @@ class GameLiveCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Ảnh khoe cuối ván của người đã chơi: mặt trước lá bài của họ bên trái, thẻ
+/// kết quả bên phải, cùng chiều cao. Cỡ cố định để ảnh giống nhau trên mọi máy.
+class GameEndedWithCard extends StatelessWidget {
+  const GameEndedWithCard({super.key, required this.card, required this.ended});
+
+  final AchievementCardData card;
+  final GameEndedCard ended;
+
+  static const _pad = 12.0;
+  static const _gap = 10.0;
+  static const _height = 400.0;
+  static final _cardWidth =
+      achievementCardSize.width * _height / achievementCardSize.height;
+
+  @override
+  Widget build(BuildContext context) => MediaQuery.withNoTextScaling(
+    child: SizedBox(
+      width: _pad * 2 + _cardWidth + _gap + 320,
+      height: _pad * 2 + _height,
+      child: GameMoonlitBackdrop(
+        child: Padding(
+          padding: const EdgeInsets.all(_pad),
+          child: Row(
+            children: [
+              SizedBox(
+                width: _cardWidth,
+                height: _height,
+                child: FittedBox(
+                  child: SizedBox.fromSize(
+                    size: achievementCardSize,
+                    child: AchievementCard(data: card, animate: false),
+                  ),
+                ),
+              ),
+              const SizedBox(width: _gap),
+              ended,
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 /// Thẻ khoe kết quả ván: phe thắng, danh hiệu và số liệu cả ván. Ván xong thì

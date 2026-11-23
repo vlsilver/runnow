@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/games/game_invite_share.dart';
 import 'package:myrun/src/games/game_models.dart';
+import 'package:myrun/src/games/game_player_card.dart';
+import 'package:myrun/src/games/game_role_card.dart';
 
 GameDetail _game({
   int count = 8,
@@ -314,6 +317,63 @@ void main() {
       expect(tester.getSize(find.byType(GameEndedCard)), const Size(320, 400));
       expect(find.text('Chạy nhiều nhất 3'), findsNothing);
       expect(find.text('216 km'), findsNothing);
+    });
+  });
+
+  group('showGameEnded', () {
+    final card = gameEndedCardData(
+      GamePlayerCard(
+        gameId: 'g1',
+        tier: GameCardTier.rare,
+        role: 'seer',
+        team: 'village',
+        winner: 'village',
+        alive: true,
+        round: 4,
+        playerCount: 9,
+        owned: true,
+      ),
+      owner: 'An',
+    );
+
+    Future<void> open(WidgetTester tester, {AchievementCardData? card}) async {
+      tester.view.physicalSize = const Size(1170, 2532);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showGameEnded(
+                context,
+                _running(),
+                _summary(),
+                rounds: 4,
+                card: card,
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    testWidgets('a player shares their card beside the result', (tester) async {
+      await open(tester, card: card);
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(AchievementCard), findsOneWidget);
+      expect(find.text('TIÊN TRI'), findsOneWidget);
+      expect(find.text('PHE DÂN THẮNG'), findsOneWidget);
+    });
+
+    testWidgets('with no card it shares only the result', (tester) async {
+      await open(tester);
+
+      expect(find.byType(AchievementCard), findsNothing);
+      expect(find.text('PHE DÂN THẮNG'), findsOneWidget);
     });
   });
 

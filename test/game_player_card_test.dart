@@ -292,6 +292,43 @@ void main() {
     });
   });
 
+  group('gameEndedCardData', () {
+    GamePlayerCard card({required bool owned}) => GamePlayerCard.fromMe(
+      detail: GameDetail.fromJson({
+        'id': 'g1',
+        'status': 'ended',
+        'playerCount': 9,
+        'winner': 'wolves',
+      }),
+      me: GameMe.fromJson({
+        'status': 'ended',
+        'alive': true,
+        'role': owned ? 'wolf' : 'seer',
+        'cardTier': 'legendary',
+        'cardVariant': 'secret.fire',
+        'cardOwned': owned,
+        'cardRounds': 5,
+      }),
+    );
+
+    test('a winner shows the card with the tier drawn at the deal', () {
+      final data = gameEndedCardData(card(owned: true), owner: 'An');
+
+      expect(data.tier, GameCardTier.legendary);
+      expect(data.secret, RunNowElement.fire);
+      expect(data.stats!.first, (value: 'Thắng', label: 'KẾT QUẢ'));
+    });
+
+    test('a loser shows a plain card, not the tier nobody keeps', () {
+      final data = gameEndedCardData(card(owned: false), owner: 'An');
+
+      expect(data.tier, GameCardTier.common);
+      expect(data.secret, isNull);
+      expect(data.hero, 'TIÊN TRI');
+      expect(data.stats!.first, (value: 'Thua', label: 'KẾT QUẢ'));
+    });
+  });
+
   group('GameCardEmblem', () {
     testWidgets('paints every side and unknown sides without errors', (
       tester,
