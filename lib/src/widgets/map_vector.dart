@@ -1,10 +1,13 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:vector_map_tiles/vector_map_tiles.dart';
 import 'package:vector_tile_renderer/vector_tile_renderer.dart' as vtr;
 
@@ -338,6 +341,36 @@ final vtr.Theme _nightTheme = vtr.ThemeReader().read(
   _mapStyle('natural-night', _night),
 );
 
+/// vector_map_tiles giữ file .pbf và ảnh tile đã vẽ trên máy 30 ngày, key chỉ
+/// gồm z/x/y, tên nguồn và tên theme, không có URL hay màu. Folder cache riêng
+/// theo URL và style nên đổi bộ tile hay đổi màu thì máy tải, vẽ lại, không
+/// hiện ảnh vẽ từ dữ liệu cũ. Web lưu IndexedDB, thư viện bỏ qua folder.
+///
+/// Trả `dynamic` do kiểu tham số là typedef `Directory` export có điều kiện:
+/// analyzer đọc nhánh stub (`String`), máy thật chạy nhánh `dart:io`.
+dynamic _cacheFolder(String url) {
+  if (kIsWeb) return null;
+  final tag = fnv1a32('$url\n$_stylesJson');
+  return () async =>
+      Directory('${(await getTemporaryDirectory()).path}/.vector_map-$tag');
+}
+
+final _stylesJson = jsonEncode([
+  _mapStyle('natural-light', _light),
+  _mapStyle('natural-dark', _dark),
+  _mapStyle('natural-night', _night),
+]);
+
+/// Dấu FNV-1a 32 bit (hex) của [text], làm tên folder cache.
+@visibleForTesting
+String fnv1a32(String text) {
+  var hash = 0x811c9dc5;
+  for (final byte in utf8.encode(text)) {
+    hash = ((hash ^ byte) * 0x01000193) & 0xffffffff;
+  }
+  return hash.toRadixString(16).padLeft(8, '0');
+}
+
 /// Bộ tile vector đang host chỉ có Việt Nam; khung này bao đất liền và các
 /// đảo gần bờ (Phú Quốc, Côn Đảo).
 const _vectorSouth = 8.2, _vectorNorth = 23.5;
@@ -374,6 +407,7 @@ Widget mapBaseLayer(
           ReplayDaylight.morning || ReplayDaylight.afternoon => _lightTheme,
           null => dark ? _darkTheme : _lightTheme,
         },
+        cacheFolder: _cacheFolder(_vectorUrl),
         tileProviders: TileProviders({
           _source: NetworkVectorTileProvider(
             urlTemplate: _vectorUrl,
