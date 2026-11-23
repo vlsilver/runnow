@@ -49,6 +49,9 @@ const _source = 'protomaps';
 /// Tên do Trung Quốc đặt cho đơn vị hành chính trên Hoàng Sa, Trường Sa.
 const _hiddenNames = ['Sansha', 'Tam Sa', '三沙市', '西沙区', '南沙区'];
 
+/// Locality cấp ấp, thôn trong dữ liệu Protomaps.
+const _villageKinds = ['village', 'hamlet', 'isolated_dwelling'];
+
 /// Nhãn chủ quyền app tự vẽ, không lấy từ dữ liệu.
 const _sovereignLabels = [
   (name: 'QUẦN ĐẢO HOÀNG SA\n(VIỆT NAM)', point: LatLng(16.5, 112.0)),
@@ -286,10 +289,34 @@ Map<String, dynamic> _mapStyle(String id, _MapColors c) => {
       minzoom: 14,
       alongLine: true,
     ),
+    // Chỉ tên phường. Khu phố (kind_detail neighbourhood) bỏ hẳn: phố nào
+    // cũng "KHU PHỐ 1, 2..." chen kín bản đồ mà không giúp nhận ra chỗ.
     _label(
-      'places-neighbourhood',
+      'places-suburb',
       'places',
-      ['==', 'kind', 'neighbourhood'],
+      [
+        'all',
+        ['==', 'kind', 'neighbourhood'],
+        ['==', 'kind_detail', 'suburb'],
+      ],
+      c.muted,
+      [
+        [12, 10],
+        [16, 13],
+      ],
+      halo: c.land,
+      minzoom: 12,
+      upper: true,
+    ),
+    // Ấp, thôn phần lớn tên số ("ẤP 5", "THÔN 2"): chỉ hiện khi đã zoom sát.
+    _label(
+      'places-village',
+      'places',
+      [
+        'all',
+        ['==', 'kind', 'locality'],
+        ['in', 'kind_detail', ..._villageKinds],
+      ],
       c.muted,
       [
         [12, 10],
@@ -305,6 +332,7 @@ Map<String, dynamic> _mapStyle(String id, _MapColors c) => {
       [
         'all',
         ['==', 'kind', 'locality'],
+        ['!in', 'kind_detail', ..._villageKinds],
         // Dữ liệu OSM ghi "thành phố Tam Sa" trên Hoàng Sa: không vẽ nhãn này.
         ['!in', 'name', ..._hiddenNames],
       ],
