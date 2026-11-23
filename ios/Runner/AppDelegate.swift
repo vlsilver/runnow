@@ -14,6 +14,9 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "ScreenClipRecorder") {
       ScreenClipRecorder.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "RunFileInbox") {
+      RunFileInbox.register(with: registrar)
+    }
   }
 }
 
@@ -410,5 +413,65 @@ final class ScreenClipRecorder: NSObject, FlutterPlugin {
     writer?.cancelWriting()
     if let url { try? FileManager.default.removeItem(at: url) }
     (url, writer, input, adaptor, crop, failure) = (nil, nil, nil, nil, nil, nil)
+  }
+}
+
+/// Nhận file .gpx, .tcx, .fit người dùng mở bằng 3i Run (Files, Garmin, Strava) để xem lại
+/// 3D. Giữ nội dung file tới khi Dart gọi `take`; báo `opened` để app đang chạy
+/// lấy ngay, còn lúc mở app từ đầu thì Dart tự gọi `take` khi sẵn sàng.
+final class RunFileInbox: NSObject, FlutterPlugin, FlutterSceneLifeCycleDelegate {
+  private var channel: FlutterMethodChannel?
+  private var pending: FlutterStandardTypedData?
+
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let inbox = RunFileInbox()
+    let channel = FlutterMethodChannel(
+      name: "runnow/run_file_inbox", binaryMessenger: registrar.messenger())
+    inbox.channel = channel
+    registrar.addMethodCallDelegate(inbox, channel: channel)
+    registrar.addSceneDelegate(inbox)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard call.method == "take" else { return result(FlutterMethodNotImplemented) }
+    result(pending)
+    pending = nil
+  }
+
+  func scene(
+    _ scene: UIScene, willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions?
+  ) -> Bool {
+    receive(connectionOptions?.urlContexts ?? [])
+  }
+
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) -> Bool {
+    receive(URLContexts)
+  }
+
+  private func receive(_ contexts: Set<UIOpenURLContext>) -> Bool {
+    guard
+      let url = contexts.map(\.url).first(where: {
+        $0.isFileURL && ["gpx", "tcx", "fit"].contains($0.pathExtension.lowercased())
+      })
+    else { return false }
+    let scoped = url.startAccessingSecurityScopedResource()
+    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+    // Quá runFileMaxBytes (Dart) hay đọc hỏng thì giao rỗng để Dart báo không đọc được.
+    let maxBytes = 32 * 1024 * 1024
+    var data = Data()
+    do {
+      let handle = try FileHandle(forReadingFrom: url)
+      defer { try? handle.close() }
+      let read = try handle.read(upToCount: maxBytes + 1) ?? Data()
+      if read.count <= maxBytes { data = read }
+    } catch {
+      NSLog("RunFileInbox: không đọc được \(url.lastPathComponent): \(error)")
+    }
+    pending = FlutterStandardTypedData(bytes: data)
+    // iOS chép file vào Documents/Inbox của app; đọc xong thì xoá cho khỏi đầy.
+    try? FileManager.default.removeItem(at: url)
+    channel?.invokeMethod("opened", arguments: nil)
+    return true
   }
 }

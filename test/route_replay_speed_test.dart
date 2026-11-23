@@ -61,6 +61,42 @@ void main() {
     expect(series[1].format(cadence.last), '88 rpm');
   });
 
+  test('replaySeries: điểm có độ cao cách xa nhau vẫn ra biểu đồ độ cao', () {
+    // Hai điểm có độ cao gần đối xứng qua tâm Trái Đất, nối bằng một điểm không
+    // có độ cao. Đo thẳng giữa hai điểm có độ cao thì Vincenty không hội tụ.
+    final series = replaySeries(
+      routePoints: [
+        RoutePoint(
+          latitude: 10,
+          longitude: 106,
+          timestamp: DateTime.utc(2026, 1, 1, 6),
+          altitudeMeters: 10,
+        ),
+        RoutePoint(
+          latitude: 0,
+          longitude: 16,
+          timestamp: DateTime.utc(2026, 1, 1, 7),
+        ),
+        RoutePoint(
+          latitude: -10,
+          longitude: -74,
+          timestamp: DateTime.utc(2026, 1, 1, 8),
+          altitudeMeters: 20,
+        ),
+      ],
+    );
+    final altitude = series.singleWhere((one) => one.label == 'ĐỘ CAO');
+    expect(altitude.values.first, closeTo(10, 1));
+    expect(altitude.values.last, closeTo(20, 1));
+  });
+
+  test('ReplayPath tuyến dài 200 km giữ tối đa khoảng 20 nghìn mẫu', () {
+    // 1,8° kinh độ ở xích đạo dài khoảng 200 km: bước 5 m sẽ ra 40 nghìn mẫu.
+    final path = ReplayPath([const LatLng(0, 106), const LatLng(0, 107.8)]);
+    expect(path.points.length, lessThanOrEqualTo(20002));
+    expect(path.meters, closeTo(200375, 1000));
+  });
+
   group('replayPinBeside', () {
     // Ở zoom 0 cả vòng xích đạo (360°) dài 512 điểm ảnh, nên 1 điểm ảnh là
     // 360 / 512 = 0,703125°; zoom 1 thì bằng nửa.

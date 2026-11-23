@@ -30,6 +30,7 @@ import 'package:myrun/src/screens/activity_detail_screen.dart';
 import 'package:myrun/src/screens/club_cards_screen.dart';
 import 'package:myrun/src/screens/club_runs_screen.dart';
 import 'package:myrun/src/screens/club_screen.dart';
+import 'package:myrun/src/screens/run_file_replay_sheet.dart' show RunFileInbox;
 import 'package:myrun/src/screens/journal_screen.dart';
 import 'package:myrun/src/screens/activity_hub_screen.dart';
 import 'package:myrun/src/screens/journey_hub_screen.dart';
@@ -63,7 +64,9 @@ final _router = GoRouter(
   routes: [
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) => _HealthSyncTrigger(
-        child: AppUpdatePrompt(child: _Scaffold(shell: shell)),
+        child: RunFileInbox(
+          child: AppUpdatePrompt(child: _Scaffold(shell: shell)),
+        ),
       ),
       branches: [
         StatefulShellBranch(

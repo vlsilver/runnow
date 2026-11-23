@@ -12,10 +12,12 @@ import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/journey/journey_timeline.dart';
 import 'package:myrun/src/profile_stats.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/screens/run_file_replay_sheet.dart';
 import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/map_vector.dart';
 import 'package:myrun/src/widgets/run_now_empty.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/widgets/section_card.dart';
@@ -83,15 +85,33 @@ class _ActivityHubScreenState extends ConsumerState<ActivityHubScreen> {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
                   children: [
-                    Text(
-                      'Hoạt động',
-                      style: context.runNowPalette.heading(
-                        TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w900,
-                          color: context.runNowPalette.foreground,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Hoạt động',
+                            style: context.runNowPalette.heading(
+                              TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.w900,
+                                color: context.runNowPalette.foreground,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                        // Buổi chạy ghi bằng đồng hồ hay app khác: mở file GPX/TCX/FIT
+                        // để xem lại 3D. Đặt ở đây vì người ta tìm buổi chạy
+                        // của mình ở tab này; màn 3D cần tile vector.
+                        if (!kIsWeb && hasVectorMap)
+                          TextButton.icon(
+                            onPressed: () => pickRunFileForReplay(context),
+                            icon: const Icon(
+                              Icons.view_in_ar_rounded,
+                              size: 18,
+                            ),
+                            label: const Text('3D từ file'),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     const _DailyQuoteCard(),

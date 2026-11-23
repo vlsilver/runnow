@@ -89,6 +89,26 @@
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
+            <!-- Mở/chia sẻ file .gpx, .tcx, .fit từ app khác (Files, Garmin, Strava) để xem lại
+                 3D. Nhiều app gửi file với mime octet-stream nên RunFileInbox kiểm thêm
+                 đuôi tên file. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/gpx+xml" />
+                <data android:mimeType="application/vnd.garmin.tcx+xml" />
+                <data android:mimeType="application/vnd.ant.fit" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/gpx+xml" />
+                <data android:mimeType="application/vnd.garmin.tcx+xml" />
+                <data android:mimeType="application/vnd.ant.fit" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
         </activity>
         <!-- Android 14+: Health Connect nằm trong OS → dùng cơ chế VIEW_PERMISSION_USAGE. -->
         <activity-alias

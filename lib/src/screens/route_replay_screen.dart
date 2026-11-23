@@ -168,25 +168,28 @@ List<ReplaySeries> replaySeries({
   final heartRates = streamProfile(streams['heartrate'], distances);
   final cadences = streamProfile(streams['cadence'], distances);
 
-  final high = [
-    for (final point in timed)
-      if (point.altitudeMeters != null) point,
-  ];
-  final highMeters = <double>[0];
-  for (var i = 1; i < high.length; i++) {
-    highMeters.add(
-      highMeters.last +
-          _distance(
-            LatLng(high[i - 1].latitude, high[i - 1].longitude),
-            LatLng(high[i].latitude, high[i].longitude),
-          ),
-    );
+  // Mét dọc tuyến của từng điểm có độ cao, cộng theo mọi điểm liền nhau chứ
+  // không nối thẳng các điểm có độ cao: điểm có độ cao có thể cách nhau rất xa.
+  final high = <RoutePoint>[];
+  final highMeters = <double>[];
+  var along = 0.0;
+  for (var i = 0; i < timed.length; i++) {
+    final point = timed[i];
+    if (i > 0) {
+      along += _distance(
+        LatLng(timed[i - 1].latitude, timed[i - 1].longitude),
+        LatLng(point.latitude, point.longitude),
+      );
+    }
+    if (point.altitudeMeters != null) {
+      high.add(point);
+      highMeters.add(along);
+    }
   }
   final altitudes =
-      streamProfile(
-        [for (final point in high) point.altitudeMeters!],
-        [if (high.isNotEmpty) ...highMeters],
-      ) ??
+      streamProfile([
+        for (final point in high) point.altitudeMeters!,
+      ], highMeters) ??
       streamProfile(streams['altitude'], distances);
 
   return [
@@ -222,9 +225,15 @@ List<ReplaySeries> replaySeries({
 class ReplayPath {
   ReplayPath._(this.points, this._cumulative, this._bearings);
 
-  /// Lấy mẫu lại [raw] mỗi 5 m, rồi trung bình trượt ±25 m.
+  /// Lấy mẫu lại [raw] mỗi 5 m, rồi trung bình trượt ±5 mẫu. Tuyến trên
+  /// 100 km thì giãn bước cho đủ [_maxSamples]: số mẫu tăng theo độ dài tuyến,
+  /// nên file nhảy vài nghìn km sẽ treo UI và hết bộ nhớ.
   factory ReplayPath(List<LatLng> raw) {
-    final even = _resample(raw, 5);
+    var total = 0.0;
+    for (var i = 1; i < raw.length; i++) {
+      total += _distance(raw[i - 1], raw[i]);
+    }
+    final even = _resample(raw, math.max(5, total / _maxSamples));
     final points = [for (var i = 0; i < even.length; i++) _mean(even, i, 5)];
     final cumulative = <double>[0];
     for (var i = 1; i < points.length; i++) {
@@ -232,6 +241,8 @@ class ReplayPath {
     }
     return ReplayPath._(points, cumulative, _smoothBearings(points));
   }
+
+  static const _maxSamples = 20000;
 
   final List<LatLng> points;
   final List<double> _cumulative;
@@ -296,15 +307,17 @@ class ReplayPath {
       }
       raw.add(bearing);
     }
+    // Tổng cộng dồn để mỗi trung bình trượt tốn O(1): cửa sổ rộng theo độ dài
+    // tuyến, cộng lại từng điểm thì thành bình phương số mẫu.
+    final sums = <double>[0];
+    for (final bearing in raw) {
+      sums.add(sums.last + bearing);
+    }
     return [
       for (var i = 0; i <= last; i++)
         () {
           final lo = math.max(0, i - reach), hi = math.min(last, i + reach);
-          var sum = 0.0;
-          for (var j = lo; j <= hi; j++) {
-            sum += raw[j];
-          }
-          return sum / (hi - lo + 1);
+          return (sums[hi + 1] - sums[lo]) / (hi - lo + 1);
         }(),
     ];
   }
