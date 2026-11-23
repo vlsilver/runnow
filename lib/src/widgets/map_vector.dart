@@ -134,7 +134,20 @@ Map<String, dynamic> _label(
   'minzoom': minzoom,
   'filter': filter,
   'layout': {
-    'text-field': '{name}',
+    // Tên không viết bằng chữ Latin (Thái, Lào, Miến, Trung) thì tile có
+    // `script`: lấy tên tiếng Việt, không có thì tên tiếng Anh. Tên Latin giữ
+    // nguyên, vì `name:en` của đường phố VN là tên không dấu.
+    'text-field': [
+      'case',
+      ['has', 'script'],
+      [
+        'coalesce',
+        ['get', 'name:vi'],
+        ['get', 'name:en'],
+        ['get', 'name'],
+      ],
+      ['get', 'name'],
+    ],
     'text-font': _font,
     'text-size': {'stops': size},
     if (upper) 'text-transform': 'uppercase',
