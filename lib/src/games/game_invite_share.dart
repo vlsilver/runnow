@@ -32,6 +32,16 @@ String gameLiveCaption(GameDetail game) {
       '${gameInviteLink(game.id)}';
 }
 
+/// Câu gửi kèm thẻ ván đã xong: phe thắng và tên ván. Backend cũ không gửi phe
+/// thắng thì chỉ nói ván đã kết thúc.
+String gameEndedCaption(GameDetail game, GameSummary summary) {
+  final name = game.title == _defaultTitle ? 'Ma Sói' : game.title;
+  final head = summary.winnerLabel.isEmpty
+      ? 'Ván $name đã kết thúc.'
+      : '${summary.winnerLabel} ván $name.';
+  return '$head\n${gameInviteLink(game.id)}';
+}
+
 String _closing(DateTime d) => '${_hour.format(d)} ${_shortDay(d)}';
 
 /// `T2 09/11`, `CN 08/11`.
@@ -68,6 +78,26 @@ Future<void> showGameLive(BuildContext context, GameDetail game) async {
     context,
     card: GameLiveCard(game: game),
     caption: gameLiveCaption(game),
+    button: 'Chia sẻ',
+  );
+}
+
+/// Như [showGameInvite], cho ván đã kết thúc.
+Future<void> showGameEnded(
+  BuildContext context,
+  GameDetail game,
+  GameSummary summary, {
+  int rounds = 0,
+}) async {
+  final caption = gameEndedCaption(game, summary);
+  if (kIsWeb) {
+    await SharePlus.instance.share(ShareParams(text: caption));
+    return;
+  }
+  await _showShareSheet(
+    context,
+    card: GameEndedCard(game: game, summary: summary, rounds: rounds),
+    caption: caption,
     button: 'Chia sẻ',
   );
 }
@@ -483,6 +513,193 @@ class GameLiveCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Thẻ khoe kết quả ván: phe thắng, danh hiệu và số liệu cả ván. Ván xong thì
+/// vai đã lật cho cả làng, nên thẻ không giấu gì thêm. Cỡ cố định như thiệp mời.
+class GameEndedCard extends StatelessWidget {
+  const GameEndedCard({
+    super.key,
+    required this.game,
+    required this.summary,
+    this.rounds = 0,
+  });
+
+  final GameDetail game;
+  final GameSummary summary;
+
+  /// Số vòng ván đã đi (`me.cardRounds`); 0 là không biết.
+  final int rounds;
+
+  static const _maxTitles = 3;
+  static const _maxStats = 4;
+
+  @override
+  Widget build(BuildContext context) {
+    final headline = summary.winnerLabel.isEmpty
+        ? 'ĐÃ KẾT THÚC'
+        : summary.winnerLabel.toUpperCase();
+    final titles = summary.titles.take(_maxTitles).toList();
+    final stats = summary.stats.take(_maxStats).toList();
+    return MediaQuery.withNoTextScaling(
+      child: SizedBox(
+        width: 320,
+        height: 400,
+        child: Material(
+          type: MaterialType.transparency,
+          child: GameMoonlitBackdrop(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text.rich(
+                        TextSpan(
+                          text: 'MA SÓI',
+                          style: TextStyle(
+                            fontSize: 13,
+                            letterSpacing: 2,
+                            fontWeight: FontWeight.w800,
+                            color: context.moonlit.amberBright,
+                          ),
+                          children: [
+                            TextSpan(
+                              text: '  3i',
+                              style: TextStyle(
+                                letterSpacing: 0,
+                                color: context.moonlit.faint,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (rounds > 0)
+                        Text(
+                          'SAU $rounds VÒNG',
+                          style: TextStyle(
+                            fontSize: 11,
+                            letterSpacing: 1,
+                            fontWeight: FontWeight.w800,
+                            color: context.moonlit.amber,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const GameMoonEmblem(size: 64),
+                  const SizedBox(height: 8),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      headline,
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 30,
+                        height: 1.15,
+                        fontWeight: FontWeight.w900,
+                        color: context.moonlit.ink,
+                      ),
+                    ),
+                  ),
+                  if (summary.subtitle.isNotEmpty)
+                    Text(
+                      summary.subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: context.moonlit.inkSoft,
+                      ),
+                    ),
+                  if (game.title != _defaultTitle) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      game.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: context.moonlit.muted,
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  for (final t in titles) _TitleRow(title: t),
+                  const Spacer(),
+                  if (stats.isNotEmpty)
+                    Container(
+                      decoration: BoxDecoration(
+                        color: context.moonlit.raised,
+                        borderRadius: context.runNowPalette.radius(10),
+                        border: Border.all(color: context.moonlit.border),
+                      ),
+                      child: SizedBox(
+                        height: 60,
+                        child: Row(
+                          children: [
+                            for (final (i, stat) in stats.indexed) ...[
+                              if (i > 0)
+                                VerticalDivider(
+                                  width: 1,
+                                  thickness: 1,
+                                  color: context.moonlit.border,
+                                ),
+                              _Stat(value: stat.value, label: stat.label),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Một danh hiệu: nhãn bên trái, người đạt và số bên phải.
+class _TitleRow extends StatelessWidget {
+  const _TitleRow({required this.title});
+
+  final GameSummaryTitle title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Text(
+            title.label,
+            style: TextStyle(fontSize: 12, color: context.moonlit.faint),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title.value.isEmpty
+                  ? title.name
+                  : '${title.name} · ${title.value}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.end,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: context.moonlit.ink,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

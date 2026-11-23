@@ -1157,6 +1157,9 @@ class GameSummary {
   }
 
   final String winner;
+
+  /// Đã có chữ "thắng" ("Phe Dân thắng"), khác `GameDetail.winnerLabel` chỉ
+  /// là tên phe.
   final String winnerLabel;
 
   /// Ván kết thúc thế nào; backend cũ không gửi thì rỗng.

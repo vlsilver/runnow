@@ -3,31 +3,6 @@ import 'package:myrun/src/games/game_journal.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
-import 'package:share_plus/share_plus.dart';
-
-/// Chia sẻ tóm tắt ván dạng chữ.
-Future<void> shareGameSummary(
-  BuildContext context,
-  String title,
-  GameSummary summary,
-) {
-  final box = context.findRenderObject() as RenderBox?;
-  final text = [
-    title,
-    if (summary.winnerLabel.isNotEmpty) '${summary.winnerLabel} thắng',
-    for (final stat in summary.stats) '${stat.label}: ${stat.value}',
-    'Chia sẻ từ 3i',
-  ].join('\n');
-  return SharePlus.instance.share(
-    ShareParams(
-      text: text,
-      subject: title,
-      sharePositionOrigin: box == null
-          ? null
-          : box.localToGlobal(Offset.zero) & box.size,
-    ),
-  );
-}
 
 /// Tab Tổng kết: số liệu cả ván và danh hiệu.
 class GameEndedSummary extends StatelessWidget {

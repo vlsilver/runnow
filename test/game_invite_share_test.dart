@@ -74,6 +74,30 @@ GameDetail _running({
   ],
 });
 
+GameSummary _summary({
+  String winnerLabel = 'Phe Dân thắng',
+  String subtitle = '',
+  int titles = 1,
+  int stats = 1,
+}) => GameSummary.fromJson({
+  'winner': winnerLabel.isEmpty ? '' : 'village',
+  'winnerLabel': winnerLabel,
+  'subtitle': subtitle,
+  'stats': [
+    for (var i = 0; i < stats; i++)
+      {'label': 'Số $i', 'value': '${212 + i} km'},
+  ],
+  'titles': [
+    for (var i = 0; i < titles; i++)
+      {
+        'key': 'runner',
+        'label': 'Chạy nhiều nhất $i',
+        'name': 'Nguyễn Thị Ngọc Ánh Dương $i',
+        'value': '38.2 km',
+      },
+  ],
+});
+
 void main() {
   group('gameInviteCaption', () {
     const link = 'https://threei.run/games/g1';
@@ -210,6 +234,86 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(tester.getSize(find.byType(GameLiveCard)), const Size(320, 400));
+    });
+  });
+
+  group('gameEndedCaption', () {
+    const link = 'https://threei.run/games/g1';
+
+    test('says who won which game', () {
+      expect(
+        gameEndedCaption(_running(), _summary()),
+        'Phe Dân thắng ván Đêm trăng PSC.\n$link',
+      );
+    });
+
+    test('still reads well without a winner from an old backend', () {
+      expect(
+        gameEndedCaption(_running(title: 'Ma Sói'), _summary(winnerLabel: '')),
+        'Ván Ma Sói đã kết thúc.\n$link',
+      );
+    });
+  });
+
+  group('GameEndedCard', () {
+    Future<void> pump(
+      WidgetTester tester,
+      GameSummary summary, {
+      String title = 'Đêm trăng PSC',
+      int rounds = 4,
+    }) => tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: GameEndedCard(
+            game: _running(title: title),
+            summary: summary,
+            rounds: rounds,
+          ),
+        ),
+      ),
+    );
+
+    testWidgets('shows the winner, the titles and the game numbers', (
+      tester,
+    ) async {
+      await pump(tester, _summary(subtitle: 'Treo đủ 3 sói'));
+
+      expect(find.text('PHE DÂN THẮNG'), findsOneWidget);
+      expect(find.text('SAU 4 VÒNG'), findsOneWidget);
+      expect(find.text('Treo đủ 3 sói'), findsOneWidget);
+      expect(find.text('Đêm trăng PSC'), findsOneWidget);
+      expect(find.text('Chạy nhiều nhất 0'), findsOneWidget);
+      expect(
+        find.text('Nguyễn Thị Ngọc Ánh Dương 0 · 38.2 km'),
+        findsOneWidget,
+      );
+      expect(find.text('212 km'), findsOneWidget);
+    });
+
+    testWidgets('a game without a known winner or rounds still reads well', (
+      tester,
+    ) async {
+      await pump(tester, _summary(winnerLabel: ''), title: 'Ma Sói', rounds: 0);
+
+      expect(find.text('ĐÃ KẾT THÚC'), findsOneWidget);
+      expect(find.textContaining('VÒNG'), findsNothing);
+      expect(find.text('Ma Sói'), findsNothing);
+    });
+
+    testWidgets('a full summary fits the fixed card', (tester) async {
+      await pump(
+        tester,
+        _summary(
+          subtitle: 'Treo đủ 3 sói · còn 5 người sống · làng chạy 212 km',
+          titles: 6,
+          stats: 6,
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(find.byType(GameEndedCard)), const Size(320, 400));
+      expect(find.text('Chạy nhiều nhất 3'), findsNothing);
+      expect(find.text('216 km'), findsNothing);
     });
   });
 

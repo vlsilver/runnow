@@ -548,8 +548,12 @@ class _GameDetailScreenState extends ConsumerState<GameDetailScreen>
                       builder: (context) => _HeaderButton(
                         tooltip: 'Chia sẻ tóm tắt',
                         icon: Icons.ios_share_rounded,
-                        onPressed: () =>
-                            shareGameSummary(context, detail.title, summary),
+                        onPressed: () => showGameEnded(
+                          context,
+                          detail,
+                          summary,
+                          rounds: me?.cardRounds ?? 0,
+                        ),
                       ),
                     ),
                   if (detail?.room case final room?)

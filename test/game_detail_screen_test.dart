@@ -1203,6 +1203,59 @@ void main() {
     await close(tester);
   });
 
+  testWidgets('an ended game is shared as a picture of its result', (
+    tester,
+  ) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    backend.game = {
+      'id': 'g1',
+      'title': 'Ma Sói tuần 42',
+      'status': 'ended',
+      'statusLabel': 'Đã kết thúc',
+      'refreshAfterSeconds': 300,
+      'winner': 'village',
+      'winnerLabel': 'Phe Dân',
+      'isRegistered': true,
+      'players': [
+        {'uid': 'a', 'name': 'An', 'alive': true},
+        {'uid': 'b', 'name': 'Bình', 'alive': false},
+      ],
+    };
+    backend.me = {
+      'status': 'ended',
+      'alive': true,
+      'role': 'seer',
+      'summary': {
+        'winner': 'village',
+        'winnerLabel': 'Phe Dân thắng',
+        'stats': [
+          {'label': 'Km cả làng', 'value': '212 km'},
+        ],
+      },
+    };
+    await pumpScreen(tester);
+    await tester.pump();
+    final before = share.shared.length;
+
+    await tester.tap(find.byTooltip('Chia sẻ tóm tắt'));
+    await tester.pumpAndSettle();
+    expect(find.byType(GameEndedCard), findsOneWidget);
+
+    await tester.tap(find.text('Chia sẻ'));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(seconds: 1)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(share.shared.length, before + 1);
+    expect(
+      share.shared.last.text,
+      'Phe Dân thắng ván Ma Sói tuần 42.\nhttps://threei.run/games/g1',
+    );
+    expect(share.shared.last.files!.single.mimeType, 'image/png');
+    await close(tester);
+  });
+
   group('requirements', () {
     Map<String, dynamic> open(List<Map<String, dynamic>> requirements) => {
       'id': 'g1',
