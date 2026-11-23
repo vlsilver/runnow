@@ -32,7 +32,12 @@ class _LiveMapPreviewState extends State<LiveMapPreview> {
   @override
   void didUpdateWidget(covariant LiveMapPreview oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.session.updatedAt != widget.session.updatedAt) _fit();
+    // So cả id: danh sách đổi thứ tự thì ô dùng lại state này cho người khác,
+    // mà hai phiên có thể cùng updatedAt.
+    if (oldWidget.session.id != widget.session.id ||
+        oldWidget.session.updatedAt != widget.session.updatedAt) {
+      _fit();
+    }
   }
 
   @override
