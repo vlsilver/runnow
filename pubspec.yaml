@@ -1,7 +1,7 @@
 name: myrun
 description: 3i Run — nhật ký chạy bộ và cộng đồng, đồng bộ từ Strava.
 publish_to: none
-version: 1.17.0+36
+version: 1.18.0+37
 
 environment:
   sdk: ">=3.12.0 <4.0.0"
