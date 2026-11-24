@@ -298,7 +298,7 @@ func resolveContractGifts(kind string, items []ContractGiftItem, entrants []gift
 }
 
 // cryptoShuffle trộn bằng crypto/rand để không ai đoán trước được thứ tự.
-func cryptoShuffle(es []giftEntrant) {
+func cryptoShuffle[T any](es []T) {
 	for i := len(es) - 1; i > 0; i-- {
 		n, _ := rand.Int(rand.Reader, big.NewInt(int64(i+1))) // crypto/rand không trả lỗi từ Go 1.24
 		j := int(n.Int64())

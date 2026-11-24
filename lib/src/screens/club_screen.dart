@@ -1386,7 +1386,7 @@ class _MyPastCardRow extends ConsumerWidget {
   }
 }
 
-/// Cả top 10 của một bảng đã chốt.
+/// Mọi thẻ của một bảng đã chốt: top 10, rồi người trúng bốc thăm ngoài top.
 class _PastTopCardsScreen extends StatelessWidget {
   const _PastTopCardsScreen({
     required this.entries,

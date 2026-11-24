@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // fakeRankQuoter ghi lại dòng dữ kiện và trả "câu <số dòng>"; lô của bảng Đạp
@@ -208,5 +210,135 @@ func TestEmulatorScheduleTickEnqueuesRankClose(t *testing.T) {
 	NewBotServer(Config{}, deps).ServeHTTP(w, httptest.NewRequest("POST", "/tasks/schedule-tick", strings.NewReader("{}")))
 	if w.Code != 200 || len(tasks) != 1 || tasks[0].HandlerPath != "/tasks/rank-close" || tasks[0].TaskID != StableTaskID("rank-close", []string{"2026-10-26", "2026-10-01"}) {
 		t.Fatalf("tick: %d, tasks %+v", w.Code, tasks)
+	}
+}
+
+// Quà bốc thăm cho người từ 15 km tuần 26/10–1/11, bảng Chạy·Đi bộ. Số tính tay:
+// binh 21 km, an đúng 15 km (chạy 10, đi bộ thuần 5), chi 14,9 km. Ba suất mà
+// chỉ hai người đạt mốc, nên khỏi phụ thuộc kết quả bốc: binh và an trúng, chi không.
+func TestEmulatorRankCloseDrawReward(t *testing.T) {
+	db := emulatorDB(t)
+	vn := func(day, hour int) time.Time { return time.Date(2026, 10, day, hour, 0, 0, 0, vietnam) }
+	for uid, name := range map[string]string{"an": "An", "binh": "Bình", "chi": "Chi"} {
+		seed(t, db, "publicProfiles/"+uid, map[string]any{"profileVisibility": "public", "nickname": name})
+	}
+	seedRankActivity(t, db, "binh", "b1", "strava", "Run", vn(29, 6), 21000)
+	seedRankActivity(t, db, "an", "a1", "strava", "Run", vn(27, 6), 10000)
+	seedStepDay(t, db, "an", "2026-10-27", 15000, 15000)
+	seedStepDay(t, db, "chi", "2026-10-28", 20000, 14900)
+	seed(t, db, "rankRewards/week_2026-10-26_run", map[string]any{
+		"giverUid": "binh", "giverName": "Bình",
+		"items": []any{map[string]any{"id": "ao", "kind": "draw", "minScore": 15000, "slots": 3, "name": "Áo Kiprun", "icon": "shirt", "photos": []any{}}},
+	})
+
+	now := time.Date(2026, 11, 2, 12, 30, 0, 0, vietnam)
+	if err := NewRankCardService(db, nil).Close(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
+	board := rankDoc(t, db, "rankBoards/week_2026-10-26_run")
+	won := map[string]bool{}
+	for _, e := range board["entries"].([]any) {
+		m := e.(map[string]any)
+		if m["reward"] != nil {
+			won[m["uid"].(string)] = true
+		}
+	}
+	if len(won) != 2 || !won["binh"] || !won["an"] {
+		t.Fatalf("người trúng trên bảng = %v, entries %v", won, board["entries"])
+	}
+	card := rankDoc(t, db, "users/an/rankCards/week_2026-10-26_run")
+	reward, _ := card["reward"].(map[string]any)
+	if reward["itemId"] != "ao" || reward["name"] != "Áo Kiprun" || reward["giverName"] != "Bình" {
+		t.Fatalf("quà trên thẻ an = %v", card["reward"])
+	}
+	if chi := rankDoc(t, db, "users/chi/rankCards/week_2026-10-26_run"); chi["reward"] != nil {
+		t.Fatalf("chi 14,9 km mà có quà: %v", chi["reward"])
+	}
+}
+
+// Bốc thăm lấy cả người ngoài top 10: 12 người đều trên 15 km, top 10 đã có
+// giày, nên suất áo duy nhất về hạng 11 hoặc 12. Người trúng có thẻ, có tên ở
+// cuối entries (app chỉ mở thẻ của người trong entries), admin thấy họ trong
+// danh sách trúng và họ nhận push quà.
+func TestEmulatorRankCloseDrawOutsideTop(t *testing.T) {
+	db := emulatorDB(t)
+	const boardID = "week_2026-10-26_run"
+	vn := func(day, hour int) time.Time { return time.Date(2026, 10, day, hour, 0, 0, 0, vietnam) }
+	for i := 1; i <= 12; i++ {
+		uid := fmt.Sprintf("r%02d", i)
+		seed(t, db, "publicProfiles/"+uid, map[string]any{"profileVisibility": "public", "nickname": uid})
+		seedRankActivity(t, db, uid, uid+"-run", "strava", "Run", vn(28, 6), float64(31000-i*1000))
+		seed(t, db, "pushTokens/tok-"+uid, map[string]any{"uid": uid, "token": "tok-" + uid})
+	}
+	seed(t, db, "rankRewards/"+boardID, map[string]any{
+		"giverUid": "r01", "giverName": "r01",
+		"items": []any{
+			map[string]any{"id": "giay", "fromRank": 1, "toRank": 10, "name": "Giày", "icon": "shoes", "photos": []any{}},
+			map[string]any{"id": "ao", "kind": "draw", "minScore": 15000, "slots": 1, "name": "Áo Kiprun", "icon": "shirt", "photos": []any{}},
+		},
+	})
+
+	now := time.Date(2026, 11, 2, 12, 30, 0, 0, vietnam)
+	if err := NewRankCardService(db, nil).Close(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
+	entries := rankDoc(t, db, "rankBoards/"+boardID)["entries"].([]any)
+	if len(entries) != 11 {
+		t.Fatalf("entries có %d người, muốn top 10 và một người trúng: %v", len(entries), entries)
+	}
+	w := entries[10].(map[string]any)
+	winner := w["uid"].(string)
+	loser := map[string]string{"r11": "r12", "r12": "r11"}[winner]
+	if loser == "" || w["reward"].(map[string]any)["itemId"] != "ao" {
+		t.Fatalf("người trúng ngoài top = %v", w)
+	}
+	card := rankDoc(t, db, "users/"+winner+"/rankCards/"+boardID)
+	if reward, _ := card["reward"].(map[string]any); reward["itemId"] != "ao" || number(card["rank"]) != number(w["rank"]) {
+		t.Fatalf("thẻ người trúng = %v", card)
+	}
+	if _, err := db.Doc("users/" + loser + "/rankCards/" + boardID).Get(context.Background()); status.Code(err) != codes.NotFound {
+		t.Fatalf("%s không trúng mà có thẻ: %v", loser, err)
+	}
+
+	view, err := NewRankRewardService(db, nil).View(context.Background(), boardID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, v := range view.Winners {
+		got[v.UID] = v.ItemID
+	}
+	if len(got) != 11 || got[winner] != "ao" || got["r10"] != "giay" {
+		t.Fatalf("admin thấy người trúng %v", got)
+	}
+
+	push, sender := newFakePush(db)
+	if err := DeliverRankRewardPush(context.Background(), db, push, boardID); err != nil {
+		t.Fatal(err)
+	}
+	sentTo := map[string]bool{}
+	for _, m := range sender.sent {
+		sentTo[m.Token] = true
+	}
+	if len(sentTo) != 11 || !sentTo["tok-"+winner] || sentTo["tok-"+loser] {
+		t.Fatalf("push quà tới %v", sentTo)
+	}
+}
+
+// Push gửi được cho hơn 30 người: truy vấn in của Firestore nhận tối đa 30 uid.
+func TestEmulatorPushSendOver30(t *testing.T) {
+	db := emulatorDB(t)
+	var uids []string
+	for i := range 31 {
+		uid := fmt.Sprintf("u%02d", i)
+		uids = append(uids, uid)
+		seed(t, db, "pushTokens/tok-"+uid, map[string]any{"uid": uid, "token": "tok-" + uid})
+	}
+	push, sender := newFakePush(db)
+	if err := push.Send(context.Background(), uids, pushNote{Title: "t", Body: "b"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(sender.sent) != 31 {
+		t.Fatalf("gửi %d tin, muốn 31", len(sender.sent))
 	}
 }

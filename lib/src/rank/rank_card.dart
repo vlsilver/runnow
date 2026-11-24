@@ -29,7 +29,8 @@ DateTime? _day(Object? key) =>
 
 double _num(Object? value) => (value as num?)?.toDouble() ?? 0;
 
-/// Một người trong top 10 đã chốt, theo thứ tự hạng.
+/// Một người trên bảng đã chốt, theo thứ tự hạng: top 10, rồi người trúng
+/// bốc thăm ngoài top.
 class RankBoardEntry {
   const RankBoardEntry({
     required this.uid,

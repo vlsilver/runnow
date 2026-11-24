@@ -37,7 +37,9 @@ String rankTitleUpper(int rank) => switch (rank) {
   1 => 'QUÁN QUÂN',
   2 => 'Á QUÂN',
   3 => 'HẠNG BA',
-  _ => 'TOP 10',
+  <= 10 => 'TOP 10',
+  // Người trúng bốc thăm ngoài top 10 cũng có thẻ.
+  _ => 'HẠNG $rank',
 };
 
 LinearGradient _metal(GameCardTierStyle m, Alignment a, Alignment b) =>

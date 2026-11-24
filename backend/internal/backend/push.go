@@ -85,18 +85,25 @@ type pushNote struct {
 	Data  map[string]string
 }
 
-// Send gửi note tới mọi máy của uids; uids tối đa 30 (trần của truy vấn in),
-// phòng chạy tối đa roomMaxRunners người. Người đã tắt nhóm của note thì bỏ qua.
+// Send gửi note tới mọi máy của uids. Truy vấn in nhận tối đa 30 giá trị nên
+// đọc token theo từng lô 30 uid. Người đã tắt nhóm của note thì bỏ qua.
 func (s *PushService) Send(ctx context.Context, uids []string, note pushNote) error {
 	if len(uids) == 0 {
 		return nil
 	}
-	docs, err := s.db.Collection("pushTokens").Where("uid", "in", uids).Documents(ctx).GetAll()
-	if err != nil {
-		return err
+	var docs []*firestore.DocumentSnapshot
+	for chunk := range slices.Chunk(uids, pushInMax) {
+		got, err := s.db.Collection("pushTokens").Where("uid", "in", chunk).Documents(ctx).GetAll()
+		if err != nil {
+			return err
+		}
+		docs = append(docs, got...)
 	}
 	return s.sendDocs(ctx, docs, note)
 }
+
+// pushInMax là trần số giá trị của một truy vấn in trên Firestore.
+const pushInMax = 30
 
 // SendAll gửi note tới mọi máy đã đăng ký, trừ máy của except (người gây ra
 // sự kiện). Đọc hết pushTokens nên chỉ dùng cho thông báo chung cả club.

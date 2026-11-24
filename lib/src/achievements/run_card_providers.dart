@@ -270,7 +270,7 @@ RankCard? _rankCardFrom(
     : null;
 
 /// Thẻ BXH của một người trên một bảng. Ai đăng nhập cũng đọc được để thấy thẻ
-/// đã lật của top 10; nghe doc để chủ thẻ lật thì mọi người thấy ngay.
+/// đã lật của người trên bảng; nghe doc để chủ thẻ lật thì mọi người thấy ngay.
 final rankCardProvider = StreamProvider.autoDispose
     .family<RankCard?, ({String uid, String boardId})>((ref, key) {
       return FirebaseFirestore.instance

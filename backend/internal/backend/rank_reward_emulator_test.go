@@ -174,3 +174,36 @@ func TestEmulatorRankRewards(t *testing.T) {
 		t.Fatalf("người trúng hỏi liên hệ: %d %s", r.status, r.raw)
 	}
 }
+
+// Admin treo quà bốc thăm qua API lúc kỳ đang chạy: lưu kiểu, mốc, suất; JSON
+// không có fromRank, toRank để app cũ bỏ qua món này.
+func TestEmulatorRankRewardDrawAPI(t *testing.T) {
+	e := newAgentEnv(t)
+	db := e.store.db
+	e.deps.RankRewards = NewRankRewardService(db, NewTelegramLinkService(db, "threei_bot"))
+	e.srv = NewAPIServer(e.cfg, e.deps)
+	e.clock = time.Date(2026, 10, 28, 8, 0, 0, 0, vietnam)
+	path := "/v1/admin/rank-rewards/week_2026-10-26_run"
+	ao := map[string]any{"kind": "draw", "minScore": 15000, "slots": 2, "name": "Áo Kiprun", "icon": "shirt"}
+	r := e.call("an", "PUT", path, map[string]any{"giverUid": "binh", "items": []any{ao}}, "")
+	e.want(r, 200, "")
+	items, _ := r.body["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("quà sau lưu: %s", r.raw)
+	}
+	got := items[0].(map[string]any)
+	if got["kind"] != "draw" || number(got["minScore"]) != 15000 || number(got["slots"]) != 2 || got["fromRank"] != nil || got["toRank"] != nil {
+		t.Fatalf("món bốc thăm: %s", r.raw)
+	}
+	// Kỳ đang chạy: bớt suất là bớt quà.
+	e.want(e.call("an", "PUT", path, map[string]any{"giverUid": "binh", "items": []any{map[string]any{
+		"id": got["id"], "kind": "draw", "minScore": 15000, "slots": 1, "name": "Áo Kiprun", "icon": "shirt"}}}, ""), 409, "reward_shrink")
+	// App cũ chỉ gửi lại quà theo hạng nó hiểu: món bốc thăm mất, nên bị chặn.
+	e.want(e.call("an", "PUT", path, map[string]any{"giverUid": "binh", "items": []any{map[string]any{
+		"fromRank": 1, "toRank": 1, "name": "Tất", "icon": "socks"}}}, ""), 409, "reward_shrink")
+	doc := rankDoc(t, db, "rankRewards/week_2026-10-26_run")
+	stored := doc["items"].([]any)[0].(map[string]any)
+	if stored["kind"] != "draw" || number(stored["slots"]) != 2 {
+		t.Fatalf("doc sau hai lần bị chặn: %v", doc["items"])
+	}
+}

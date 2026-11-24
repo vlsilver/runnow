@@ -23,7 +23,8 @@ import (
 // Thẻ BXH: 12:00 giờ VN ngày đầu kỳ mới, backend chốt top 10 của kỳ vừa hết ở
 // ba bảng (Chạy·Đi bộ, Bước chân, Đạp xe), cả tuần lẫn tháng. Mỗi bảng là một
 // doc rankBoards/{boardId} cùng một thẻ users/{uid}/rankCards/{boardId} cho
-// từng người trong top 10, ghi chung một batch Create: bảng đã có thì cả batch
+// từng người trong top 10 và từng người trúng bốc thăm ngoài top, ghi chung
+// một batch Create: bảng đã có thì cả batch
 // gặp AlreadyExists, nên chạy lại hay hai task chạy cùng lúc đều không ghi đôi
 // và thẻ luôn khớp bảng. Số liệu tính lại từ stepDays và activities của đúng
 // kỳ, vì tới lúc chốt các doc leaderboard đã sang kỳ mới. Trễ 12 tiếng để buổi
@@ -271,18 +272,34 @@ func (s *RankCardService) writeBoard(ctx context.Context, r rankRange, sport ran
 	}
 	quotes := s.quotes(ctx, boardID, r, sport, period, ranked, len(top))
 	days := int(period.End.Sub(period.Start).Hours()/24 + 0.5)
+	// Bốc thăm ngay trước khi ghi bảng. Bảng đã ghi thì closePeriod bỏ qua,
+	// còn hai lần ghi cùng lúc thì Create của batch chỉ một lần thành công, nên
+	// kết quả bốc đã ghi không bị bốc lại.
+	items := rewards.assign(ranked, cryptoShuffle[int])
 	entries := make([]map[string]any, 0, len(top))
 	b := s.db.Batch()
 	winners := 0
-	for i, rm := range top {
+	for i, rm := range ranked {
+		item := items[i]
+		inTop := i < len(top)
+		if !inTop && item == nil {
+			continue
+		}
 		m := rm.member
 		entry := map[string]any{"uid": m.uid, "rank": rm.rank, "displayName": m.name, "avatarUrl": m.avatar, "score": rm.score}
-		item := rewards.itemFor(rm.rank)
 		if item != nil {
 			entry["reward"] = map[string]any{"itemId": item.ID, "name": item.Name, "icon": item.Icon}
 			winners++
 		}
+		// Người trúng bốc thăm ngoài top cũng vào entries, sau top: app chỉ cho
+		// mở và lật thẻ của người có tên trong entries.
 		entries = append(entries, entry)
+		var quote string
+		if inTop {
+			quote = quotes[i]
+		} else {
+			quote = rankTemplateQuote(r, sport, ranked, i)
+		}
 		card := map[string]any{
 			"boardId":      boardID,
 			"range":        string(r),
@@ -295,7 +312,7 @@ func (s *RankCardService) writeBoard(ctx context.Context, r rankRange, sport ran
 			"score":        rm.score,
 			"displayName":  m.name,
 			"stats":        rankStats(m, sport, days),
-			"quote":        quotes[i],
+			"quote":        quote,
 			"awardedAt":    firestore.ServerTimestamp,
 			"revealedAt":   nil,
 		}
@@ -321,12 +338,37 @@ func (s *RankCardService) writeBoard(ctx context.Context, r rankRange, sport ran
 	if err != nil {
 		return err
 	}
-	slog.InfoContext(ctx, "rank_card.closed", "board", boardID, "cards", len(top), "participants", len(ranked), "winners", winners)
+	slog.InfoContext(ctx, "rank_card.closed", "board", boardID, "cards", len(entries), "participants", len(ranked), "winners", winners)
+	logDraws(ctx, boardID, rewards, ranked, items)
 	if winners > 0 {
 		s.notifyWinners(ctx, boardID)
 	}
 	s.notifyTop(ctx, boardID, entries)
 	return nil
+}
+
+// logDraws ghi kết quả từng món bốc thăm sau khi bảng đã ghi: số người đủ mốc
+// trên cả bảng, số suất và số người trúng.
+func logDraws(ctx context.Context, boardID string, rewards *rankRewards, ranked []rankedMember, items []*RankRewardItem) {
+	if rewards == nil {
+		return
+	}
+	for k := range rewards.items {
+		it := &rewards.items[k]
+		if it.Kind != rankRewardDraw {
+			continue
+		}
+		eligible, won := 0, 0
+		for i, rm := range ranked {
+			if rm.score >= it.MinScore {
+				eligible++
+			}
+			if items[i] == it {
+				won++
+			}
+		}
+		slog.InfoContext(ctx, "rank_reward.draw", "board", boardID, "item", it.ID, "slots", it.Slots, "eligible", eligible, "won", won)
+	}
 }
 
 // notifyTop hẹn push top 3 cho từng người, cùng cách xử lý lỗi với notifyWinners.

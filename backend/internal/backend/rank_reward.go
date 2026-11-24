@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"log/slog"
+	"math"
 	"net/http"
 	"regexp"
 	"slices"
@@ -28,12 +29,24 @@ import (
 // Sửa quà theo kỳ: kỳ chưa bắt đầu thì sửa tự do; kỳ đang chạy thì chỉ thêm,
 // món đã treo giữ nguyên hạng và tên, vì người ta đang chạy vì món đó; hết kỳ
 // thì khoá, để quà lúc chốt đúng là quà người ta thấy lúc chạy.
+//
+// Món theo hạng trao cho hạng FromRank..ToRank. Món bốc thăm (Kind "draw")
+// trao Slots người bốc ngẫu nhiên trong số mọi người trên bảng, ở bất kỳ hạng
+// nào, đạt từ MinScore trở lên, theo đơn vị số của bảng: mét ở Chạy·Đi bộ và
+// Đạp xe, bước ở Bước chân. Người đã có quà theo hạng không vào lượt bốc, mỗi
+// thẻ một quà. Người trúng ngoài top 10 cũng được thẻ hạng và có tên ở cuối
+// entries của bảng.
 const (
-	rankRewardMaxItems     = 10
+	rankRewardMaxItems = 10
+	// rankDrawMaxSlots là tổng suất bốc thăm của một bảng. Mỗi suất là một
+	// thẻ thêm vào batch chốt bảng, nên chặn số vô lý từ admin.
+	rankDrawMaxSlots       = 20
 	rankRewardNameMaxRunes = 40
 	rankRewardMaxPhotos    = 5
 	rankRewardPushPath     = "/tasks/rank-reward-push"
 	rankRewardPushKind     = "rank_reward"
+
+	rankRewardDraw = "draw"
 
 	rankRewardUpcoming = "upcoming"
 	rankRewardRunning  = "running"
@@ -102,12 +115,17 @@ func (k rankBoardKey) state(now time.Time) string {
 	}
 }
 
-// RankRewardItem là một món quà cho các hạng FromRank..ToRank. Chung hạng thì
-// ai cũng nhận.
+// RankRewardItem là một món quà. Kind rỗng: cho các hạng FromRank..ToRank,
+// chung hạng thì ai cũng nhận. Kind "draw": bốc Slots người đạt MinScore.
+// Món bốc thăm không có fromRank, toRank trong JSON nên app cũ (chỉ hiểu quà
+// theo hạng) bỏ qua món đó thay vì vẽ sai hạng.
 type RankRewardItem struct {
 	ID       string   `json:"id"`
-	FromRank int      `json:"fromRank"`
-	ToRank   int      `json:"toRank"`
+	Kind     string   `json:"kind,omitempty"`
+	FromRank int      `json:"fromRank,omitempty"`
+	ToRank   int      `json:"toRank,omitempty"`
+	MinScore float64  `json:"minScore,omitempty"`
+	Slots    int      `json:"slots,omitempty"`
 	Name     string   `json:"name"`
 	Icon     string   `json:"icon"`
 	Photos   []string `json:"photos"`
@@ -151,11 +169,42 @@ func (r *rankRewards) itemFor(rank int) *RankRewardItem {
 		return nil
 	}
 	for i := range r.items {
-		if r.items[i].FromRank <= rank && rank <= r.items[i].ToRank {
+		if r.items[i].Kind == "" && r.items[i].FromRank <= rank && rank <= r.items[i].ToRank {
 			return &r.items[i]
 		}
 	}
 	return nil
+}
+
+// assign là món quà của từng người trên cả bảng, cùng thứ tự với ranked; nil
+// là không có quà. Quà theo hạng gán trước, rồi từng món bốc thăm lấy Slots
+// người chưa có quà và đạt MinScore, ở bất kỳ hạng nào. shuffle trộn chỉ số
+// ứng viên tại chỗ.
+func (r *rankRewards) assign(ranked []rankedMember, shuffle func([]int)) []*RankRewardItem {
+	out := make([]*RankRewardItem, len(ranked))
+	if r == nil {
+		return out
+	}
+	for i, rm := range ranked {
+		out[i] = r.itemFor(rm.rank)
+	}
+	for k := range r.items {
+		it := &r.items[k]
+		if it.Kind != rankRewardDraw {
+			continue
+		}
+		var pool []int
+		for i, rm := range ranked {
+			if out[i] == nil && rm.score >= it.MinScore {
+				pool = append(pool, i)
+			}
+		}
+		shuffle(pool)
+		for _, i := range pool[:min(it.Slots, len(pool))] {
+			out[i] = it
+		}
+	}
+	return out
 }
 
 func rankRewardsFrom(data map[string]any) *rankRewards {
@@ -165,7 +214,12 @@ func rankRewardsFrom(data map[string]any) *rankRewards {
 	out := &rankRewards{giverUID: stringValue(data["giverUid"]), giverName: stringValue(data["giverName"])}
 	for _, raw := range anyList(data["items"]) {
 		m, _ := raw.(map[string]any)
-		item := RankRewardItem{ID: stringValue(m["id"]), FromRank: int(number(m["fromRank"])), ToRank: int(number(m["toRank"])), Name: stringValue(m["name"]), Icon: stringValue(m["icon"]), Photos: []string{}}
+		item := RankRewardItem{
+			ID: stringValue(m["id"]), Kind: stringValue(m["kind"]),
+			FromRank: int(number(m["fromRank"])), ToRank: int(number(m["toRank"])),
+			MinScore: number(m["minScore"]), Slots: int(number(m["slots"])),
+			Name: stringValue(m["name"]), Icon: stringValue(m["icon"]), Photos: []string{},
+		}
 		for _, p := range anyList(m["photos"]) {
 			item.Photos = append(item.Photos, stringValue(p))
 		}
@@ -177,7 +231,13 @@ func rankRewardsFrom(data map[string]any) *rankRewards {
 func rankRewardItemsData(items []RankRewardItem) []any {
 	out := make([]any, 0, len(items))
 	for _, it := range items {
-		out = append(out, map[string]any{"id": it.ID, "fromRank": it.FromRank, "toRank": it.ToRank, "name": it.Name, "icon": it.Icon, "photos": it.Photos})
+		m := map[string]any{"id": it.ID, "name": it.Name, "icon": it.Icon, "photos": it.Photos}
+		if it.Kind == rankRewardDraw {
+			m["kind"], m["minScore"], m["slots"] = it.Kind, it.MinScore, it.Slots
+		} else {
+			m["fromRank"], m["toRank"] = it.FromRank, it.ToRank
+		}
+		out = append(out, m)
 	}
 	return out
 }
@@ -227,25 +287,45 @@ func NewRankRewardService(db *firestore.Client, links *TelegramLinkService) *Ran
 }
 
 // normalizeRankRewardItems kiểm và chuẩn hoá danh sách quà gửi lên: tên bỏ khoảng trắng hai
-// đầu, món mới được cấp id, hạng không chồng nhau, sắp theo hạng.
+// đầu, món mới được cấp id, hạng không chồng nhau, sắp theo hạng; món bốc thăm
+// đứng sau, giữ thứ tự gửi lên (thứ tự bốc).
 func normalizeRankRewardItems(boardID string, items []RankRewardItem) ([]RankRewardItem, error) {
 	if len(items) > rankRewardMaxItems {
 		return nil, errRankRewardInvalid
 	}
 	out := make([]RankRewardItem, 0, len(items))
 	ids := map[string]bool{}
+	slots := 0
 	for _, it := range items {
 		var ok bool
 		if it.ID, it.Name, it.Photos, ok = normalizeRewardItem(it.ID, it.Name, it.Icon, it.Photos, "rankRewards/"+boardID+"/", ids); !ok {
 			return nil, errRankRewardInvalid
 		}
-		if it.FromRank < 1 || it.FromRank > it.ToRank || it.ToRank > rankTopN {
+		switch it.Kind {
+		case "":
+			if it.FromRank < 1 || it.FromRank > it.ToRank || it.ToRank > rankTopN || it.MinScore != 0 || it.Slots != 0 {
+				return nil, errRankRewardInvalid
+			}
+		case rankRewardDraw:
+			// !(x > 0) loại luôn NaN; +Inf thì không ai đạt nên cũng loại.
+			if it.FromRank != 0 || it.ToRank != 0 || it.Slots < 1 || it.Slots > rankDrawMaxSlots || !(it.MinScore > 0) || math.IsInf(it.MinScore, 1) {
+				return nil, errRankRewardInvalid
+			}
+			if slots += it.Slots; slots > rankDrawMaxSlots {
+				return nil, errRankRewardInvalid
+			}
+		default:
 			return nil, errRankRewardInvalid
 		}
 		out = append(out, it)
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].FromRank < out[j].FromRank })
-	for i := 1; i < len(out); i++ {
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Kind != out[j].Kind {
+			return out[i].Kind == ""
+		}
+		return out[i].Kind == "" && out[i].FromRank < out[j].FromRank
+	})
+	for i := 1; i < len(out) && out[i].Kind == ""; i++ {
 		if out[i].FromRank <= out[i-1].ToRank {
 			return nil, errRankRewardInvalid
 		}
@@ -293,15 +373,17 @@ func newRankRewardID() string {
 	return hex.EncodeToString(b)
 }
 
-// keepsOld: mọi món cũ còn đủ, cùng hạng và tên. Món cũ chỉ được đổi icon,
-// ảnh; id gửi lên mà không có trong món cũ thì không hợp lệ.
+// keepsOld: mọi món cũ còn đủ, cùng kiểu, hạng, mốc và tên. Món cũ chỉ được
+// đổi icon, ảnh và thêm suất bốc; id gửi lên mà không có trong món cũ thì
+// không hợp lệ.
 func keepsOld(old *rankRewards, items []RankRewardItem) bool {
 	if old == nil {
 		return true
 	}
 	for _, o := range old.items {
 		i := slices.IndexFunc(items, func(it RankRewardItem) bool { return it.ID == o.ID })
-		if i < 0 || items[i].FromRank != o.FromRank || items[i].ToRank != o.ToRank || items[i].Name != o.Name {
+		if i < 0 || items[i].Kind != o.Kind || items[i].FromRank != o.FromRank || items[i].ToRank != o.ToRank ||
+			items[i].MinScore != o.MinScore || items[i].Slots < o.Slots || items[i].Name != o.Name {
 			return false
 		}
 	}
