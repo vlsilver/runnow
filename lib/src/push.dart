@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:myrun/src/runnow_api_client.dart';
+import 'package:myrun/src/territory/territory_widgets.dart'
+    show territoryLocation;
 
 /// Quyền thông báo của máy, gộp từ AuthorizationStatus.
 enum PushPermission { notAsked, granted, denied }
@@ -103,6 +105,11 @@ String? pushLocation(Map<String, dynamic> data) {
       contractId is String &&
       contractId.isNotEmpty) {
     return '/contracts/${Uri.encodeComponent(contractId)}';
+  }
+  // Bị chiếm ô thì mở màn Lãnh địa ở đúng chunk z13 bị chiếm.
+  final chunk = data['chunk'];
+  if (kind == 'territory_taken' && chunk is String && chunk.isNotEmpty) {
+    return territoryLocation(chunk: chunk);
   }
   final roomId = data['roomId'];
   if (kind is String &&

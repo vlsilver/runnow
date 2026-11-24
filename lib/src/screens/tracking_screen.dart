@@ -25,6 +25,7 @@ import 'package:myrun/src/rooms/run_room_repository.dart';
 import 'package:myrun/src/rooms/run_room_run_panel.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/runnow_api_client.dart';
+import 'package:myrun/src/territory/territory_widgets.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/tracking_draft_store.dart';
 import 'package:myrun/src/tracking_session.dart';
@@ -75,6 +76,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   Timer? _ticker;
   var _checkingPermission = false;
   var _saving = false;
+
+  /// Id buổi vừa lưu xong, để màn kết thúc hiện "+N ô" khi backend tính xong.
+  String? _savedActivityId;
   var _capturingPhoto = false;
   // Thông báo dưới đáy TỰ TẮT sau vài giây — không để dính panel "show mãi".
   // Mọi chỗ vẫn gán `_message = ...` như thường; setter tự hẹn giờ xoá.
@@ -498,6 +502,14 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         _DistanceReadout(distance: distance),
+                        if (_finished && _savedActivityId != null)
+                          if (ref.watch(firebaseUserProvider).value?.uid
+                              case final uid?)
+                            TerritoryResultChip(
+                              uid: uid,
+                              activityId: _savedActivityId!,
+                              padding: const EdgeInsets.only(top: 6),
+                            ),
                         const SizedBox(height: 14),
                         Row(
                           children: [
@@ -1127,6 +1139,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       if (!mounted) return;
       setState(() {
         _snapshot = finalSnapshot;
+        _savedActivityId = session.id;
         _message = !photosUploaded
             ? _message
             : switch (result.status) {
@@ -1174,6 +1187,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       _positionSubscription = null;
       _session = null;
       _snapshot = null;
+      _savedActivityId = null;
       _gpsReadyAnchor = null;
       _lastWarmupDebug = null;
       _lastLivePublishedAt = null;

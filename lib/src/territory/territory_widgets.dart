@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/territory/territory_models.dart';
 import 'package:myrun/src/territory/territory_repository.dart';
 import 'package:myrun/src/theme.dart';
 
@@ -79,6 +80,79 @@ class TerritoryHomeRow extends ConsumerWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Chữ trên chip kết quả buổi: "+N ô", và "chiếm của Bình" khi có ô chiếm
+/// được. Nhiều người bị chiếm thì ghi người mất nhiều ô nhất, kèm "+k".
+({String gain, String? takenFrom}) territoryResultText(
+  TerritoryResult result,
+  Map<String, ({String name, String? avatarUrl})> names,
+) {
+  final victims = result.taken.entries.toList()
+    ..sort((a, b) {
+      final byCount = b.value.compareTo(a.value);
+      return byCount != 0 ? byCount : a.key.compareTo(b.key);
+    });
+  String? takenFrom;
+  if (victims.isNotEmpty) {
+    final first = names[victims.first.key]?.name ?? territoryDefaultName;
+    final more = victims.length - 1;
+    takenFrom = more == 0 ? 'chiếm của $first' : 'chiếm của $first +$more';
+  }
+  return (gain: '+${result.total} ô', takenFrom: takenFrom);
+}
+
+/// Chip "+N ô" của một buổi chạy, chạm mở màn Lãnh địa ở vùng buổi đó chạy
+/// qua, kể cả buổi của người khác. Backend ghi kết quả
+/// vài giây sau khi lưu buổi; chưa có thì không hiện gì, không chờ.
+class TerritoryResultChip extends ConsumerWidget {
+  const TerritoryResultChip({
+    required this.uid,
+    required this.activityId,
+    this.padding = EdgeInsets.zero,
+    super.key,
+  });
+
+  final String uid;
+  final String activityId;
+
+  /// Chỉ áp khi chip hiện, để chỗ đặt chip không dôi khoảng trống.
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!(ref.watch(territoryEnabledProvider).value ?? false)) {
+      return const SizedBox.shrink();
+    }
+    final result = ref
+        .watch(
+          activityTerritoryResultProvider((uid: uid, activityId: activityId)),
+        )
+        .value;
+    if (result == null || result.total == 0) return const SizedBox.shrink();
+    final text = territoryResultText(result, ref.watch(territoryNamesProvider));
+    final palette = context.runNowPalette;
+    return Padding(
+      padding: padding,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: ActionChip(
+          avatar: Icon(
+            Icons.grid_view_rounded,
+            size: 18,
+            color: palette.accent,
+          ),
+          label: Text(
+            [text.gain, ?text.takenFrom].join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          onPressed: () =>
+              context.push(territoryLocation(chunk: result.chunk?.id)),
         ),
       ),
     );

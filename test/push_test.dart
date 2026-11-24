@@ -87,6 +87,20 @@ void main() {
     expect(pushLocation({'kind': 'gift_given'}), isNull);
   });
 
+  test('bị chiếm ô thì mở màn Lãnh địa ở đúng chunk', () {
+    expect(
+      pushLocation({
+        'kind': 'territory_taken',
+        'chunk': '6523_3849',
+        'uid': 'binh',
+        'activityId': 'a1',
+      }),
+      '/lanh-dia?chunk=6523_3849',
+    );
+    expect(pushLocation({'kind': 'territory_taken'}), isNull);
+    expect(pushLocation({'kind': 'territory_taken', 'chunk': ''}), isNull);
+  });
+
   late List<http.Request> requests;
   late RunNowApiClient api;
 

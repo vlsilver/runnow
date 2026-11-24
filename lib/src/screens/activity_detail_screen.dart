@@ -20,6 +20,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
 import 'package:myrun/src/screens/route_replay_screen.dart';
+import 'package:myrun/src/territory/territory_widgets.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/activity_overview.dart';
@@ -160,6 +161,12 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                           ),
                         ),
                       ActivityOverview(detail: item, owner: owner),
+                      if (heartOwner != null)
+                        TerritoryResultChip(
+                          uid: heartOwner,
+                          activityId: widget.activityId,
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        ),
                       if (heart != null)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(10, 8, 16, 0),
