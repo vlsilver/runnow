@@ -11,7 +11,6 @@ import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/club_runs.dart';
 import 'package:myrun/src/games/game_providers.dart';
 import 'package:myrun/src/hearts.dart';
-import 'package:myrun/src/home_digest.dart';
 import 'package:myrun/src/live_cheers.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
@@ -161,7 +160,6 @@ Future<_Fetches> _pumpHome(
         firebaseUserProvider.overrideWith(
           (ref) => Stream.value(uid == null ? null : MockUser(uid: uid)),
         ),
-        homeDigestProvider.overrideWith((ref) => Stream.value(null)),
         membersProvider.overrideWith((ref) => Stream.value(const [])),
         myActiveContractsProvider.overrideWith(
           (ref) => Stream.value(const <RunContract>[]),
