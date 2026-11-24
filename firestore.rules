@@ -355,6 +355,27 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Lãnh địa: chỉ backend ghi. Người đăng nhập đọc được ô và số ô của mọi
+    // người; chỉ hồ sơ public mới có ô (docs/territory_design.md).
+    match /territoryChunks/{chunkId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /territoryOwners/{userId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    // "+N ô" của từng buổi, bản nhỏ để app không phải nghe cả doc buổi.
+    match /territoryResults/{resultId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    // Cờ bật lãnh địa: app đọc config/territory.enabled, cùng cờ backend dùng.
+    match /config/territory {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     // Quà chủ kèo treo cho kèo công khai. Chỉ ghi qua API, nơi kiểm luật "có
     // người tham gia thì chỉ thêm quà" và chia quà lúc chốt.
     match /contractGifts/{contractId} {

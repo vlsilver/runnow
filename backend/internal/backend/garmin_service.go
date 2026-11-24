@@ -507,6 +507,9 @@ func (s *GarminService) HandlePush(ctx context.Context, push garminPush) error {
 		for k, v := range detail {
 			doc[k] = v
 		}
+		if len(anyList(detail["routePoints"])) > 0 {
+			doc["routeSavedAt"] = firestore.ServerTimestamp
+		}
 		// Trùng với một buổi Strava đang có thì đánh dấu để leaderboard không đếm đôi.
 		if a.DistanceInMeters >= 500 {
 			dupID, err := s.activities.preferredStravaDuplicate(ctx, uid, doc)

@@ -1,6 +1,15 @@
 {
   "indexes": [
     {
+      "collectionGroup": "activities",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "territory.counted", "order": "ASCENDING" },
+        { "fieldPath": "territory.chunks", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "territory.endedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "games",
       "queryScope": "COLLECTION",
       "fields": [
@@ -126,6 +135,9 @@
         { "order": "ASCENDING", "queryScope": "COLLECTION" },
         { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
       ]
-    }
+    },
+    { "collectionGroup": "activities", "fieldPath": "territory.cells", "indexes": [] },
+    { "collectionGroup": "territoryChunks", "fieldPath": "cells", "indexes": [] },
+    { "collectionGroup": "territoryPushes", "fieldPath": "expireAt", "ttl": true, "indexes": [] }
   ]
 }

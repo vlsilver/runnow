@@ -30,6 +30,9 @@ type AccountService struct {
 	managed *ManagedBotService
 	// garmin gỡ đăng ký trên Garmin trước khi xoá; nil thì chỉ xoá bản ghi.
 	garmin *GarminService
+	// territory hẹn tính lại các chunk của người bị xoá; nil thì bỏ qua và
+	// việc hằng ngày của lãnh địa dọn sau.
+	territory territoryTasks
 }
 
 func NewAccountService(db *firestore.Client, authClient *auth.Client, oauth *OAuthService, bucket *gcs.BucketHandle) *AccountService {
@@ -49,6 +52,12 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 	}
 	athleteID := s.stravaAthleteID(ctx, uid)
 	garminUserID, err := garminUserIDOf(ctx, s.db, uid)
+	if err != nil {
+		return err
+	}
+	// Đọc trước mọi bước xoá: xoá đứt giữa chừng thì lần xoá lại vẫn còn doc
+	// territoryOwners để biết chunk nào phải tính lại.
+	territoryChunks, err := ownedTerritoryChunks(ctx, s.db, uid)
 	if err != nil {
 		return err
 	}
@@ -101,6 +110,16 @@ func (s *AccountService) Delete(ctx context.Context, uid string) error {
 	// subcollection không tự mất khi xoá document cha.
 	if err := s.deleteDocumentTree(ctx, s.db.Collection("users").Doc(uid)); err != nil {
 		return fmt.Errorf("delete user tree: %w", err)
+	}
+	// Sau khi xoá các buổi: lần tính lại mới thấy buổi đã mất. Doc owners xoá
+	// sau cùng; lần tính lại có tạo lại doc rỗng thì việc hằng ngày dọn.
+	if s.territory != nil && len(territoryChunks) > 0 {
+		if _, err := s.territory.Publish(ctx, PublishTask{Queue: QueueTerritory, HandlerPath: territoryRebuildPath, Payload: map[string]any{"chunks": territoryChunks}}); err != nil {
+			return fmt.Errorf("enqueue territory rebuild: %w", err)
+		}
+	}
+	if _, err := s.db.Collection("territoryOwners").Doc(uid).Delete(ctx); err != nil {
+		return fmt.Errorf("delete territory owner: %w", err)
 	}
 	// Bot cá nhân: hồ sơ, bộ nhớ và chat riêng của mọi kênh (dm, tgdm).
 	if err := s.deleteDocumentTree(ctx, s.db.Collection("agents").Doc(uid)); err != nil {
@@ -291,6 +310,7 @@ func (s *AccountService) deleteOwnedDocuments(ctx context.Context, uid, athleteI
 		s.db.Collection("liveSessions").Where("ownerUid", "==", uid),
 		s.db.Collection("pushTokens").Where("uid", "==", uid),
 		s.db.Collection("activityTombstones").Where("uid", "==", uid),
+		s.db.Collection("territoryResults").Where("uid", "==", uid),
 		// Liên kết Telegram (L1). Đang trong ván thì người chơi mất tgLinks và bị
 		// tính là đã rời PSC ở mốc chốt kế tiếp (R33).
 		s.db.Collection("tgLinks").Where("uid", "==", uid),

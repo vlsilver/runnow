@@ -59,5 +59,10 @@ func (s *ProfileService) Update(ctx context.Context, uid string, input ProfileUp
 		Payload: map[string]any{"uid": uid, "cause": "profile-update"},
 		TaskID:  StableTaskID("profile-derived", map[string]any{"uid": uid, "nickname": nickname, "visibility": input.Visibility, "avatar": avatarIdentity}),
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	// Riêng lãnh địa: task trên trùng tên khi đổi qua lại visibility trong một
+	// giờ và bị Cloud Tasks gộp, mà ô của người vừa private phải mất ngay.
+	return enqueueTerritorySync(ctx, s.tasks.Publish, uid, "profile-"+input.Visibility)
 }

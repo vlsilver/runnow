@@ -35,6 +35,7 @@ type Dependencies struct {
 	RunCards       *RunCardStore
 	RunRooms       *RunRoomStore
 	Push           *PushService
+	Territory      *TerritoryService
 	// Voice ký token nói chuyện trong phòng chạy; Enabled() false khi chưa
 	// cấu hình LiveKit.
 	Voice VoiceTokens
@@ -116,6 +117,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 	d.Webhook = NewWebhookService(db, tasks, config.WebhookVerifyToken, config.StravaSubscriptionID)
 	d.Activities = NewActivityService(db, gateway, tokens, tasks, telegram, config.PublicBaseURL, config.WebBaseURL)
 	d.Derived = NewDerivedDataService(db)
+	d.Territory = NewTerritoryService(db, tasks, d.Push)
 	d.PeriodStats = NewPeriodStatsService(db)
 	d.JourneyCards = NewJourneyCardService(db)
 	d.RankCards = NewRankCardService(db, nil)
@@ -138,6 +140,7 @@ func NewDependencies(ctx context.Context, config Config) (*Dependencies, error) 
 	}
 	d.Garmin = NewGarminService(db, NewGarminGateway(config.GarminClientID, config.GarminClientSecret), d.Activities, config)
 	d.Accounts = NewAccountService(db, authClient, d.OAuth, bucket)
+	d.Accounts.territory = tasks
 	d.Accounts.garmin = d.Garmin
 	// 3i là bot quản lý của mọi MyBot trên Telegram. Trên api telegram không
 	// có token: api chỉ ghi Firestore và hẹn task, task chạy trên bot.

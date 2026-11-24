@@ -88,7 +88,7 @@ ensure_queue() {
       --location "$REGION" \
       --max-dispatches-per-second "$rate" \
       --max-concurrent-dispatches "$concurrency" \
-      --max-attempts 8 \
+      --max-attempts "${QUEUE_MAX_ATTEMPTS:-8}" \
       "$@" \
       --project "$PROJECT_ID"
   fi
@@ -254,6 +254,11 @@ ensure_queue bot-inbound 10 6
 # ván không trễ lâu khi Telegram lỗi tạm.
 ensure_queue game-inbound 10 2 --min-backoff 2s --max-backoff 60s
 fi # end setup hạ tầng (is_full_deploy)
+# Lãnh địa: một luồng để các lần sync không ghi đè nhau; thử lại không giới
+# hạn với backoff dài, để một lần deploy worker không làm rớt task. Ngoài khối
+# full deploy vì api và worker publish vào queue này ngay khi lên bản mới;
+# ensure_queue chỉ tạo khi chưa có nên chạy mỗi lần deploy cũng vô hại.
+QUEUE_MAX_ATTEMPTS=-1 ensure_queue territory 5 1 --min-backoff 10s --max-backoff 600s
 require_secret STRAVA_CLIENT_SECRET
 require_secret STRAVA_WEBHOOK_VERIFY_TOKEN
 # Telegram thông báo hoạt động là tính năng tuỳ chọn — chỉ đòi hỏi secret

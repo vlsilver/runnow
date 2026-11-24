@@ -89,6 +89,9 @@ func (s *ActivityService) SaveTracked(ctx context.Context, uid string, raw map[s
 	ref := s.db.Collection("users").Doc(uid).Collection("activities").Doc(activityID)
 	next["trackingSavedAt"] = firestore.ServerTimestamp
 	next["updatedAt"] = firestore.ServerTimestamp
+	if rp, ok := next["routePoints"].([]any); ok && len(rp) > 0 {
+		next["routeSavedAt"] = firestore.ServerTimestamp
+	}
 	if _, err = ref.Set(ctx, next, firestore.MergeAll); err != nil {
 		return TrackedActivityResult{}, err
 	}
@@ -759,6 +762,9 @@ func (s *ActivityService) fetchAndUpsert(ctx context.Context, uid, activityID st
 		for key, value := range normalizeStreams(streams, activity.StartDate) {
 			next[key] = value
 		}
+		if rp, ok := next["routePoints"].([]map[string]any); ok && len(rp) > 0 {
+			next["routeSavedAt"] = firestore.ServerTimestamp
+		}
 	}
 	next["detailHydratedAt"] = firestore.ServerTimestamp
 	next["updatedAt"] = firestore.ServerTimestamp
@@ -799,6 +805,11 @@ func (s *ActivityService) fetchAndUpsert(ctx context.Context, uid, activityID st
 	}
 	if affectsDerived {
 		return s.enqueueDerived(ctx, uid, "activity-"+activityID+"-"+itoa64(eventTime))
+	}
+	// Hydrate không đổi tóm tắt nên không qua derived, mà lãnh địa cần tuyến
+	// có giờ vừa về.
+	if includeStreams {
+		return enqueueTerritorySync(ctx, s.tasks.Publish, uid, "hydrate-"+activityID)
 	}
 	return nil
 }

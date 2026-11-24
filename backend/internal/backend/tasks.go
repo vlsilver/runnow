@@ -25,6 +25,9 @@ const (
 	QueueNotify      QueueName = "notifications"
 	QueueBotInbound  QueueName = "bot-inbound"
 	QueueGameInbound QueueName = "game-inbound"
+	// QueueTerritory là queue một luồng của lãnh địa: mọi task sync, tính lại
+	// chunk và push xếp hàng ở đây để không ghi đè nhau.
+	QueueTerritory QueueName = "territory"
 )
 
 type PublishTask struct {
@@ -41,7 +44,7 @@ type TaskPublisher struct {
 }
 
 func NewTaskPublisher(client *cloudtasks.Client, c Config) *TaskPublisher {
-	return &TaskPublisher{client: client, project: c.ProjectID, region: c.Region, workerURL: c.WorkerBaseURL, botURL: c.BotBaseURL, serviceAccount: c.TaskInvokerAccount, queues: map[QueueName]string{QueueEvents: c.EventsQueue, QueueBackfill: c.BackfillQueue, QueueDerived: c.DerivedQueue, QueueNotify: c.NotifyQueue, QueueBotInbound: c.BotInboundQueue, QueueGameInbound: c.GameInboundQueue}}
+	return &TaskPublisher{client: client, project: c.ProjectID, region: c.Region, workerURL: c.WorkerBaseURL, botURL: c.BotBaseURL, serviceAccount: c.TaskInvokerAccount, queues: map[QueueName]string{QueueEvents: c.EventsQueue, QueueBackfill: c.BackfillQueue, QueueDerived: c.DerivedQueue, QueueNotify: c.NotifyQueue, QueueBotInbound: c.BotInboundQueue, QueueGameInbound: c.GameInboundQueue, QueueTerritory: c.TerritoryQueue}}
 }
 
 // targetURL chọn service đích cho một queue. Mặc định worker; các queue của

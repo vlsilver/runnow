@@ -72,10 +72,12 @@ func ownerOf(passes []territoryPass, at time.Time, window time.Duration) (cellOw
 }
 
 // territoryResult là "+N ô" của một buổi: Gained là ô trống trước buổi mà
-// buổi làm chủ nhân được, Taken là ô lấy của từng người.
+// buổi làm chủ nhân được, Taken là ô lấy của từng người. TakenCells ghi ô nào
+// lấy của ai, để push lọc người chạy cùng theo từng ô; không lưu xuống DB.
 type territoryResult struct {
-	Gained int
-	Taken  map[string]int
+	Gained     int
+	Taken      map[string]int
+	TakenCells map[string]string
 }
 
 // resultFor tính kết quả của buổi x theo thời điểm của chính nó. Với mỗi ô của
@@ -86,7 +88,7 @@ type territoryResult struct {
 // cùng một người không bị đếm đôi. others là lượt qua của mọi buổi đã biết ở
 // từng ô; bản ghi của chính x trong đó tự bị loại vì không nhỏ hơn x.
 func resultFor(x territoryPass, cells map[string]int, others map[string][]territoryPass, window time.Duration) territoryResult {
-	res := territoryResult{Taken: map[string]int{}}
+	res := territoryResult{Taken: map[string]int{}, TakenCells: map[string]string{}}
 	for cell, meters := range cells {
 		before := make([]territoryPass, 0, len(others[cell]))
 		for _, p := range others[cell] {
@@ -106,6 +108,7 @@ func resultFor(x territoryPass, cells map[string]int, others map[string][]territ
 			res.Gained++
 		case prev.UID != x.UID:
 			res.Taken[prev.UID]++
+			res.TakenCells[cell] = prev.UID
 		}
 	}
 	return res

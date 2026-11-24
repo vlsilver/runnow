@@ -1237,6 +1237,7 @@ func (s *Server) workerRoutes() {
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	}))
+	s.territoryRoutes()
 	s.route("POST /tasks/rebuild-derived-data", func(w http.ResponseWriter, r *http.Request) error {
 		var task struct{ UID, Cause string }
 		if decodeJSON(r, &task) != nil || task.UID == "" || task.Cause == "" {
@@ -1262,6 +1263,11 @@ func (s *Server) workerRoutes() {
 		}
 		// Vừa có buổi chạy mới thì tick luôn buổi giáo án của hôm đó.
 		if _, err := MarkPlanSessionsForUser(r.Context(), s.deps.Firestore, task.UID, now); err != nil {
+			return err
+		}
+		// Mọi đường đổi buổi chạy hay hồ sơ đều đi qua task này, kể cả lần chạy
+		// hằng ngày cho mọi member, nên lãnh địa móc vào đây một chỗ.
+		if err := enqueueTerritorySync(r.Context(), s.enqueueTask(), task.UID, task.Cause); err != nil {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true, "cause": task.Cause})
@@ -1330,6 +1336,13 @@ func (s *Server) workerRoutes() {
 				return err
 			}
 			enqueued++
+		}
+		// Sau vòng fan-out: queue territory lỗi thì refresh BXH vẫn đã chạy. TaskID
+		// theo ngày để chạy lại job trong ngày không nhân đôi.
+		if publish := s.enqueueTask(); publish != nil {
+			if _, err := publish(r.Context(), PublishTask{Queue: QueueTerritory, HandlerPath: territoryDailyPath, Payload: map[string]any{"day": dateKey(time.Now())}, TaskID: "territory-daily-" + dateKey(time.Now())}); err != nil {
+				return err
+			}
 		}
 		// Khoe bù thẻ cho mọi user ngay tại đây chứ không trông vào task ở
 		// trên: chạy lại job trong ngày thì task trùng tên bị Cloud Tasks bỏ

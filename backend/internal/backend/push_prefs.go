@@ -27,6 +27,7 @@ var pushGroups = []pushGroup{
 	{ID: "gift", Label: "Quà: trúng quà, quà đã được trao", kinds: []string{"rank_reward", "contract_gift", "gift_"}},
 	{ID: "room", Label: "Phòng chạy: xin vào, được nhận, sắp tới giờ", kinds: []string{"room_"}},
 	{ID: "game", Label: "Ma Sói: ván bắt đầu", kinds: []string{"game_"}},
+	{ID: "territory", Label: "Lãnh địa: bị chiếm ô", kinds: []string{"territory_"}},
 }
 
 // pushGroupOf trả nhóm của một kind; rỗng khi kind không thuộc nhóm nào, tức
@@ -63,8 +64,17 @@ func (s *PushService) Prefs(ctx context.Context, uid string) (PushPrefsView, err
 		return PushPrefsView{}, err
 	}
 	off := stringList(data["off"])
+	// Nhóm Lãnh địa chỉ hiện khi tính năng đã bật, để app chưa có màn không
+	// thấy công tắc vô nghĩa.
+	territory, err := loadTerritoryConfig(ctx, s.db)
+	if err != nil {
+		return PushPrefsView{}, err
+	}
 	view := PushPrefsView{Groups: make([]PushPrefItem, 0, len(pushGroups))}
 	for _, g := range pushGroups {
+		if g.ID == "territory" && !territory.Enabled {
+			continue
+		}
 		view.Groups = append(view.Groups, PushPrefItem{ID: g.ID, Label: g.Label, On: !slices.Contains(off, g.ID)})
 	}
 	return view, nil

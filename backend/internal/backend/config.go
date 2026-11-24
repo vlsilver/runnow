@@ -41,6 +41,7 @@ type Config struct {
 	NotifyQueue           string
 	BotInboundQueue       string
 	GameInboundQueue      string
+	TerritoryQueue        string
 	TelegramBotToken      string
 	TelegramChatID        string
 	StorageBucket         string
@@ -106,6 +107,7 @@ func LoadConfig() (Config, error) {
 		NotifyQueue:      env("NOTIFY_QUEUE", "notifications"),
 		BotInboundQueue:  env("BOT_INBOUND_QUEUE", "bot-inbound"),
 		GameInboundQueue: env("GAME_INBOUND_QUEUE", ""), // rỗng: webhook bỏ qua update thành viên của Ma Sói
+		TerritoryQueue:   env("TERRITORY_QUEUE", "territory"),
 		TelegramBotToken: env("TELEGRAM_BOT_TOKEN", ""), TelegramChatID: env("TELEGRAM_CHAT_ID", ""),
 		AllowedWebOrigins: map[string]struct{}{},
 	}
