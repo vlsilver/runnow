@@ -7,6 +7,7 @@ import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/territory/territory_grid.dart';
 import 'package:myrun/src/territory/territory_models.dart';
 import 'package:myrun/src/territory/territory_repository.dart';
+import 'package:myrun/src/territory/territory_share.dart';
 import 'package:myrun/src/territory/territory_widgets.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
@@ -32,7 +33,10 @@ class TerritoryScreen extends ConsumerWidget {
     final flag = ref.watch(territoryEnabledProvider);
     final enabled = flag.value ?? false;
     return Scaffold(
-      appBar: AppBar(title: const Text('Lãnh địa')),
+      appBar: AppBar(
+        title: const Text('Lãnh địa'),
+        actions: [if (enabled) const _ShareButton()],
+      ),
       body: switch (flag) {
         AsyncValue(hasValue: true) when enabled => _body(ref),
         AsyncValue(hasValue: true) => const Center(
@@ -225,6 +229,61 @@ class _CellSheet extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Khoe lãnh địa: đọc các ô của mình quanh chỗ giữ nhiều ô nhất rồi mở sheet
+/// thẻ.
+/// Chưa có ô nào thì không có nút.
+class _ShareButton extends ConsumerStatefulWidget {
+  const _ShareButton();
+
+  @override
+  ConsumerState<_ShareButton> createState() => _ShareButtonState();
+}
+
+class _ShareButtonState extends ConsumerState<_ShareButton> {
+  var _loading = false;
+
+  Future<void> _share(String uid, TerritoryOwner owner, String name) async {
+    setState(() => _loading = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final cells = await ref
+          .read(territoryRepositoryProvider)
+          .fetchOwnedCells(uid, territoryShareChunks(owner));
+      if (!mounted) return;
+      await showTerritoryShare(
+        context,
+        name: name,
+        cellCount: owner.cellCount,
+        cells: cells,
+      );
+    } catch (error) {
+      debugPrint('khoe lãnh địa lỗi: $error');
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Chưa khoe được lãnh địa')),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = ref.watch(firebaseUserProvider).value?.uid;
+    final owner = ref.watch(myTerritoryProvider).value;
+    final name =
+        ref.watch(userProfileProvider).value?.displayName ??
+        territoryDefaultName;
+    if (uid == null || owner == null || owner.cellCount == 0) {
+      return const SizedBox.shrink();
+    }
+    return IconButton(
+      onPressed: _loading ? null : () => _share(uid, owner, name),
+      tooltip: 'Khoe lãnh địa',
+      icon: const Icon(Icons.ios_share),
     );
   }
 }

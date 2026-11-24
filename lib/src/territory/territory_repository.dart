@@ -24,6 +24,22 @@ class TerritoryRepository {
       .snapshots()
       .map((doc) => TerritoryOwner.fromMap(doc.data()));
 
+  /// Các ô [uid] đang giữ trong [chunks], đọc một lần cho thẻ khoe.
+  Future<List<TileXY>> fetchOwnedCells(
+    String uid,
+    Iterable<TileXY> chunks,
+  ) async {
+    final docs = await Future.wait([
+      for (final chunk in chunks)
+        _firestore.collection('territoryChunks').doc(chunk.id).get(),
+    ]);
+    return [
+      for (final doc in docs)
+        for (final cell in parseTerritoryCells(doc.data()))
+          if (cell.ownerUid == uid) cell.tile,
+    ];
+  }
+
   /// Kết quả lãnh địa của một buổi, đọc doc nhỏ `territoryResults` thay vì
   /// doc buổi (tới 800 KB vì có tuyến). Backend ghi vài giây sau khi lưu buổi,
   /// và ghi lại khi buổi đổi từ không được tính sang được tính, nên nghe tiếp.

@@ -1323,7 +1323,7 @@ abstract final class RunNowReplaySkyTokens {
 }
 
 /// Màu của lãnh địa. Ô người khác là tông trung tính để ô của mình (màu chính
-/// của theme) nổi lên.
+/// của theme) nổi lên; thẻ khoe luôn nền tối.
 abstract final class RunNowTerritoryTokens {
   static const otherOwners = <Color>[
     Color(0xFF8E9AAF),
@@ -1333,4 +1333,7 @@ abstract final class RunNowTerritoryTokens {
     Color(0xFF96887A),
     Color(0xFF6F7F91),
   ];
+  static const posterBackground = Color(0xFF111316);
+  static const posterInk = Color(0xFFF2F1ED);
+  static const posterMuted = Color(0xFF9A968F);
 }
