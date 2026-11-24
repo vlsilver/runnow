@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,6 +26,7 @@ type startEnv struct {
 	*apiHarness
 	tg  *fakeTelegram
 	bot http.Handler
+	fcm *fakePushSender
 
 	mu         sync.Mutex
 	tasks      []PublishTask
@@ -39,8 +41,14 @@ func newStartEnv(t *testing.T) *startEnv {
 	e := &startEnv{apiHarness: h, tg: newFakeTelegram(t)}
 	h.cfg.GameInboundQueue = "game-inbound"
 	h.deps.EnqueueTask = e.publish
+	// Start chỉ mở trong pha Ngày, nên giữ giờ giữa trưa cho test khỏi phụ thuộc lúc chạy.
+	local := time.Now().In(vietnam)
+	noon := time.Date(local.Year(), local.Month(), local.Day(), 12, 0, 0, 0, vietnam)
+	h.deps.Now = func() time.Time { return noon }
 	h.srv = NewAPIServer(h.cfg, h.deps)
-	e.bot = NewBotServer(Config{GameInboundQueue: "game-inbound"}, &Dependencies{Firestore: db, Games: h.store, TelegramLinks: h.deps.TelegramLinks, Telegram: e.tg.service("-100psc"), EnqueueTask: e.publish})
+	push, fcm := newFakePush(db)
+	e.fcm = fcm
+	e.bot = NewBotServer(Config{GameInboundQueue: "game-inbound"}, &Dependencies{Push: push, Firestore: db, Games: h.store, TelegramLinks: h.deps.TelegramLinks, Telegram: e.tg.service("-100psc"), EnqueueTask: e.publish})
 	setConfig(t, h, map[string]any{"adminUids": []any{"boss"}})
 	return e
 }
@@ -472,7 +480,7 @@ func TestEmulatorGameExtend(t *testing.T) {
 	}
 
 	// Sang trial (chốt 22h, đêm sau khoá 0h): chỉ còn dời được 60 phút.
-	g.advance(time.Date(2026, 10, 16, 17, 0, 0, 0, vietnam))
+	g.advance(time.Date(2026, 10, 16, 20, 0, 0, 0, vietnam))
 	if p := g.state().Phase; p != "trial" {
 		t.Fatalf("phase = %s", p)
 	}
@@ -609,5 +617,181 @@ func TestEmulatorGameStartDealFailedReverts(t *testing.T) {
 	se, _ := e.game(id)["startError"].(map[string]any)
 	if rec.Code != 200 || out.Result != "reverted" || se["code"] != "deal_failed" || e.game(id)["status"] != gameRegistering {
 		t.Fatalf("%d %s, startError %v", rec.Code, rec.Body, se)
+	}
+}
+
+// Ván không Telegram: người chưa liên kết vẫn đăng ký, Start không hỏi Telegram
+// và không loại ai, mọi tin của ván bỏ qua với lý do no_telegram_game.
+func TestEmulatorGameWithoutTelegram(t *testing.T) {
+	e := newStartEnv(t)
+	r := e.call("boss", "POST", "/v1/games", map[string]any{"roles": map[string]bool{"cupid": false}, "threadId": 42, "settings": map[string]any{"telegram": false}}, "")
+	e.want(r, 201, "")
+	id := r.body["id"].(string)
+	if g := e.game(id); g["chatId"] != "" || g["threadId"] != int64(0) {
+		t.Fatalf("ván không Telegram vẫn có chat: %v / %v", g["chatId"], g["threadId"])
+	}
+	for i := 1; i <= 10; i++ {
+		e.want(e.call(userOf(i), "POST", "/v1/games/"+id+"/registration", nil, ""), 200, "")
+	}
+	d := e.call(userOf(1), "GET", "/v1/games/"+id, nil, "")
+	e.want(d, 200, "")
+	if reqs := d.body["requirements"].([]any); len(reqs) != 1 || reqs[0].(map[string]any)["key"] != "app_version" {
+		t.Fatalf("requirements = %v", reqs)
+	}
+
+	r = e.call("boss", "POST", "/v1/games/"+id+"/start", nil, "")
+	e.want(r, 202, "")
+	rec := e.runTask(e.tasksTo("/tasks/game-start")[0])
+	var out StartOutcome
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if rec.Code != 200 || out.Result != "started" || out.Players != 10 || len(out.Excluded) != 0 {
+		t.Fatalf("game-start: %d %s", rec.Code, rec.Body)
+	}
+	if n := len(e.tg.Calls("getChatMember")); n != 0 {
+		t.Fatalf("ván không Telegram vẫn hỏi getChatMember %d lần", n)
+	}
+	for _, task := range e.tasksTo("/tasks/game-flush") {
+		if rec := e.runTask(task); rec.Code != 200 {
+			t.Fatalf("game-flush: %d %s", rec.Code, rec.Body)
+		}
+	}
+	if n := len(e.tg.Calls("sendMessage")); n != 0 {
+		t.Fatalf("ván không Telegram vẫn gửi %d tin", n)
+	}
+	docs, err := e.store.db.Collection("games").Doc(id).Collection("outbox").Documents(context.Background()).GetAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(docs) == 0 {
+		t.Fatal("không có tin nào trong outbox để kiểm")
+	}
+	for _, doc := range docs {
+		if doc.Data()["status"] != outboxSkipped || doc.Data()["skipReason"] != "no_telegram_game" {
+			t.Fatalf("outbox %s = %v", doc.Ref.ID, doc.Data())
+		}
+	}
+}
+
+// Ngoài pha Ngày thì xem trước báo lý do, Start bị từ chối và ván vẫn ở đăng ký.
+func TestEmulatorGameStartClosedOutsideDayPhase(t *testing.T) {
+	e := newStartEnv(t)
+	id := e.createGame()
+	e.register(id, 1, 10)
+	night := time.Date(2026, 10, 15, 23, 0, 0, 0, vietnam)
+	e.deps.Now = func() time.Time { return night }
+
+	reason := "Ván này chỉ bắt đầu được trong pha Ngày: 10h–20h."
+	preview := e.call("boss", "POST", "/v1/games/"+id+"/start?dryRun=true", nil, "")
+	e.want(preview, 200, "")
+	if preview.body["startClosed"] != reason {
+		t.Fatalf("xem trước = %v", preview.body)
+	}
+	e.want(e.call("boss", "POST", "/v1/games/"+id+"/start", nil, ""), 422, "start_not_in_day")
+	if e.game(id)["status"] != gameRegistering {
+		t.Fatalf("game = %v", e.game(id))
+	}
+}
+
+// Ván không km và ván nhiều vòng đi trọn đường qua API: ngoài pha Ngày của lịch
+// ván thì bị từ chối, trong pha Ngày thì chạy. Giờ mong đợi tính tay từ lịch.
+func TestEmulatorStartFollowsEachGameSchedule(t *testing.T) {
+	vn := func(hour int) time.Time { return time.Date(2026, 10, 15, hour, 0, 0, 0, vietnam) }
+	for _, c := range []struct {
+		name     string
+		settings map[string]any
+		closed   time.Time
+		reason   string
+		open     time.Time
+	}{
+		{"không km ba vòng", map[string]any{"kmOff": true, "startHour": 6.0, "roundHours": 6.0, "roundsPerDay": 3.0},
+			vn(12), "Ván này chỉ bắt đầu được trong pha Ngày: 9h–11h30, 15h–17h30, 21h–23h30.", vn(10)},
+		{"không km ba vòng dời giờ mở, đúng body app gửi", map[string]any{"kmOff": true, "startHour": 23.0, "roundsPerDay": 3.0, "nightMin": 60.0, "dawnMin": 180.0, "dayMin": 180.0, "trialMin": 60.0},
+			vn(8), "Ván này chỉ bắt đầu được trong pha Ngày: 3h–6h, 11h–14h, 19h–22h.", vn(12)},
+		{"km hai vòng", map[string]any{"startHour": 22.0, "roundsPerDay": 2.0},
+			vn(12), "Ván này chỉ bắt đầu được trong pha Ngày: 4h–9h, 16h–21h.", vn(16)},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := newStartEnv(t)
+			e.deliver = true
+			r := e.call("boss", "POST", "/v1/games", map[string]any{"roles": map[string]bool{"cupid": false}, "settings": c.settings}, "")
+			e.want(r, 201, "")
+			id := r.body["id"].(string)
+			e.register(id, 1, 10)
+
+			e.deps.Now = func() time.Time { return c.closed }
+			preview := e.call("boss", "POST", "/v1/games/"+id+"/start?dryRun=true", nil, "")
+			e.want(preview, 200, "")
+			if preview.body["startClosed"] != c.reason {
+				t.Fatalf("xem trước = %v", preview.body)
+			}
+			e.want(e.call("boss", "POST", "/v1/games/"+id+"/start", nil, ""), 422, "start_not_in_day")
+
+			e.deps.Now = func() time.Time { return c.open }
+			for range 10 {
+				e.tg.Then("getChatMember", memberReply("member"))
+			}
+			e.want(e.call("boss", "POST", "/v1/games/"+id+"/start", nil, ""), 202, "")
+			if e.game(id)["status"] != gameRunning {
+				t.Fatalf("game = %v", e.game(id))
+			}
+		})
+	}
+}
+
+// presetCases là mọi tổ hợp kiểu ván và số vòng, với đúng bốn pha form gửi lên
+// (co từ 2h/10h/10h/2h về độ dài vòng, tính tay). Giờ mở 22h.
+var presetRounds = []struct {
+	rounds int
+	phases [4]float64
+	days   string
+	open   int
+}{
+	{1, [4]float64{120, 600, 600, 120}, "10h–20h", 12},
+	{2, [4]float64{60, 300, 300, 60}, "4h–9h, 16h–21h", 5},
+	{3, [4]float64{60, 180, 180, 60}, "2h–5h, 10h–13h, 18h–21h", 3},
+	{4, [4]float64{60, 120, 120, 60}, "1h–3h, 7h–9h, 13h–15h, 19h–21h", 2},
+}
+
+// formSettings là settings form gửi cho một kiểu ván ở một số vòng.
+func formSettings(preset string, rounds int, phases [4]float64) map[string]any {
+	out := map[string]any{"roundsPerDay": float64(rounds), "nightMin": phases[0], "dawnMin": phases[1], "dayMin": phases[2], "trialMin": phases[3]}
+	for _, p := range gamePresets {
+		if p.Key == preset {
+			maps.Copy(out, p.Settings)
+		}
+	}
+	return out
+}
+
+func TestEmulatorStartEveryPresetAndRoundCount(t *testing.T) {
+	vn := func(hour int) time.Time { return time.Date(2026, 10, 15, hour, 0, 0, 0, vietnam) }
+	for _, preset := range []string{"std", "hard", "classic"} {
+		for _, c := range presetRounds {
+			t.Run(fmt.Sprintf("%s/%d vòng", preset, c.rounds), func(t *testing.T) {
+				e := newStartEnv(t)
+				e.deliver = true
+				r := e.call("boss", "POST", "/v1/games", map[string]any{"roles": map[string]bool{"cupid": false}, "settings": formSettings(preset, c.rounds, c.phases)}, "")
+				e.want(r, 201, "")
+				id := r.body["id"].(string)
+				e.register(id, 1, 10)
+
+				e.deps.Now = func() time.Time { return vn(0) }
+				preview := e.call("boss", "POST", "/v1/games/"+id+"/start?dryRun=true", nil, "")
+				e.want(preview, 200, "")
+				if want := "Ván này chỉ bắt đầu được trong pha Ngày: " + c.days + "."; preview.body["startClosed"] != want {
+					t.Fatalf("lý do = %v, muốn %q", preview.body["startClosed"], want)
+				}
+				e.want(e.call("boss", "POST", "/v1/games/"+id+"/start", nil, ""), 422, "start_not_in_day")
+
+				e.deps.Now = func() time.Time { return vn(c.open) }
+				for range 10 {
+					e.tg.Then("getChatMember", memberReply("member"))
+				}
+				e.want(e.call("boss", "POST", "/v1/games/"+id+"/start", nil, ""), 202, "")
+				if e.game(id)["status"] != gameRunning {
+					t.Fatalf("game = %v", e.game(id))
+				}
+			})
+		}
 	}
 }

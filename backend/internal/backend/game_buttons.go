@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,7 +26,8 @@ import (
 // Nút Treo/Tha chở vị trí trong voteChoices.
 //
 // Dạng: m1|<gameId>|<turnKey>|<kind>|<op>|<i.j>, riêng nút xem lá bài là
-// m1|<gameId>|v. op: t chọn, c chốt, r chọn lại.
+// m1|<gameId>|v, nút xem km của mình là m1|<gameId>|m. op: t chọn, c chốt, r
+// chọn lại.
 
 const (
 	buttonPrefix   = "m1"
@@ -34,13 +37,14 @@ const (
 	opReset        = "r"
 	opCard         = "v"
 	opCancel       = "k" // nút xác nhận của /cancel trong DM admin
+	opKm           = "m" // nút "Xem km của tôi" dưới tin group
 	answerTextSize = 200 // answerCallbackQuery.text tối đa 200 ký tự
 )
 
 var kindCodes = map[werewolf.Kind]string{
 	werewolf.KindWolfBite: "b", werewolf.KindSeerPeek: "s", werewolf.KindGuard: "g", werewolf.KindWitchSave: "w",
 	werewolf.KindWitchPoison: "p", werewolf.KindHunterShoot: "h", werewolf.KindCupidPair: "c",
-	werewolf.KindNominate: "n", werewolf.KindVote: "x",
+	werewolf.KindNominate: "n", werewolf.KindVote: "x", werewolf.KindVote2: "y", werewolf.KindVote3: "u",
 }
 
 var voteChoices = []string{werewolf.ChoiceHang, werewolf.ChoiceSpare}
@@ -71,7 +75,7 @@ func turnKey(st *werewolf.State) string { return "r" + strconv.Itoa(st.Round) }
 
 func (b gameButton) data() (string, error) {
 	var s string
-	if b.Op == opCard || b.Op == opCancel {
+	if b.Op == opCard || b.Op == opCancel || b.Op == opKm {
 		s = strings.Join([]string{buttonPrefix, b.GameID, b.Op}, "|")
 	} else {
 		code, ok := kindCodes[b.Kind]
@@ -99,7 +103,7 @@ func parseGameButton(s string) (gameButton, bool) {
 	b := gameButton{GameID: parts[1]}
 	if len(parts) == 3 {
 		b.Op = parts[2]
-		return b, b.Op == opCard || b.Op == opCancel
+		return b, b.Op == opCard || b.Op == opCancel || b.Op == opKm
 	}
 	if len(parts) != 6 || parts[2] == "" {
 		return gameButton{}, false
@@ -124,10 +128,14 @@ func parseGameButton(s string) (gameButton, bool) {
 	return b, true
 }
 
-// targetsNeeded: số người phải chọn cho một lượt bấm.
-func targetsNeeded(kind werewolf.Kind) int {
+// targetsNeeded: số người phải chọn cho một lượt bấm. Bình cứu chỉ phải chọn
+// khi sói cắn nhiều người.
+func targetsNeeded(st *werewolf.State, kind werewolf.Kind) int {
 	switch kind {
 	case werewolf.KindWitchSave:
+		if len(st.BittenUIDs()) > 1 {
+			return 1
+		}
 		return 0
 	case werewolf.KindCupidPair:
 		return 2
@@ -171,7 +179,7 @@ func (v promptView) render() (string, map[string]any, error) {
 	if text.label == "" {
 		return "", nil, fmt.Errorf("hành động lạ %q", v.kind)
 	}
-	lines := []string{"<b>Tới lượt bạn: " + text.label + "</b>", html.EscapeString(text.help)}
+	lines := []string{"<b>Tới lượt bạn: " + text.label + "</b>", html.EscapeString(actionHelp(v.st, v.kind))}
 	names := func(uids []string) string {
 		out := make([]string, len(uids))
 		for i, uid := range uids {
@@ -205,7 +213,7 @@ func (v promptView) render() (string, map[string]any, error) {
 	case hasSel && len(selected) > 0:
 		lines = append(lines, "Đang chọn: "+names(selected)+".")
 	}
-	need := targetsNeeded(v.kind)
+	need := targetsNeeded(v.st, v.kind)
 	confirming := len(v.pick) > 0 && len(v.pick) >= need
 	switch {
 	case confirming:
@@ -254,7 +262,7 @@ func (v promptView) render() (string, map[string]any, error) {
 		rows = append(rows, []map[string]any{ok, again})
 		return privateDM(lines), inlineKeyboard(rows), nil
 	}
-	if v.kind == werewolf.KindWitchSave {
+	if v.kind == werewolf.KindWitchSave && need == 0 {
 		b, err := button("Dùng bình cứu", opPick, nil)
 		if err != nil {
 			return "", nil, err
@@ -317,9 +325,10 @@ type ButtonReply struct {
 }
 
 var buttonTexts = struct {
-	gone, ended, notStarted, notPlayer, stale, badTarget, more, confirm, reset, kept string
+	gone, otherHost, ended, notStarted, notPlayer, stale, badTarget, more, confirm, reset, kept string
 }{
 	gone:       "Ván này không còn.",
+	otherHost:  "Nút này của quản trò khác, bạn bấm trong tin của bot quản trò ván đó.",
 	ended:      "Ván đã kết thúc.",
 	notStarted: "Ván chưa chia bài.",
 	notPlayer:  "Bạn không ở trong ván này.",
@@ -334,8 +343,11 @@ var buttonTexts = struct {
 // PressButton xử lý một cú bấm của uid. Lựa chọn đủ người (và đã chốt nếu là
 // lượt chọn một lần) thì đi qua SubmitAction như app; còn lại chỉ ghi một tin
 // sửa prompt để vẽ bước kế tiếp. Lỗi Firestore thì trả lỗi để webhook quyết
-// 5xx hay 200.
-func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, updateID int64, received time.Time) (ButtonReply, error) {
+// 5xx hay 200. host là bot nhận cú bấm: botId của bot ván, rỗng là 3i. Mỗi
+// ván chỉ nhận nút qua đúng bot quản trò của nó; nhờ vậy update_id (đếm riêng
+// từng bot) của một ván luôn cùng một dãy, chặn bấm lại theo lastTgUpdateId
+// vẫn đúng.
+func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid, host string, updateID int64, received time.Time) (ButtonReply, error) {
 	game := s.gameRef(b.GameID)
 	g, err := game.Get(ctx)
 	if status.Code(err) == codes.NotFound {
@@ -343,6 +355,9 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 	}
 	if err != nil {
 		return ButtonReply{}, err
+	}
+	if stringValue(g.Data()["botId"]) != host {
+		return ButtonReply{Text: buttonTexts.otherHost}, nil
 	}
 	st, err := s.loadState(ctx, game)
 	if err != nil {
@@ -365,11 +380,15 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 	default:
 		return ButtonReply{Text: buttonTexts.notStarted}, nil
 	}
+	if b.Op == opKm {
+		text, err := s.kmAlert(ctx, g.Data(), st, uid, received)
+		return ButtonReply{Text: text, Alert: true}, err
+	}
 	if b.TurnKey != turnKey(st) {
 		return ButtonReply{Text: buttonTexts.stale}, nil
 	}
 	order := sortedPlayers(st)
-	if b.Kind == werewolf.KindVote {
+	if werewolf.IsVote(b.Kind) {
 		order = voteChoices
 	}
 	var targets []string
@@ -379,7 +398,7 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 		}
 		targets = append(targets, order[n])
 	}
-	need := targetsNeeded(b.Kind)
+	need := targetsNeeded(st, b.Kind)
 	if len(targets) > need {
 		return ButtonReply{Text: buttonTexts.badTarget}, nil
 	}
@@ -399,7 +418,15 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 			return ButtonReply{}, err
 		}
 		a := werewolf.Action{Kind: b.Kind, Actor: uid, Targets: targets, ReceivedAt: gameNow(g.Data(), received)}
-		if err := werewolf.Validate(st, a, mine, a.ReceivedAt); err != nil {
+		view := st
+		if werewolf.UsesSkillKm(b.Kind) {
+			live, err := s.liveKm(ctx, game, g.Data(), st, received)
+			if err != nil {
+				return ButtonReply{}, err
+			}
+			view, _ = live.skillView(st)
+		}
+		if err := werewolf.Validate(view, a, mine, a.ReceivedAt); err != nil {
 			var reject werewolf.Reject
 			if !errors.As(err, &reject) {
 				return ButtonReply{}, err
@@ -415,7 +442,7 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 		GameID: b.GameID, UID: uid, Kind: b.Kind, Targets: targets, Source: "telegram",
 		TgUpdateID: updateID, TurnKey: b.TurnKey, ReceivedAt: received,
 	}
-	if b.Kind == werewolf.KindVote {
+	if werewolf.IsVote(b.Kind) {
 		req.Choice, req.Targets = targets[0], nil
 	}
 	res, err := s.SubmitAction(ctx, req)
@@ -431,11 +458,11 @@ func (s *GameStore) PressButton(ctx context.Context, b gameButton, uid string, u
 		return ButtonReply{Text: buttonTexts.kept}, nil
 	}
 	reply := ButtonReply{Wrote: true}
-	switch b.Kind {
-	case werewolf.KindWitchSave:
+	switch {
+	case b.Kind == werewolf.KindWitchSave:
 		reply.Text = "Đã dùng bình cứu."
 		return reply, nil
-	case werewolf.KindVote:
+	case werewolf.IsVote(b.Kind):
 		reply.Text = "Đã chọn " + choiceLabels[req.Choice] + "."
 		return reply, nil
 	}
@@ -515,6 +542,82 @@ func (s *GameStore) cardAlert(ctx context.Context, game *firestore.DocumentRef, 
 	return truncateUTF16(text, answerTextSize), nil
 }
 
+// kmAlert là km của người bấm "Xem km của tôi": km đang gom tới lần chốt phiếu kế
+// tiếp, km 24 tiếng tới lúc này (số xét kỹ năng) và km chốt gần nhất. Sói thấy thêm km cả phe,
+// vì sói cắn được hay không là theo tổng của phe chứ không theo km riêng.
+func (s *GameStore) kmAlert(ctx context.Context, gameData map[string]any, st *werewolf.State, uid string, wall time.Time) (string, error) {
+	me := st.Players[uid]
+	if !me.Alive {
+		return "Bạn đã chết nên km không còn tính trong ván.", nil
+	}
+	if st.Config.KmOff {
+		return "Ván này không dùng km.", nil
+	}
+	now := gameNow(gameData, wall)
+	frame := st.Config.KmFrameAt(now)
+	recent := werewolf.KmFrameUntil(now)
+	last := "Km chốt " + hm(st.Config.LastKmClose(frame)) + " gần nhất: " + formatKm(math.Floor(st.Km[uid]/100)/10) + " km."
+	if gameData["testMode"] == true { // ván thử không đọc buổi chạy thật (snapshotKmIfDue)
+		return "Ván thử không tính km chạy thật. " + last, nil
+	}
+	live := func(uid string, f werewolf.KmFrame) (float64, error) {
+		fk, err := s.frameKm(ctx, uid, f.Start, f.End)
+		if err != nil {
+			return 0, fmt.Errorf("km của %s: %w", uid, err)
+		}
+		return fk.Meters, nil
+	}
+	mine, err := live(uid, frame)
+	if err != nil {
+		return "", err
+	}
+	unit := kmPerUnit(st.Config)
+	lines := []string{
+		fmt.Sprintf("Tới %s bạn có %s km, chốt lúc %s.", now.In(vietnam).Format("15:04"), formatKm(math.Floor(mine/100)/10), hm(frame.End)) + mySkillKm(st.Config, me.Role),
+		last,
+	}
+	if me.Role != werewolf.Wolf {
+		// Sói xem số của cả phe ở dòng dưới; hộp thoại nút chỉ chứa 200 ký tự.
+		mineRecent, err := live(uid, recent)
+		if err != nil {
+			return "", err
+		}
+		lines = slices.Insert(lines, 1, "24 tiếng tới lúc này: "+formatKm(math.Floor(mineRecent/100)/10)+" km, kỹ năng tính số này.")
+	}
+	if me.Role == werewolf.Wolf && st.Config.SkillMeters(werewolf.Wolf) == 0 {
+		lines = append(lines, "Phe Sói cắn không cần km.")
+	} else if me.Role == werewolf.Wolf {
+		var have float64
+		for _, other := range sortedPlayers(st) {
+			if p := st.Players[other]; p.Alive && p.Role == werewolf.Wolf {
+				m, err := live(other, recent)
+				if err != nil {
+					return "", err
+				}
+				have += m
+			}
+		}
+		_, need := werewolf.WolfKm(st)
+		lines = append(lines, "Phe Sói tới giờ: "+wolfNeedText(st.Config, have, need, unit)+".")
+	}
+	return truncateUTF16(strings.Join(lines, "\n"), answerTextSize), nil
+}
+
+// mySkillKm là câu km kỹ năng trong hộp "Xem km của tôi". Ván không chỉnh km
+// từng vai thì nói chung một mức như trước; có chỉnh thì nói theo vai của
+// người bấm, vì hộp này chỉ người đó thấy.
+func mySkillKm(cfg werewolf.Config, role werewolf.Role) string {
+	x := formatKm(kmPerUnit(cfg))
+	if len(cfg.SkillKm) == 0 && !cfg.VillageGate && !cfg.GroupSkills() {
+		return " Cần " + x + " km để dùng kỹ năng đêm."
+	}
+	switch role {
+	case werewolf.Seer, werewolf.Guard, werewolf.Witch, werewolf.Hunter:
+		return " " + roleKmLine(role, cfg, x)
+	}
+	return ""
+}
+
 func truncateUTF16(s string, limit int) string {
 	if utf16Len(s) <= limit {
 		return s
@@ -535,24 +638,38 @@ func (s *GameStore) currentGameID(ctx context.Context) (string, error) {
 	return stringValue(cur.Data()["gameId"]), nil
 }
 
-// CardText là lá bài của uid trong ván hiện tại, cho /vai trong DM. Rỗng là
-// uid không ở trong ván nào đang chạy.
-func (s *GameStore) CardText(ctx context.Context, uid string) (string, error) {
-	id, err := s.currentGameID(ctx)
-	if err != nil || id == "" {
-		return "", err
-	}
-	game := s.gameRef(id)
-	g, err := game.Get(ctx)
-	if status.Code(err) == codes.NotFound {
-		return "", nil
-	}
+// runningGameOf là ván đang chạy của bot host (botId của bot ván, rỗng là 3i)
+// có uid là người chơi; nil là không có. Mỗi người chỉ ở một ván chưa kết thúc
+// của mỗi quản trò (Register), nên lấy ván đầu tiên.
+func (s *GameStore) runningGameOf(ctx context.Context, uid, host string) (*firestore.DocumentSnapshot, error) {
+	games, err := s.db.Collection("games").Where("status", "==", gameRunning).Documents(ctx).GetAll()
 	if err != nil {
+		return nil, err
+	}
+	for _, g := range games {
+		if stringValue(g.Data()["botId"]) != host {
+			continue
+		}
+		_, err := g.Ref.Collection("players").Doc(uid).Get(ctx)
+		if status.Code(err) == codes.NotFound {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		return g, nil
+	}
+	return nil, nil
+}
+
+// CardText là lá bài của uid trong ván đang chạy của bot host, cho /vai nhắn
+// riêng bot đó. Rỗng là uid không ở trong ván nào đang chạy của bot này.
+func (s *GameStore) CardText(ctx context.Context, uid, host string) (string, error) {
+	g, err := s.runningGameOf(ctx, uid, host)
+	if err != nil || g == nil {
 		return "", err
 	}
-	if stringValue(g.Data()["status"]) != gameRunning {
-		return "", nil
-	}
+	game := g.Ref
 	st, err := s.loadState(ctx, game)
 	if err != nil || st == nil || st.Players[uid] == nil {
 		return "", err

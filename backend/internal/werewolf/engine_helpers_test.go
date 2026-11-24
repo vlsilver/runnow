@@ -28,6 +28,7 @@ type tg struct {
 	st      *State
 	actions map[string]Action // key actor/kind; ghi đè như doc action
 	km      map[string]float64
+	biteKm  map[string]float64
 	seq     int
 }
 
@@ -110,7 +111,7 @@ func (g *tg) next(left ...string) []Event {
 	}
 	sort.Slice(acts, func(i, j int) bool { return acts[i].ReceivedAt.Before(acts[j].ReceivedAt) })
 	round := g.st.Round
-	st, evs, err := Step(g.st, Inputs{Actions: acts, Km: g.km, Left: left})
+	st, evs, err := Step(g.st, Inputs{Actions: acts, Km: g.km, BiteKm: g.biteKm, Left: left})
 	if err != nil {
 		g.t.Fatal(err)
 	}

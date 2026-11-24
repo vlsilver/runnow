@@ -399,7 +399,7 @@ func TestEmulatorVaiCommandAndCardButton(t *testing.T) {
 		t.Fatalf("/vai chưa liên kết = %q", text)
 	}
 	linkUser(t, e.h, "stranger", "777", true)
-	if text := vai("777")["text"].(string); text != "Bạn chưa ở trong ván Ma Sói nào." {
+	if text := vai("777")["text"].(string); text != "Bạn chưa ở trong ván Ma Sói nào của quản trò này." {
 		t.Fatalf("/vai người ngoài = %q", text)
 	}
 
@@ -436,7 +436,7 @@ func TestEmulatorVaiCommandAndCardButton(t *testing.T) {
 
 	// Ván đã kết thúc thì /vai không còn lá bài.
 	seedMerge(t, e.storeGame, map[string]any{"status": gameEnded})
-	if text := vai(e.storeGame.tg["w1"])["text"].(string); text != "Bạn chưa ở trong ván Ma Sói nào." {
+	if text := vai(e.storeGame.tg["w1"])["text"].(string); text != "Bạn chưa ở trong ván Ma Sói nào của quản trò này." {
 		t.Fatalf("/vai sau khi hết ván = %q", text)
 	}
 }
@@ -448,7 +448,7 @@ func cupidGame(t *testing.T) (*storeGame, *apiHarness) {
 	db := emulatorDB(t)
 	ctx := context.Background()
 	g := &storeGame{t: t, db: db, store: NewGameStore(db, testPscChat), tg: map[string]string{}}
-	g.store.frameKm = func(_ context.Context, _ string, end time.Time) (FrameKm, error) {
+	g.store.frameKm = func(_ context.Context, _ string, _, end time.Time) (FrameKm, error) {
 		return FrameKm{FrameEnd: end, OfficialMeters: 5000, Meters: 5000, Source: "official"}, nil
 	}
 	id, err := g.store.CreateGame(ctx, NewGameInput{CreatedBy: "admin", ChatID: "-100"}, msgStart)

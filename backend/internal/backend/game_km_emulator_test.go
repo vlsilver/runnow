@@ -37,7 +37,7 @@ func TestEmulatorLoadFrameKmQueriesFrameAcrossStringFormats(t *testing.T) {
 	seedActivity(t, db, "u1", "h-dup", "apple_health", "2026-10-14T15:00:30.000Z", 5100, 30)
 	seedActivity(t, db, "u2", "other", "strava", "2026-10-15T02:00:00Z", 9000, 45)
 
-	got, err := LoadFrameKm(context.Background(), db, "u1", emuFrameEnd)
+	got, err := LoadFrameKm(context.Background(), db, "u1", emuFrameEnd.AddDate(0, 0, -1), emuFrameEnd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestEmulatorLoadFrameKmReadsStepDays(t *testing.T) {
 	seed(t, db, "users/u1/stepDays/2026-10-14", map[string]any{"distanceMeters": int64(3000), "hourlyDistance": yesterday})
 	seed(t, db, "users/u1/stepDays/2026-10-15", map[string]any{"distanceMeters": 6000.0, "hourlyDistance": today})
 
-	got, err := LoadFrameKm(context.Background(), db, "u1", emuFrameEnd)
+	got, err := LoadFrameKm(context.Background(), db, "u1", emuFrameEnd.AddDate(0, 0, -1), emuFrameEnd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestEmulatorLoadFrameKmReadsStepDays(t *testing.T) {
 // Chưa sync gì là kết quả rỗng hợp lệ, không phải lỗi.
 func TestEmulatorLoadFrameKmNoDataIsZeroNotError(t *testing.T) {
 	db := emulatorDB(t)
-	got, err := LoadFrameKm(context.Background(), db, "u1", emuFrameEnd)
+	got, err := LoadFrameKm(context.Background(), db, "u1", emuFrameEnd.AddDate(0, 0, -1), emuFrameEnd)
 	if err != nil || got.Meters != 0 || got.Source != "none" {
 		t.Fatalf("km = %+v, err = %v", got, err)
 	}
@@ -85,7 +85,7 @@ func TestEmulatorLoadFrameKmFirestoreErrorIsReturned(t *testing.T) {
 	seedActivity(t, db, "u1", "s-in", "strava", "2026-10-15T02:00:00Z", 5000, 25)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if got, err := LoadFrameKm(ctx, db, "u1", emuFrameEnd); err == nil {
+	if got, err := LoadFrameKm(ctx, db, "u1", emuFrameEnd.AddDate(0, 0, -1), emuFrameEnd); err == nil {
 		t.Fatalf("context đã huỷ mà không lỗi, km = %+v", got)
 	}
 }

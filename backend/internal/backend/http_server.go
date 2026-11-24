@@ -9,8 +9,11 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
+
+	"google.golang.org/api/iterator"
 )
 
 type handler func(http.ResponseWriter, *http.Request) error
@@ -56,6 +59,7 @@ func (s *Server) botRoutes() {
 	// dời sang service bot. Định tuyến queue/scheduler đổi ở deploy.sh.
 	s.route("POST /tasks/notify-telegram", s.notifyTelegram)
 	s.route("POST /tasks/live-announce", s.liveAnnounce)
+	s.route("POST /tasks/live-card", s.liveCard)
 	s.route("POST /tasks/contract-roast", s.contractRoast)
 	s.route("POST /tasks/contract-announce-new", s.contractAnnounceNew)
 	s.route("POST /tasks/coach-announce", s.coachAnnounce)
@@ -67,7 +71,46 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/schedule-tick", s.scheduleTick)
 	s.route("POST /tasks/agent-dm", s.agentDM)
 	s.route("POST /tasks/agent-turn", s.agentTurn)
+	s.route("POST "+roomBotPath, s.gameRoomBot)
+	s.route("POST "+standInPath, s.gameStandIn)
 	s.route("POST /tasks/agent-learn", s.agentLearn)
+	s.route("POST /tasks/rank-close", s.rankClose)
+	s.route("POST "+rankRewardPushPath, s.rankRewardPush)
+	s.route("POST "+contractGiftPushPath, s.contractGiftPush)
+	s.route("POST /tasks/managed-bot-sync", s.managedBotSync)
+	s.route("POST /tasks/managed-send", s.managedSend)
+	s.route("POST "+runCardArtQueuePath, s.runCardArt)
+	s.route("POST "+roomPushPath, s.roomPush)
+	s.route("POST "+gamePushPath, s.gamePush)
+	s.route("POST "+livePushPath, s.livePush)
+	s.route("POST "+rankTopPushPath, s.rankTopPush)
+	s.route("POST "+giftGivenPushPath, s.giftGivenPush)
+}
+
+// roomPush: task push của phòng chạy, hẹn từ RunRoomStore.notify.
+func (s *Server) roomPush(w http.ResponseWriter, r *http.Request) error {
+	var task roomPushTask
+	if decodeJSON(r, &task) != nil || task.Kind == "" || task.RoomID == "" {
+		w.WriteHeader(204)
+		return nil
+	}
+	if err := s.deps.RunRooms.Deliver(r.Context(), s.deps.Push, task, s.now()); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// runCardArt: task vẽ tranh thẻ buổi chạy (Gemini), đẩy từ POST .../card/art.
+func (s *Server) runCardArt(w http.ResponseWriter, r *http.Request) error {
+	var task runCardArtTask
+	if decodeJSON(r, &task) != nil || task.UID == "" || task.ActivityID == "" {
+		w.WriteHeader(204)
+		return nil
+	}
+	if err := s.deps.RunCards.DrawArt(r.Context(), task); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
 }
 
 // tickJob là một việc của schedule-tick, với timeout riêng.
@@ -95,8 +138,11 @@ func (s *Server) scheduleTick(w http.ResponseWriter, r *http.Request) error {
 	if s.deps.Learn != nil {
 		jobs = append(jobs, tickJob{name: "learn", timeout: 5 * time.Second, run: s.enqueueLearn})
 	}
+	if s.deps.RankCards != nil {
+		jobs = append(jobs, tickJob{name: "rank", timeout: 5 * time.Second, run: s.enqueueRankClose})
+	}
 	if s.deps.Bot != nil {
-		jobs = append(jobs, tickJob{name: "bot", timeout: 230 * time.Second, run: s.deps.Bot.RunDueSchedules})
+		jobs = append(jobs, tickJob{name: "bot", timeout: 225 * time.Second, run: s.deps.Bot.RunDueSchedules})
 	}
 	if err := runTickJobs(r.Context(), s.now(), jobs); err != nil {
 		return err
@@ -147,11 +193,8 @@ func (s *Server) telegramWebhook(w http.ResponseWriter, r *http.Request) error {
 	}
 	// Chỉ cần Tasks để enqueue — webhook KHÔNG cần Bot/Gemini (xử lý ở
 	// runnow-bot). Nhờ vậy api có thể bỏ token Telegram mà webhook vẫn chạy.
-	var publish taskPublishFunc
-	if s.deps.Tasks != nil {
-		publish = s.deps.Tasks.Publish
-	}
-	s.serveTelegramUpdate(r.Context(), w, body, publish)
+	// enqueueTask là Tasks.Publish trên prod; test gài EnqueueTask để bắt task.
+	s.serveTelegramUpdate(r.Context(), w, body, s.enqueueTask())
 	return nil
 }
 
@@ -186,6 +229,7 @@ func (s *Server) gameUpdate(w http.ResponseWriter, r *http.Request) error {
 	if s.deps.Telegram == nil || !s.deps.Telegram.Enabled() || s.deps.TelegramLinks == nil {
 		return errors.New("game-update cần Telegram và TelegramLinks để ghi inPsc")
 	}
+	linked := linkedUserID(task.Raw)
 	for _, id := range users {
 		checkedAt := time.Now()
 		m, err := s.deps.Telegram.GetChatMember(r.Context(), s.deps.Telegram.ChatID(), id)
@@ -195,8 +239,62 @@ func (s *Server) gameUpdate(w http.ResponseWriter, r *http.Request) error {
 		if err := s.deps.TelegramLinks.RecordMembership(r.Context(), id, m, checkedAt); err != nil {
 			return err
 		}
+		if id == linked && !m.InChat() {
+			if err := s.sendPscInvite(r.Context(), id); err != nil {
+				return err
+			}
+		}
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+const pscInviteText = "Bạn chưa ở trong group PSC. Bấm link này để vào group:\n"
+
+// sendPscInvite DM link mời PSC (gameState/config.pscInviteUrl) cho người vừa
+// liên kết mà chưa ở PSC. Chưa đặt link thì bỏ qua. Telegram từ chối hẳn
+// (400/403, như người dùng chặn bot) thì bỏ tin, lỗi khác trả ra để task retry.
+func (s *Server) sendPscInvite(ctx context.Context, tgID int64) error {
+	if s.deps.Games == nil {
+		return errors.New("game-update cần Games để đọc pscInviteUrl")
+	}
+	cfg, err := s.deps.Games.loadConfig(ctx)
+	if err != nil {
+		return err
+	}
+	if cfg.pscInviteURL == "" {
+		slog.WarnContext(ctx, "game.psc_invite_unset", "tgId", tgID)
+		return nil
+	}
+	_, err = s.deps.Telegram.SendText(ctx, TelegramText{ChatID: strconv.FormatInt(tgID, 10), Text: pscInviteText + cfg.pscInviteURL})
+	var apiErr *TelegramAPIError
+	if errors.As(err, &apiErr) && (apiErr.Status == http.StatusBadRequest || apiErr.Status == http.StatusForbidden) {
+		slog.WarnContext(ctx, "game.psc_invite_rejected", "tgId", tgID, "err", err)
+		return nil
+	}
+	if err == nil {
+		slog.InfoContext(ctx, "game.psc_invite_sent", "tgId", tgID)
+	}
+	return err
+}
+
+// linkedUserID là người gửi tin DM trong update: game-update chỉ nhận tin DM từ
+// "/start <mã>" vừa liên kết xong. 0 nếu update không phải tin DM.
+func linkedUserID(raw []byte) int64 {
+	var u struct {
+		Message *struct {
+			Chat struct {
+				Type string `json:"type"`
+			} `json:"chat"`
+			From *struct {
+				ID    int64 `json:"id"`
+				IsBot bool  `json:"is_bot"`
+			} `json:"from"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(raw, &u) != nil || u.Message == nil || u.Message.Chat.Type != "private" || u.Message.From == nil || u.Message.From.IsBot {
+		return 0
+	}
+	return u.Message.From.ID
 }
 
 // membershipUserIDs lấy những người cần kiểm lại inPsc: người được đổi trạng
@@ -307,6 +405,22 @@ func (s *Server) liveAnnounce(w http.ResponseWriter, r *http.Request) error {
 		return nil
 	}
 	if err := s.deps.Activities.LiveAnnounce(r.Context(), task.UID, task.ActivityID, task.Event, task.DistanceMeters, task.MovingTimeSeconds, task.MilestoneKm, task.PhotoPath); err != nil {
+		return err
+	}
+	return writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// liveCard: task chạy trên bot, sửa thẻ Live sau các lượt bấm cổ vũ trên
+// Telegram (gom theo liveCardRefreshEvery).
+func (s *Server) liveCard(w http.ResponseWriter, r *http.Request) error {
+	var task struct {
+		ActivityID string `json:"activityId"`
+	}
+	if decodeJSON(r, &task) != nil || task.ActivityID == "" {
+		w.WriteHeader(204)
+		return nil
+	}
+	if err := s.deps.Activities.SyncLiveCard(r.Context(), task.ActivityID); err != nil {
 		return err
 	}
 	return writeJSON(w, 200, map[string]any{"ok": true})
@@ -452,6 +566,11 @@ func (s *Server) apiRoutes() {
 		return writeJSON(w, 200, map[string]any{"ok": true, "service": "runnow-api"})
 	})
 	s.route("GET /v1/strava/status", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		// Strava tắt thì báo chưa nối, kể cả user còn liên kết cũ, để app (cả
+		// bản cũ) không hiện nút đồng bộ Strava.
+		if s.deps.StravaOff {
+			return writeJSON(w, 200, StravaConnectionStatus{Status: "disconnected"})
+		}
 		connection, err := s.deps.OAuth.Status(r.Context(), uid)
 		if err != nil {
 			return err
@@ -459,6 +578,9 @@ func (s *Server) apiRoutes() {
 		return writeJSON(w, 200, connection)
 	}))
 	s.route("POST /v1/strava/authorization", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		if s.deps.StravaOff {
+			return errStravaOff
+		}
 		var body struct {
 			ReturnTarget string `json:"returnTarget"`
 		}
@@ -539,9 +661,18 @@ func (s *Server) apiRoutes() {
 	// method để service bot dùng chung — dời webhook sang bot chỉ là đổi chỗ
 	// mount, không nhân đôi code.
 	s.route("POST /v1/telegram/webhook", s.telegramWebhook)
+	s.mybotRoutes()
 	s.gameRoutes()
+	s.gameTgBotRoutes()
+	s.garminRoutes()
 	s.agentRoutes()
+	s.runRoomRoutes()
+	s.pushRoutes()
+	s.pushPrefRoutes()
 	s.adminRoutes()
+	s.agentConfigRoutes()
+	s.rankRewardRoutes()
+	s.contractGiftRoutes()
 	// Liên kết Telegram cho Ma Sói (L1). App lấy mã, mở t.me/<bot>?start=<mã>,
 	// rồi poll GET cho tới khi linked.
 	s.route("POST /v1/telegram/link-code", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
@@ -634,6 +765,13 @@ func (s *Server) apiRoutes() {
 		dedup := map[string]any{"activityId": body.ActivityID, "event": body.Event, "km": body.MilestoneKm, "photo": body.PhotoPath}
 		if _, err := s.deps.Tasks.Publish(r.Context(), PublishTask{Queue: QueueBotInbound, HandlerPath: "/tasks/live-announce", Payload: payload, TaskID: StableTaskID("live", dedup)}); err != nil {
 			return err
+		}
+		if body.Event == liveEventStart {
+			// Push cho cả club đi riêng hàng notify; hẹn hỏng thì chỉ mất push,
+			// không làm hỏng tường thuật nên chỉ log.
+			if _, err := s.deps.Tasks.Publish(r.Context(), livePushTaskFor(uid, body.ActivityID)); err != nil {
+				slog.ErrorContext(r.Context(), "live.push_enqueue_failed", "activityId", body.ActivityID, "error", err)
+			}
 		}
 		return writeJSON(w, 202, map[string]any{"ok": true})
 	}))
@@ -747,6 +885,167 @@ func (s *Server) apiRoutes() {
 		}
 		return writeJSON(w, 202, map[string]any{"ok": true})
 	}))
+	s.route("GET /v1/activities", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		limit := 20
+		if v := r.URL.Query().Get("limit"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return invalidRequest()
+			}
+			limit = n
+		}
+		page, err := s.deps.Activities.List(r.Context(), uid, r.URL.Query().Get("cursor"), limit)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, page)
+	}))
+	s.route("GET /v1/club/runs", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		limit := 20
+		if v := r.URL.Query().Get("limit"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return invalidRequest()
+			}
+			limit = n
+		}
+		page, err := s.deps.Activities.ClubRuns(r.Context(), r.URL.Query().Get("cursor"), limit)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, page)
+	}))
+	s.route("GET /v1/cards/unflipped", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		activities, err := s.deps.RunCards.Unflipped(r.Context(), uid)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"activities": activities})
+	}))
+	s.route("GET /v1/activities/{activityId}/card", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := runCardActivityID(r)
+		if err != nil {
+			return err
+		}
+		view, err := s.deps.RunCards.Get(r.Context(), uid, id)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, view)
+	}))
+	s.route("POST /v1/activities/{activityId}/card", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := runCardActivityID(r)
+		if err != nil {
+			return err
+		}
+		if err := s.deps.Activities.HydrateForCard(r.Context(), uid, id); err != nil {
+			return err
+		}
+		card, err := s.deps.RunCards.Roll(r.Context(), uid, id)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"card": card})
+	}))
+	s.route("GET /v1/contracts/{contractId}/card", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := pathDocID(r, "contractId")
+		if err != nil {
+			return err
+		}
+		view, err := s.deps.RunCards.GetContractCard(r.Context(), uid, id)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, view)
+	}))
+	s.route("POST /v1/contracts/{contractId}/card", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := pathDocID(r, "contractId")
+		if err != nil {
+			return err
+		}
+		card, err := s.deps.RunCards.RollContractCard(r.Context(), uid, id)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"card": card})
+	}))
+	s.route("POST /v1/activities/{activityId}/card/art", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := runCardActivityID(r)
+		if err != nil {
+			return err
+		}
+		var body RunCardArtRequest
+		if decodeJSON(r, &body) != nil {
+			return invalidRequest()
+		}
+		card, err := s.deps.RunCards.RequestArt(r.Context(), uid, id, body, s.enqueueTask())
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"card": card})
+	}))
+	s.route("POST /v1/activities/{activityId}/card/share", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := runCardActivityID(r)
+		if err != nil {
+			return err
+		}
+		card, err := s.deps.RunCards.Share(r.Context(), uid, id)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"card": card})
+	}))
+	s.route("DELETE /v1/activities/{activityId}/card/share", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := runCardActivityID(r)
+		if err != nil {
+			return err
+		}
+		if err := s.deps.RunCards.Unshare(r.Context(), uid, id); err != nil {
+			return err
+		}
+		w.WriteHeader(204)
+		return nil
+	}))
+	s.route("PUT /v1/cards/looks", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		var body RunCardLooksRequest
+		if decodeJSON(r, &body) != nil {
+			return invalidRequest()
+		}
+		if err := s.deps.RunCards.SetLooks(r.Context(), uid, body); err != nil {
+			return err
+		}
+		w.WriteHeader(204)
+		return nil
+	}))
+	s.route("POST /v1/cards/{kind}/{id}/share", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := pathDocID(r, "id")
+		if err != nil {
+			return err
+		}
+		if err := s.deps.RunCards.ShareKept(r.Context(), uid, r.PathValue("kind"), id); err != nil {
+			return err
+		}
+		w.WriteHeader(204)
+		return nil
+	}))
+	s.route("DELETE /v1/cards/{kind}/{id}/share", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		id, err := pathDocID(r, "id")
+		if err != nil {
+			return err
+		}
+		if err := s.deps.RunCards.UnshareKept(r.Context(), uid, r.PathValue("kind"), id); err != nil {
+			return err
+		}
+		w.WriteHeader(204)
+		return nil
+	}))
+	s.route("GET /v1/art-styles", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
+		kind, ok := parseArtKind(r.URL.Query().Get("kind"))
+		if !ok {
+			return invalidRequest()
+		}
+		return writeJSON(w, 200, ArtStyles(kind))
+	}))
 	s.route("POST /v1/activities/tracked", s.authenticated(func(w http.ResponseWriter, r *http.Request, uid string) error {
 		var body struct {
 			Activity map[string]any `json:"activity"`
@@ -846,6 +1145,10 @@ func (s *Server) apiRoutes() {
 		if err := decodeJSON(r, &event); err != nil || !validWebhook(event) {
 			return invalidRequest()
 		}
+		// Strava tắt: trả 200 cho Strava khỏi gửi lại, nhưng không nhận event.
+		if s.deps.StravaOff {
+			return writeJSON(w, 200, map[string]any{"received": false})
+		}
 		if _, err := s.deps.Webhook.Receive(r.Context(), event); err != nil {
 			return err
 		}
@@ -854,6 +1157,9 @@ func (s *Server) apiRoutes() {
 }
 
 func (s *Server) requireStravaConnection(r *http.Request, uid string) error {
+	if s.deps.StravaOff {
+		return errStravaOff
+	}
 	connection, err := s.deps.OAuth.Status(r.Context(), uid)
 	if err != nil {
 		return err
@@ -868,6 +1174,17 @@ func (s *Server) requireStravaConnection(r *http.Request, uid string) error {
 	return nil
 }
 
+// unlessStravaOff bọc task Strava: Strava tắt thì trả 200 mà không làm gì,
+// để task còn trong queue chạy xong thay vì retry và gọi Strava.
+func (s *Server) unlessStravaOff(next func(http.ResponseWriter, *http.Request) error) func(http.ResponseWriter, *http.Request) error {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		if s.deps.StravaOff {
+			return writeJSON(w, 200, map[string]any{"ok": true, "skipped": "strava_disabled"})
+		}
+		return next(w, r)
+	}
+}
+
 func (s *Server) workerRoutes() {
 	s.route("GET /health", func(w http.ResponseWriter, r *http.Request) error {
 		return writeJSON(w, 200, map[string]any{"ok": true, "service": "runnow-worker"})
@@ -875,7 +1192,7 @@ func (s *Server) workerRoutes() {
 	s.route("GET /healthz", func(w http.ResponseWriter, r *http.Request) error {
 		return writeJSON(w, 200, map[string]any{"ok": true, "service": "runnow-worker"})
 	})
-	s.route("POST /tasks/strava-event", func(w http.ResponseWriter, r *http.Request) error {
+	s.route("POST /tasks/strava-event", s.unlessStravaOff(func(w http.ResponseWriter, r *http.Request) error {
 		var task struct {
 			EventKey string             `json:"eventKey"`
 			Event    StravaWebhookEvent `json:"event"`
@@ -888,8 +1205,8 @@ func (s *Server) workerRoutes() {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
-	})
-	s.route("POST /tasks/backfill-page", func(w http.ResponseWriter, r *http.Request) error {
+	}))
+	s.route("POST /tasks/backfill-page", s.unlessStravaOff(func(w http.ResponseWriter, r *http.Request) error {
 		var task struct {
 			UID   string `json:"uid"`
 			Page  int    `json:"page"`
@@ -904,8 +1221,8 @@ func (s *Server) workerRoutes() {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
-	})
-	s.route("POST /tasks/hydrate-activity", func(w http.ResponseWriter, r *http.Request) error {
+	}))
+	s.route("POST /tasks/hydrate-activity", s.unlessStravaOff(func(w http.ResponseWriter, r *http.Request) error {
 		var task struct {
 			UID        string `json:"uid"`
 			ActivityID string `json:"activityId"`
@@ -918,7 +1235,7 @@ func (s *Server) workerRoutes() {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
-	})
+	}))
 	s.route("POST /tasks/rebuild-derived-data", func(w http.ResponseWriter, r *http.Request) error {
 		var task struct{ UID, Cause string }
 		if decodeJSON(r, &task) != nil || task.UID == "" || task.Cause == "" {
@@ -929,6 +1246,11 @@ func (s *Server) workerRoutes() {
 		if err := s.deps.Derived.RebuildCurrent(r.Context(), task.UID, now); err != nil {
 			return err
 		}
+		// Task chạy khi đổi hồ sơ và mỗi đêm cho mọi member, nên thẻ khoe theo
+		// kịp chế độ hồ sơ và thẻ cũ được khoe bù.
+		if err := s.deps.RunCards.SyncClub(r.Context(), task.UID); err != nil {
+			return err
+		}
 		// FIX GỐC đếm-đôi Tổng km: đi-bộ = Apple − run được tính trong
 		// rebuildStepLeaderboard, TRƯỚC ĐÂY chỉ chạy khi sync bước → buổi chạy mới
 		// (tạo sau lần sync bước cuối) không được trừ khỏi đi-bộ → đếm đôi. Giờ mỗi
@@ -937,21 +1259,48 @@ func (s *Server) workerRoutes() {
 		if err := RebuildStepLeaderboardFor(r.Context(), s.deps.Firestore, task.UID, now); err != nil {
 			slog.Error("rebuild step leaderboard on derived failed", "uid", task.UID, "error", err)
 		}
+		// Vừa có buổi chạy mới thì tick luôn buổi giáo án của hôm đó.
+		if _, err := MarkPlanSessionsForUser(r.Context(), s.deps.Firestore, task.UID, now); err != nil {
+			return err
+		}
 		return writeJSON(w, 200, map[string]any{"ok": true, "cause": task.Cause})
 	})
 	s.route("POST /tasks/rebuild-period-stats", func(w http.ResponseWriter, r *http.Request) error {
-		var task struct{ UID, StartedAt string }
-		if decodeJSON(r, &task) != nil || task.UID == "" || task.StartedAt == "" {
+		// startedAt: một buổi; startedAts: cả lô (nhập Health, một trang backfill).
+		var task struct {
+			UID, StartedAt string
+			StartedAts     []string
+		}
+		if decodeJSON(r, &task) != nil || task.UID == "" {
 			w.WriteHeader(204)
 			return nil
 		}
-		startedAt, parseErr := time.Parse(time.RFC3339, task.StartedAt)
-		if parseErr != nil {
+		var instants []time.Time
+		for _, raw := range append(task.StartedAts, task.StartedAt) {
+			if t, err := time.Parse(time.RFC3339, raw); err == nil {
+				instants = append(instants, t)
+			}
+		}
+		if len(instants) == 0 {
 			w.WriteHeader(204)
 			return nil
 		}
-		if err := s.deps.PeriodStats.RebuildForInstant(r.Context(), task.UID, startedAt); err != nil {
+		if err := s.deps.PeriodStats.RebuildForInstants(r.Context(), task.UID, instants); err != nil {
 			return err
+		}
+		// Thẻ Hành trình đọc tổng km từ chính các doc tháng vừa dựng. Lỗi thì
+		// task chạy lại; dựng lại periodStats lần nữa không sao vì nó tính lại
+		// từ đầu.
+		if s.deps.JourneyCards != nil {
+			awarded, err := s.deps.JourneyCards.AwardFinished(r.Context(), task.UID)
+			if err != nil {
+				return err
+			}
+			if awarded > 0 {
+				if err := s.deps.RunCards.SyncClub(r.Context(), task.UID); err != nil {
+					return err
+				}
+			}
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
 	})
@@ -981,7 +1330,25 @@ func (s *Server) workerRoutes() {
 			}
 			enqueued++
 		}
-		return writeJSON(w, 200, map[string]any{"ok": true, "enqueued": enqueued})
+		// Khoe bù thẻ cho mọi user ngay tại đây chứ không trông vào task ở
+		// trên: chạy lại job trong ngày thì task trùng tên bị Cloud Tasks bỏ
+		// qua. DocumentRefs lấy cả user chỉ có subcollection mà không có doc.
+		users := s.deps.Firestore.Collection("users").DocumentRefs(r.Context())
+		synced := 0
+		for {
+			ref, err := users.Next()
+			if errors.Is(err, iterator.Done) {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			if err := s.deps.RunCards.SyncClub(r.Context(), ref.ID); err != nil {
+				return err
+			}
+			synced++
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true, "enqueued": enqueued, "clubSynced": synced})
 	})
 	s.route("POST /tasks/recalc-contracts", func(w http.ResponseWriter, r *http.Request) error {
 		// Cron 06:05 + 14:05 + 20:05 VN: link buổi chạy CHƯA gán + tính lại tiến độ kèo (GỒM
@@ -999,13 +1366,28 @@ func (s *Server) workerRoutes() {
 			linked += rr.NewLinked
 		}
 		// Chốt kèo đã qua finalizeAt theo số vừa tính — chủ kèo không cần bấm.
-		finalized, err := FinalizeDueContracts(r.Context(), s.deps.Firestore, s.deps.Tasks, results, time.Now(), dry)
+		finalized, err := FinalizeDueContracts(r.Context(), s.deps.Firestore, s.enqueueTask(), results, s.now(), dry)
 		if err != nil {
 			return err
 		}
-		return writeJSON(w, 200, map[string]any{"ok": true, "dry": dry, "contracts": len(results), "linked": linked, "results": results, "finalized": finalized})
+		// Cùng lượt: buổi giáo án nào đã chạy đủ thì tick giúp người theo.
+		planMarks, err := MarkPlanSessions(r.Context(), s.deps.Firestore, time.Now(), dry)
+		if err != nil {
+			return err
+		}
+		// Push quà đi sau cùng để Cloud Tasks hỏng không chặn việc khác của
+		// lượt này. Kết quả trước vé: báo kết quả quan trọng hơn, vé hỏng không
+		// được hoãn nó. Kèo đã chia quà (resolvedAt) thì không báo vé nữa. Hỏng
+		// thì trả lỗi để job chạy lại; cả hai bước đều chạy lại được.
+		if err := SendContractGiftResults(r.Context(), s.deps.Firestore, s.enqueueTask(), dry); err != nil {
+			return err
+		}
+		if err := NotifyContractTickets(r.Context(), s.deps.Firestore, s.enqueueTask(), results, dry); err != nil {
+			return err
+		}
+		return writeJSON(w, 200, map[string]any{"ok": true, "dry": dry, "contracts": len(results), "linked": linked, "results": results, "finalized": finalized, "planSessions": planMarks})
 	})
-	s.route("POST /tasks/reconcile-connections", func(w http.ResponseWriter, r *http.Request) error {
+	s.route("POST /tasks/reconcile-connections", s.unlessStravaOff(func(w http.ResponseWriter, r *http.Request) error {
 		var task struct {
 			Cursor string `json:"cursor"`
 		}
@@ -1017,7 +1399,7 @@ func (s *Server) workerRoutes() {
 			return err
 		}
 		return writeJSON(w, 200, map[string]any{"ok": true})
-	})
+	}))
 	// notify-telegram, bot-message, consolidate-memory đã dời sang runnow-bot
 	// (xem botRoutes) — worker không còn phần AI nào.
 }
@@ -1046,9 +1428,9 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 			// X-App-*: Ma Sói đọc bản app để báo "cần cập nhật" (3.8). DELETE:
-			// huỷ liên kết Telegram, rời ván.
+			// huỷ liên kết Telegram, rời ván. PATCH: admin sửa config bot trên web.
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-App-Version, X-App-Platform")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(204)

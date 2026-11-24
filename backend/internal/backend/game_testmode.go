@@ -248,7 +248,7 @@ func (s *GameStore) AdminSetKm(ctx context.Context, gameID string, round int, ui
 
 // AdminAdvance chạy đúng một bước của ván thử, kể cả khi chưa tới hạn: chưa có
 // gì tới hạn thì đẩy giờ ván tới NextAt rồi chạy. expectedKey là taskKey admin
-// đang thấy (CAS). Không dùng phaseKey vì tin nhắc 15h/21h không đổi phaseKey;
+// đang thấy (CAS). Không dùng phaseKey vì tin nhắc 18h/21h không đổi phaseKey;
 // bấm lại một lần sẽ nhảy qua luôn hạn chốt.
 func (s *GameStore) AdminAdvance(ctx context.Context, gameID, expectedKey string, wall time.Time) (AdvanceResult, error) {
 	var res AdvanceResult

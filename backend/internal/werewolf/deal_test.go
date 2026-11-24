@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"testing"
 )
@@ -25,6 +26,35 @@ func countRoles(roles map[string]Role) map[Role]int {
 }
 
 // Bảng 1.2 của plan, chép tay: số người → sói + vai đặc biệt.
+// Bộ bài tự chỉnh: đúng số sói đã chọn và mọi vai đặc biệt đang bật, không
+// theo bảng số người; Dân bù chỗ còn lại.
+func TestCompositionFixedDeck(t *testing.T) {
+	cases := []struct {
+		n    int
+		cfg  Config
+		want map[Role]int
+	}{
+		// 12 người theo bảng là 3 sói và 4 vai (chưa có Cupid).
+		{12, Config{Wolves: 4}, map[Role]int{Wolf: 4, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Cupid: 1, Villager: 3}},
+		{12, Config{Wolves: 2, Disabled: []Role{Witch}}, map[Role]int{Wolf: 2, Seer: 1, Guard: 1, Hunter: 1, Cupid: 1, Villager: 6}},
+		// Sói không vượt 1/3 số người: 10 người tối đa 3 sói.
+		{10, Config{Wolves: 5, Extended: []Role{Elder, Idiot}}, map[Role]int{Wolf: 3, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Cupid: 1, Elder: 1, Idiot: 1}},
+	}
+	for _, c := range cases {
+		roles, err := Composition(c.n, c.cfg)
+		if err != nil {
+			t.Fatalf("n=%d: %v", c.n, err)
+		}
+		got := map[Role]int{}
+		for _, r := range roles {
+			got[r]++
+		}
+		if len(roles) != c.n || !maps.Equal(got, c.want) {
+			t.Errorf("n=%d %+v: %v, muốn %v", c.n, c.cfg, got, c.want)
+		}
+	}
+}
+
 func TestDealCompositionFollowsTable(t *testing.T) {
 	cases := []struct {
 		n    int
@@ -35,6 +65,10 @@ func TestDealCompositionFollowsTable(t *testing.T) {
 		{12, map[Role]int{Wolf: 3, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Villager: 5}},
 		{13, map[Role]int{Wolf: 3, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Cupid: 1, Villager: 5}},
 		{16, map[Role]int{Wolf: 3, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Cupid: 1, Villager: 8}},
+		{17, map[Role]int{Wolf: 4, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Cupid: 1, Villager: 8}},
+		{20, map[Role]int{Wolf: 4, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Cupid: 1, Villager: 11}},
+		{21, map[Role]int{Wolf: 5, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Cupid: 1, Villager: 11}},
+		{24, map[Role]int{Wolf: 5, Seer: 1, Guard: 1, Witch: 1, Hunter: 1, Cupid: 1, Villager: 14}},
 	}
 	for _, c := range cases {
 		roles, err := Deal(Seed{1}, uids(c.n), Config{})
@@ -53,13 +87,13 @@ func TestDealCompositionFollowsTable(t *testing.T) {
 	}
 }
 
-func TestR9PlayerCountOutsideTenToSixteenRejected(t *testing.T) {
-	for _, n := range []int{0, 9, 17} {
+func TestR9PlayerCountOutsideTenToTwentyFourRejected(t *testing.T) {
+	for _, n := range []int{0, 9, 25} {
 		if _, err := Deal(Seed{1}, uids(n), Config{}); !errors.Is(err, ErrPlayerCount) {
 			t.Fatalf("n=%d: err = %v, mong đợi ErrPlayerCount", n, err)
 		}
 	}
-	for _, n := range []int{10, 16} {
+	for _, n := range []int{10, 16, 24} {
 		if _, err := Deal(Seed{1}, uids(n), Config{}); err != nil {
 			t.Fatalf("n=%d phải Start được: %v", n, err)
 		}

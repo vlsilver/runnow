@@ -23,6 +23,7 @@ const stepDaySessionThreshold = 2500
 
 type contractTarget struct {
 	id, metric, creator string
+	target              float64
 	isJourney           bool
 	start, end          time.Time
 	participant         map[string]any
@@ -34,6 +35,9 @@ type ContractRecalcResult struct {
 	UID, ContractID, Metric  string
 	OldProgress, NewProgress float64
 	NewLinked                int
+	// ReachedAt: mốc tiến độ chạm mục tiêu kèo, nil khi chưa đạt. Quà kèo dùng
+	// để xếp ai đạt trước.
+	ReachedAt *time.Time `json:",omitempty"`
 }
 
 // RecalcActiveContracts link buổi chạy chưa gán + tính lại tiến độ (GỒM đi bộ:
@@ -78,7 +82,7 @@ func RecalcActiveContracts(ctx context.Context, db *firestore.Client, dryRun boo
 				}
 			}
 			byUser[uid] = append(byUser[uid], &contractTarget{
-				id: doc.Ref.ID, metric: metric, creator: creator,
+				id: doc.Ref.ID, metric: metric, creator: creator, target: number(d["targetValue"]),
 				isJourney: hasRoute && metric == "distance",
 				start:     start, end: end, participant: pm, counted: counted,
 			})
@@ -252,10 +256,17 @@ func recalcUserContracts(ctx context.Context, db *firestore.Client, uid string, 
 			distByID, startByID, officialMetersByDay, stepMetersByDay, stepCountByDay,
 		)
 		newIDs := newByContract[c.id]
+		var reached *time.Time
+		if contractMetTarget(c.metric, progress, c.target) {
+			reached = contractReachedAt(
+				c.metric, c.target, countedIDs, c.start, c.end,
+				distByID, startByID, officialMetersByDay, stepMetersByDay, stepCountByDay,
+			)
+		}
 		results = append(results, ContractRecalcResult{
 			UID: uid, ContractID: c.id, Metric: c.metric,
 			OldProgress: number(c.participant["progressValue"]),
-			NewProgress: progress, NewLinked: len(newIDs),
+			NewProgress: progress, NewLinked: len(newIDs), ReachedAt: reached,
 		})
 		if dryRun {
 			continue // chỉ tính, không ghi
@@ -353,6 +364,74 @@ func contractProgressWithWalk(
 		}
 		return m / 1000
 	}
+}
+
+// contractReachedAt: mốc sớm nhất mà tiến độ chạm target, tính lại theo đúng
+// contractProgressWithWalk trên phần dữ liệu tới mốc đó. Buổi chạy tính ở giờ
+// bắt đầu; bước và km đi bộ chỉ biết theo ngày nên tính ở cuối ngày VN. Nil khi
+// tới hết dữ liệu vẫn chưa đạt.
+//
+// Thêm buổi hay thêm ngày bước chỉ làm tiến độ tăng hoặc đứng yên (mọi metric
+// đều cộng, đếm hay lấy max), nên tìm nhị phân trên các mốc đã xếp.
+func contractReachedAt(
+	metric string, target float64, countedIDs []string, start, end time.Time,
+	distByID map[string]float64, startByID map[string]time.Time,
+	officialMetersByDay, stepMetersByDay map[string]float64, stepCountByDay map[string]int64,
+) *time.Time {
+	// Chỉ ngày trong kỳ kèo mới đổi tiến độ; map ngày gom từ mọi kèo của user.
+	dayEnds := map[string]time.Time{}
+	addDay := func(day string) {
+		if _, ok := dayEnds[day]; ok || !dayInWindow(day, start, end) {
+			return
+		}
+		d, err := time.ParseInLocation("2006-01-02", day, vietnam)
+		if err != nil {
+			return
+		}
+		dayEnds[day] = d.AddDate(0, 0, 1)
+	}
+	for day := range stepMetersByDay {
+		addDay(day)
+	}
+	for day := range stepCountByDay {
+		addDay(day)
+	}
+	marks := make([]time.Time, 0, len(countedIDs)+len(dayEnds))
+	for _, id := range countedIDs {
+		marks = append(marks, startByID[id])
+	}
+	for _, t := range dayEnds {
+		marks = append(marks, t)
+	}
+	sort.Slice(marks, func(i, j int) bool { return marks[i].Before(marks[j]) })
+	metAt := func(t time.Time) bool {
+		var ids []string
+		for _, id := range countedIDs {
+			if !startByID[id].After(t) {
+				ids = append(ids, id)
+			}
+		}
+		meters := map[string]float64{}
+		counts := map[string]int64{}
+		for day, at := range dayEnds {
+			if at.After(t) {
+				continue
+			}
+			if m, ok := stepMetersByDay[day]; ok {
+				meters[day] = m
+			}
+			if n, ok := stepCountByDay[day]; ok {
+				counts[day] = n
+			}
+		}
+		p := contractProgressWithWalk(metric, ids, start, end, distByID, startByID, officialMetersByDay, meters, counts)
+		return contractMetTarget(metric, p, target)
+	}
+	i := sort.Search(len(marks), func(i int) bool { return metAt(marks[i]) })
+	if i == len(marks) {
+		return nil
+	}
+	return &marks[i]
 }
 
 // dayInWindow: ngày (YYYY-MM-DD lịch VN) có nằm trong [start,end) không.

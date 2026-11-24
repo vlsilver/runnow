@@ -120,7 +120,11 @@ func (s *ActivityService) AnnounceNewContract(ctx context.Context, callerUID, co
 		title = "một kèo mới"
 	}
 	targetLabel := formatContractMetricValue(stringValue(data["metric"]), number(data["targetValue"]))
-	text := fmt.Sprintf("🔥 %s vừa mở kèo: %s — mục tiêu %s.\nVào tab Kèo bấm tham gia, đừng để bị bỏ lại!", name, title, targetLabel)
+	gift, err := getData(ctx, s.db.Collection("contractGifts").Doc(contractID))
+	if err != nil {
+		return err
+	}
+	text := fmt.Sprintf("🔥 %s vừa mở kèo: %s — mục tiêu %s.\n%sVào tab Kèo bấm tham gia, đừng để bị bỏ lại!", name, title, targetLabel, contractGiftAnnounceLine(gift))
 
 	if err := s.telegram.SendChatMessage(ctx, s.telegram.ChatID(), text); err != nil {
 		return err

@@ -26,7 +26,7 @@ func near(a, b float64) bool { return math.Abs(a-b) < 1e-6 }
 //   - hôm nay: distance 6000, Σhourly 6000 → scale 1; giờ 0–21 có 4000 (giờ 22 có 2000, không tính) → 4000
 //   - health = 6500, không có buổi chính thức → km = 6500, nguồn health
 func TestR28HealthKmUsesScaledHourlyAcrossTheFrame(t *testing.T) {
-	got, err := computeFrameKm(kmFrameEnd, nil,
+	got, err := computeFrameKm(kmFrameEnd.AddDate(0, 0, -1), kmFrameEnd, nil,
 		&stepDayKm{DistanceMeters: 10000, HourlyDistance: hourly(map[int]float64{8: 6000, 22: 1000, 23: 1000})},
 		&stepDayKm{DistanceMeters: 6000, HourlyDistance: hourly(map[int]float64{7: 3000, 21: 1000, 22: 2000})},
 	)
@@ -47,7 +47,7 @@ func run(id, source, sport string, start time.Time, meters float64, minutes int6
 
 func mustFrame(t *testing.T, acts []ActivityFact, y, d *stepDayKm) FrameKm {
 	t.Helper()
-	got, err := computeFrameKm(kmFrameEnd, acts, y, d)
+	got, err := computeFrameKm(kmFrameEnd.AddDate(0, 0, -1), kmFrameEnd, acts, y, d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,10 +141,67 @@ func TestR27DuplicateAcrossBoundaryNotCountedTwice(t *testing.T) {
 	}
 }
 
-func TestFrameMustEndAt2200VN(t *testing.T) {
-	for _, end := range []time.Time{vn(15, 21, 0), time.Date(2026, 10, 15, 22, 0, 0, 0, time.UTC)} {
-		if _, err := computeFrameKm(end, nil, nil, nil); err == nil {
-			t.Fatalf("%s không phải 22:00 VN mà không bị từ chối", end)
+// Khung phải tròn giờ, dài từ trên 0 tới 24 tiếng: số Health chỉ có theo giờ.
+func TestFrameMustBeWholeHours(t *testing.T) {
+	bad := [][2]time.Time{
+		{vn(15, 10, 0), vn(15, 21, 30)},
+		{vn(15, 10, 30), vn(15, 22, 0)},
+		{vn(15, 22, 0), vn(15, 22, 0)},
+		{vn(15, 22, 0), vn(15, 10, 0)},
+		{vn(14, 21, 0), vn(15, 22, 0)},
+	}
+	for _, f := range bad {
+		if _, err := computeFrameKm(f[0], f[1], nil, nil, nil); err == nil {
+			t.Fatalf("khung %s → %s không bị từ chối", f[0], f[1])
 		}
+	}
+}
+
+// Số tính tay, khung 22h–10h ngày 15:
+//   - 14: distance 10000, Σhourly 8000 → scale 1.25; giờ 22–23 có 2000 → 2500
+//   - 15: distance 6000, Σhourly 6000 → scale 1; giờ 0–9 có 4000 (giờ 10 có 2000, không tính) → 4000
+func TestFrameCrossingMidnightTakesOnlyItsHours(t *testing.T) {
+	got, err := computeFrameKm(vn(14, 22, 0), vn(15, 10, 0), nil,
+		&stepDayKm{DistanceMeters: 10000, HourlyDistance: hourly(map[int]float64{8: 6000, 22: 1000, 23: 1000})},
+		&stepDayKm{DistanceMeters: 6000, HourlyDistance: hourly(map[int]float64{7: 3000, 9: 1000, 10: 2000})},
+	)
+	if err != nil || !near(got.Meters, 6500) || got.Source != "health" {
+		t.Fatalf("km khung 22h–10h = %+v, %v; muốn 6500", got, err)
+	}
+}
+
+// Khung 10h–22h nằm gọn một ngày: giờ 7 và giờ 22 không thuộc khung.
+// Σhourly 6500 = distance nên scale 1; giờ 10 + 21 = 3000.
+func TestFrameWithinOneDayTakesOnlyItsHours(t *testing.T) {
+	got, err := computeFrameKm(vn(15, 10, 0), vn(15, 22, 0), nil, nil,
+		&stepDayKm{DistanceMeters: 6500, HourlyDistance: hourly(map[int]float64{7: 3000, 10: 2000, 21: 1000, 22: 500})},
+	)
+	if err != nil || !near(got.Meters, 3000) {
+		t.Fatalf("km khung 10h–22h = %+v, %v; muốn 3000", got, err)
+	}
+}
+
+// Buổi chính thức cũng theo khung: 9h59 thuộc khung 22h–10h, 10h thuộc khung sau.
+func TestOfficialRunBelongsToFrameItStartedIn(t *testing.T) {
+	acts := []ActivityFact{
+		run("a", "strava", "Run", vn(15, 9, 59), 5000, 30),
+		run("b", "strava", "Run", vn(15, 10, 0), 7000, 40),
+	}
+	morning, err := computeFrameKm(vn(14, 22, 0), vn(15, 10, 0), acts, nil, nil)
+	if err != nil || !near(morning.Meters, 5000) {
+		t.Fatalf("khung sáng = %+v, %v; muốn 5000", morning, err)
+	}
+	evening, err := computeFrameKm(vn(15, 10, 0), vn(15, 22, 0), acts, nil, nil)
+	if err != nil || !near(evening.Meters, 7000) {
+		t.Fatalf("khung tối = %+v, %v; muốn 7000", evening, err)
+	}
+}
+
+// Khung 24 tiếng chạm hai ngày thiếu hourly: chỉ một tổng được tính.
+func TestDayTotalWithoutHourlyGoesToOneFrameOnly(t *testing.T) {
+	day := &stepDayKm{DistanceMeters: 6000}
+	open6, _ := computeFrameKm(vn(15, 6, 0), vn(16, 6, 0), nil, day, day)
+	if !near(open6.Meters, 6000) {
+		t.Fatalf("khung mở 6h = %v; muốn 6000, không cộng hai lần", open6.Meters)
 	}
 }

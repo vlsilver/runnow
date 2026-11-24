@@ -29,7 +29,7 @@ func TestWindowFollowsScheduleTable(t *testing.T) {
 	check(KindWitchSave, at(16, 0, 0), at(16, 10, 0))
 	check(KindWitchPoison, at(16, 0, 0), at(16, 10, 0))
 	g.toPhase(PhaseDay)
-	check(KindNominate, at(16, 10, 0), at(16, 17, 0))
+	check(KindNominate, at(16, 10, 0), at(16, 20, 0))
 	g.toPhase(PhaseTrial)
 	check(KindVote, at(16, 20, 0), at(16, 22, 0))
 	check(KindHunterShoot, time.Time{}, time.Time{})
@@ -77,8 +77,9 @@ func TestPrecheckReasonsBeforeTarget(t *testing.T) {
 	if err := Precheck(g.st, KindSeerPeek, "seer", nil, now); !errors.Is(err, ErrKmInsufficient) {
 		t.Fatalf("999 m: %v", err)
 	}
+	// Km của sói chỉ xét lúc chốt cắn, nên thiếu km vẫn bấm được.
 	g.st.Km = map[string]float64{}
-	if err := Precheck(g.st, KindWolfBite, "w1", nil, now); !errors.Is(err, ErrKmInsufficient) {
+	if err := Precheck(g.st, KindWolfBite, "w1", nil, now); err != nil {
 		t.Fatalf("sói thiếu km: %v", err)
 	}
 

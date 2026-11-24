@@ -66,11 +66,11 @@ func TestExtendLimitIsOneHourBeforeNextDeadline(t *testing.T) {
 	}
 }
 
-// Giới hạn của từng phase: lượt sau khoá lúc 0h, 10h, 17h, 22h, 0h.
+// Giới hạn của từng phase: lượt sau khoá lúc 0h, 10h, 20h, 22h, 0h.
 func TestExtendLimitPerPhase(t *testing.T) {
 	g := newGame(t, baseRoles())
 	want := map[Phase]time.Duration{
-		PhaseSetup: time.Hour, PhaseNight: 9 * time.Hour, PhaseDawn: 6 * time.Hour, PhaseDay: 4 * time.Hour, PhaseTrial: time.Hour,
+		PhaseSetup: time.Hour, PhaseNight: 9 * time.Hour, PhaseDawn: 9 * time.Hour, PhaseDay: time.Hour, PhaseTrial: time.Hour,
 	}
 	for i := 0; i < 5; i++ {
 		var tooLong *ExtendTooLong
@@ -81,7 +81,7 @@ func TestExtendLimitPerPhase(t *testing.T) {
 	}
 }
 
-// Lượt thợ săn ban ngày (10h–12h) dời được, phase ngày vẫn khoá lúc 17h. Lượt
+// Lượt thợ săn ban ngày (10h–12h) dời được, phase ngày vẫn khoá lúc 20h. Lượt
 // thợ săn bị treo (22h–23h) sát mốc 0h nên không dời được.
 func TestExtendHunterTurn(t *testing.T) {
 	g := game13(t)
@@ -98,7 +98,7 @@ func TestExtendHunterTurn(t *testing.T) {
 	if !g.st.NextAt().Equal(at(16, 12, 30)) || !g.st.TurnClose().Equal(at(16, 12, 30)) {
 		t.Fatalf("NextAt = %s, TurnClose = %s", g.st.NextAt(), g.st.TurnClose())
 	}
-	if _, err := g.advance(at(16, 12, 30)); err != nil || g.st.Hunter != nil || !g.st.Deadline().Equal(at(16, 17, 0)) {
+	if _, err := g.advance(at(16, 12, 30)); err != nil || g.st.Hunter != nil || !g.st.Deadline().Equal(at(16, 20, 0)) {
 		t.Fatalf("12:30: err=%v hunter=%+v hạn %s", err, g.st.Hunter, g.st.Deadline())
 	}
 

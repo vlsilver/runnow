@@ -14,7 +14,7 @@ func TestContractProgressWithWalk(t *testing.T) {
 	start := day("2026-08-24 00:00")
 	end := day("2026-08-31 00:00") // [24, 31) — tuần
 
-	dist := map[string]float64{"r1": 5000, "r2": 2000}     // 5km, 2km
+	dist := map[string]float64{"r1": 5000, "r2": 2000} // 5km, 2km
 	startAt := map[string]time.Time{
 		"r1": day("2026-08-24 07:00"), // thứ 2
 		"r2": day("2026-08-25 07:00"), // thứ 3
@@ -67,5 +67,53 @@ func TestDayInWindow(t *testing.T) {
 	}
 	if dayInWindow("2026-08-23", start, end) {
 		t.Fatal("23 KHÔNG được trong window")
+	}
+}
+
+func TestContractReachedAt(t *testing.T) {
+	loc := time.FixedZone("VN", 7*3600)
+	day := func(s string) time.Time {
+		tm, _ := time.ParseInLocation("2006-01-02 15:04", s, loc)
+		return tm
+	}
+	start, end := day("2026-08-24 00:00"), day("2026-08-31 00:00")
+	dist := map[string]float64{"r1": 5000, "r2": 2000}
+	startAt := map[string]time.Time{"r1": day("2026-08-24 07:00"), "r2": day("2026-08-25 07:00")}
+	officialByDay := map[string]float64{"2026-08-24": 5000, "2026-08-25": 2000}
+	stepMeters := map[string]float64{"2026-08-24": 6000, "2026-08-26": 1500}
+	stepCount := map[string]int64{"2026-08-24": 3000, "2026-08-26": 2600}
+	ids := []string{"r1", "r2"}
+	at := func(metric string, target float64) *time.Time {
+		return contractReachedAt(metric, target, ids, start, end, dist, startAt, officialByDay, stepMeters, stepCount)
+	}
+	cases := []struct {
+		metric string
+		target float64
+		want   string // "" = chưa đạt
+	}{
+		// 5 km lúc chạy r1, thêm 1 km đi bộ của ngày 24 tính lúc hết ngày.
+		{"distance", 5, "2026-08-24 07:00"},
+		{"distance", 6, "2026-08-25 00:00"},
+		// 6 + r2 2 km = 8 km lúc chạy r2.
+		{"distance", 7, "2026-08-25 07:00"},
+		// Tổng cả kỳ 5 + 2 + 1 + 1.5 = 9.5 km.
+		{"distance", 9.5, "2026-08-27 00:00"},
+		{"distance", 10, ""},
+		// r1, ngày 24 đủ bước, r2, ngày 26 đủ bước.
+		{"activity_count", 2, "2026-08-25 00:00"},
+		{"activity_count", 4, "2026-08-27 00:00"},
+		{"longest_run", 5, "2026-08-24 07:00"},
+	}
+	for _, c := range cases {
+		got := at(c.metric, c.target)
+		if c.want == "" {
+			if got != nil {
+				t.Errorf("%s %v: muốn chưa đạt, được %v", c.metric, c.target, got)
+			}
+			continue
+		}
+		if got == nil || !got.Equal(day(c.want)) {
+			t.Errorf("%s %v: muốn %s, được %v", c.metric, c.target, c.want, got)
+		}
 	}
 }

@@ -29,15 +29,21 @@ type GameStore struct {
 	// pscChatID là TELEGRAM_CHAT_ID; ván thử không được tạo trong chat này (X1).
 	pscChatID string
 	// frameKm tính km khung của một người; mặc định LoadFrameKm.
-	frameKm func(ctx context.Context, uid string, frameEnd time.Time) (FrameKm, error)
+	frameKm func(ctx context.Context, uid string, start, end time.Time) (FrameKm, error)
 	// beforeSubmit chỉ test đặt: chen một bước chốt vào giữa lúc PressButton đọc
 	// state và lúc transaction ghi action.
 	beforeSubmit func()
+	// gameBot trả client gửi tin của ván có botId (bot ván), cả group lẫn nhắn
+	// riêng; nil khi service không có Managed Bots.
+	gameBot func(botID string) outboxTelegram
+	// resyncGameBot hẹn đặt lại webhook bot ván botID; nil khi không có Managed
+	// Bots.
+	resyncGameBot func(ctx context.Context, botID string) error
 }
 
 func NewGameStore(db *firestore.Client, pscChatID string) *GameStore {
-	return &GameStore{db: db, pscChatID: pscChatID, frameKm: func(ctx context.Context, uid string, frameEnd time.Time) (FrameKm, error) {
-		return LoadFrameKm(ctx, db, uid, frameEnd)
+	return &GameStore{db: db, pscChatID: pscChatID, frameKm: func(ctx context.Context, uid string, start, end time.Time) (FrameKm, error) {
+		return LoadFrameKm(ctx, db, uid, start, end)
 	}}
 }
 
@@ -48,6 +54,8 @@ const (
 	gameEnded       = "ended"
 	gameCancelled   = "cancelled"
 )
+
+var errTooManyGames = &HTTPError{Status: http.StatusConflict, Code: "too_many_games", Message: "Đang có nhiều ván Ma Sói quá, bạn đợi một ván kết thúc rồi mở nhé."}
 
 var errGameRunning = &HTTPError{Status: http.StatusConflict, Code: "game_running", Message: "Đang có ván Ma Sói chưa kết thúc."}
 
@@ -88,17 +96,30 @@ type NewGameInput struct {
 	CreatedBy string
 	ChatID    string
 	ThreadID  int64
-	Config    werewolf.Config
+	// BotID khác rỗng: bot ván gửi tin group thay 3i.
+	BotID  string
+	Config werewolf.Config
 	// RegistrationDeadline: quá hạn thì không đăng ký được nữa; zero là không hạn.
 	RegistrationDeadline time.Time
+	// StartAt: tới giờ thì tick tự bấm Start; zero là chờ chủ phòng bấm.
+	StartAt time.Time
+	// UserGame: ván của user không phải admin. Không lấy gameState/current, và
+	// chỉ mở được khi số ván user chưa kết thúc còn dưới MaxUserGames.
+	UserGame     bool
+	MaxUserGames int
 }
 
-// CreateGame mở ván mới ở trạng thái đăng ký. Chỉ một ván được mở một lúc:
-// gameState/current còn trỏ tới ván chưa kết thúc thì trả 409 game_running.
+// CreateGame mở ván mới ở trạng thái đăng ký. Mỗi chat và mỗi chủ ván chỉ có
+// một ván chưa kết thúc; trùng thì trả 409 game_running. Ván chưa có chat
+// (không đăng Telegram) chỉ bị chặn theo chủ ván.
+//
+// gameState/current là ván chính: cảnh báo admin, lệnh admin trong DM và ngữ
+// cảnh bot 3i đọc nó. Ván mới lấy con trỏ khi ván đang trỏ đã kết thúc, hoặc khi
+// ván mới ở PSC; ván group khác mở lúc PSC đang chơi thì không lấy mất.
 func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Time) (string, error) {
 	if in.Config.TestMode {
 		// Ván thử có người giả và lệnh admin đẩy giờ; chạy trong PSC là tin của nó
-		// tới cả 16 người thật. Thiếu cấu hình thì không kiểm được, nên từ chối.
+		// tới mọi người thật trong group. Thiếu cấu hình thì không kiểm được, nên từ chối.
 		if s.pscChatID == "" {
 			return "", errors.New("thiếu TELEGRAM_CHAT_ID, không kiểm được ván thử có nằm ngoài PSC không")
 		}
@@ -111,33 +132,49 @@ func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Ti
 	if err != nil {
 		return "", err
 	}
-	var deadline any
+	var deadline, startAt any
 	if !in.RegistrationDeadline.IsZero() {
 		deadline = in.RegistrationDeadline
 	}
+	if !in.StartAt.IsZero() {
+		startAt = in.StartAt
+	}
 	err = s.db.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
-		cur, err := tx.Get(s.currentRef())
-		if err != nil && status.Code(err) != codes.NotFound {
+		cur, err := getOptional(tx, s.currentRef())
+		if err != nil {
 			return err
 		}
+		open, err := tx.Documents(openGames(s.db)).GetAll()
+		if err != nil {
+			return err
+		}
+		chat := strings.TrimSpace(in.ChatID)
+		curID, curOpen, userGames := "", false, 0
 		if cur.Exists() {
-			if id := stringValue(cur.Data()["gameId"]); id != "" {
-				g, err := tx.Get(s.gameRef(id))
-				if err != nil && status.Code(err) != codes.NotFound {
-					return err
-				}
-				if g.Exists() && !gameClosed(stringValue(g.Data()["status"])) {
-					return errGameRunning
-				}
+			curID = stringValue(cur.Data()["gameId"])
+		}
+		for _, g := range open {
+			if stringValue(g.Data()["createdBy"]) == in.CreatedBy || (chat != "" && strings.TrimSpace(stringValue(g.Data()["chatId"])) == chat) {
+				return errGameRunning
 			}
+			curOpen = curOpen || g.Ref.ID == curID
+			if g.Data()["userGame"] == true {
+				userGames++
+			}
+		}
+		if in.UserGame && userGames >= in.MaxUserGames {
+			return errTooManyGames
 		}
 		if err := tx.Create(ref, map[string]any{
 			"status": gameRegistering, "createdBy": in.CreatedBy, "createdAt": now,
-			"chatId": in.ChatID, "threadId": in.ThreadID, "testMode": in.Config.TestMode,
+			"chatId": in.ChatID, "threadId": in.ThreadID, "botId": in.BotID, "testMode": in.Config.TestMode,
 			"config": string(cfg), "version": 0, "eventSeq": 0, "feedSeq": 0, "updatedAt": now,
-			"registrationDeadline": deadline, "playerCount": 0,
+			"registrationDeadline": deadline, "startAt": startAt, "playerCount": 0, "userGame": in.UserGame,
 		}); err != nil {
 			return err
+		}
+		if in.UserGame || (curOpen && chat != s.pscChatID) {
+			return nil
 		}
 		return tx.Set(s.currentRef(), map[string]any{"gameId": ref.ID, "updatedAt": now})
 	})
@@ -148,6 +185,28 @@ func (s *GameStore) CreateGame(ctx context.Context, in NewGameInput, now time.Ti
 }
 
 func gameClosed(status string) bool { return status == gameEnded || status == gameCancelled }
+
+// openGames là các ván chưa kết thúc. Lọc một field nên dùng index có sẵn; số
+// ván mở cùng lúc nhỏ nên đọc hết rồi lọc chat, chủ ván, người chơi trong code.
+func openGames(db *firestore.Client) firestore.Query {
+	return db.Collection("games").Where("status", "in", []string{gameRegistering, gameStarting, gameRunning})
+}
+
+// busyChats là các chat đang có ván chưa kết thúc. CreateGame giữ luật một
+// chat một ván; app dùng cái này để không cho chọn chat đang bận.
+func (s *GameStore) busyChats(ctx context.Context) (map[string]bool, error) {
+	open, err := openGames(s.db).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, g := range open {
+		if chat := strings.TrimSpace(stringValue(g.Data()["chatId"])); chat != "" {
+			out[chat] = true
+		}
+	}
+	return out, nil
+}
 
 // StartGame ghi state ban đầu (đã chia vai) và các tin mở ván. Chỉ chạy được
 // một lần: ván đã chạy thì trả 409.
@@ -278,6 +337,56 @@ func gameAdvanceTaskFor(gameID string, res AdvanceResult) PublishTask {
 	return t
 }
 
+// tickGameWindow: ván đã kết thúc quá ngần này thì tick thôi kick flush outbox
+// còn sót; tin Ma Sói trễ hơn một ngày không còn ý nghĩa.
+const tickGameWindow = 24 * time.Hour
+
+// TickGame là một ván tick cần xem và status lúc đọc.
+type TickGame struct{ ID, Status string }
+
+// TickGames là các ván tick cần xem: mọi ván chưa kết thúc, ván gameState/current
+// dù đã kết thúc (như trước khi có nhiều ván), và ván đã kết thúc trong
+// tickGameWindow (outbox có thể còn tin chờ). Không trùng id. Đây là lần
+// đọc đầu của tick nên hay gặp kết nối vừa bị đóng: đọc lại một lần.
+func (s *GameStore) TickGames(ctx context.Context, wall time.Time) ([]TickGame, error) {
+	return readAgainOnUnavailable(ctx, func(ctx context.Context) ([]TickGame, error) {
+		return s.tickGames(ctx, wall)
+	})
+}
+
+func (s *GameStore) tickGames(ctx context.Context, wall time.Time) ([]TickGame, error) {
+	open, err := openGames(s.db).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	recent, err := s.db.Collection("games").Where("updatedAt", ">=", wall.Add(-tickGameWindow)).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	var out []TickGame
+	seen := map[string]bool{}
+	add := func(id, st string) {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			out = append(out, TickGame{ID: id, Status: st})
+		}
+	}
+	for _, g := range open {
+		add(g.Ref.ID, stringValue(g.Data()["status"]))
+	}
+	for _, g := range recent {
+		if st := stringValue(g.Data()["status"]); gameClosed(st) {
+			add(g.Ref.ID, st)
+		}
+	}
+	id, st, err := s.CurrentGame(ctx)
+	if err != nil {
+		return nil, err
+	}
+	add(id, st)
+	return out, nil
+}
+
 // CurrentGame là ván gameState/current trỏ tới và status của nó; chưa có ván
 // nào thì id rỗng.
 func (s *GameStore) CurrentGame(ctx context.Context) (id, gameStatus string, err error) {
@@ -308,7 +417,7 @@ func (s *GameStore) HasPendingOutbox(ctx context.Context, gameID string) (bool, 
 	return len(docs) > 0, err
 }
 
-// snapshotKmIfDue: tới mốc 22h thì tính km của mọi người chơi và ghi bằng
+// snapshotKmIfDue: tới mốc chốt thì tính km của mọi người chơi và ghi bằng
 // Create, bản ghi đầu tiên thắng (R29: không chốt lại). Chạy ngoài transaction vì
 // mỗi người tốn vài query; transaction của bước chỉ đọc các doc này. Ván thử
 // không đọc buổi chạy: giờ ván đã bị đẩy nên khung không khớp buổi chạy thật,
@@ -331,11 +440,11 @@ func (s *GameStore) snapshotKmIfDue(ctx context.Context, gameID string, wall tim
 	if err != nil {
 		return err
 	}
-	end, ok := st.KmFrameEnd()
-	if !ok || st.Paused || now.Before(end) {
+	frame, closes, col, ok := dueKmSnapshot(st, testMode)
+	if !ok || st.Paused || now.Before(closes) {
 		return nil
 	}
-	refs := kmRefs(game, st)
+	refs := kmRefs(game, st, col)
 	existing, err := s.db.GetAll(ctx, refs)
 	if err != nil {
 		return err
@@ -345,9 +454,11 @@ func (s *GameStore) snapshotKmIfDue(ctx context.Context, gameID string, wall tim
 			continue
 		}
 		uid := refs[i].ID
-		doc := map[string]any{"frameEnd": end, "meters": 0.0, "source": "test", "createdAt": wall}
-		if !testMode {
-			fk, err := s.frameKm(ctx, uid, end)
+		doc := map[string]any{"frameEnd": frame.End, "meters": 0.0, "source": "test", "createdAt": wall}
+		if st.Config.KmOff {
+			doc["source"] = "off" // ván tắt km: không đọc buổi chạy, mốc vẫn cần để chốt
+		} else if !testMode {
+			fk, err := s.frameKm(ctx, uid, frame.Start, frame.End)
 			if err != nil {
 				return fmt.Errorf("km của %s: %w", uid, err)
 			}
@@ -360,11 +471,31 @@ func (s *GameStore) snapshotKmIfDue(ctx context.Context, gameID string, wall tim
 	return nil
 }
 
-func kmRefs(game *firestore.DocumentRef, st *werewolf.State) []*firestore.DocumentRef {
-	col := roundRef(game, kmRound(st)).Collection("km")
+const (
+	kmCol     = "km"     // km lúc chốt phiếu (và mở đêm 1)
+	biteKmCol = "biteKm" // km lúc chốt cắn
+)
+
+// dueKmSnapshot: bước chốt kế tiếp cần snapshot km nào, khung nào, ghi vào đâu,
+// và từ lúc nào. Ván thử không có snapshot cắn vì km của ván thử do admin ghi vào
+// lần chốt phiếu (Inputs.BiteKm nil thì engine xét km đó).
+func dueKmSnapshot(st *werewolf.State, testMode bool) (frame werewolf.KmFrame, closes time.Time, col string, ok bool) {
+	if frame, ok = st.DueKmFrame(); ok {
+		return frame, frame.End, kmCol, true
+	}
+	if frame, ok = st.DueBiteFrame(); ok && !testMode {
+		return frame, st.Deadline(), biteKmCol, true
+	}
+	return werewolf.KmFrame{}, time.Time{}, "", false
+}
+
+// kmRefs lấy đủ mọi người chơi, kể cả ở snapshot cắn, để danh sách doc không lộ
+// ai là sói.
+func kmRefs(game *firestore.DocumentRef, st *werewolf.State, col string) []*firestore.DocumentRef {
+	c := roundRef(game, kmRound(st)).Collection(col)
 	var refs []*firestore.DocumentRef
 	for _, uid := range sortedPlayers(st) {
-		refs = append(refs, col.Doc(uid))
+		refs = append(refs, c.Doc(uid))
 	}
 	return refs
 }
@@ -412,7 +543,7 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, wall time.Ti
 		if !st.Paused {
 			res.NextAt, res.TaskKey = st.NextAt().Add(-offset), st.TaskKey()
 		}
-		in, err := s.readInputs(tx, game, st, now)
+		in, err := s.readInputs(tx, game, st, now, stringValue(g.Data()["botId"]) == "", g.Data()["testMode"] == true)
 		if err != nil {
 			return err
 		}
@@ -432,7 +563,12 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, wall time.Ti
 		if err != nil {
 			return err
 		}
-		w := stepWrite{tx: tx, game: game, gameData: g.Data(), before: st, after: next, events: evs, msgs: msgs, chats: chats, now: now, wall: wall}
+		public, err := publicWinners(tx, s.db.Collection("publicProfiles"), st, next)
+		if err != nil {
+			return err
+		}
+		w := stepWrite{tx: tx, game: game, gameData: g.Data(), before: st, after: next, events: evs, msgs: msgs, chats: chats, now: now, wall: wall,
+			users: s.db.Collection("users"), clubCards: s.db.Collection("clubCards"), public: public}
 		if err := w.commit(map[string]any{"kind": "step", "phaseKey": st.PhaseKey(), "inputs": string(inputs)}); err != nil {
 			return err
 		}
@@ -448,7 +584,7 @@ func (s *GameStore) advanceOnce(ctx context.Context, gameID string, wall time.Ti
 
 // readInputs đọc trong transaction mọi thứ engine cần cho bước kế: action của
 // vòng hiện tại, snapshot km nếu bước này là mốc 22h, và người đã rời PSC.
-func (s *GameStore) readInputs(tx *firestore.Transaction, game *firestore.DocumentRef, st *werewolf.State, now time.Time) (werewolf.Inputs, error) {
+func (s *GameStore) readInputs(tx *firestore.Transaction, game *firestore.DocumentRef, st *werewolf.State, now time.Time, psc, testMode bool) (werewolf.Inputs, error) {
 	var in werewolf.Inputs
 	docs, err := tx.Documents(roundRef(game, st.Round).Collection("actions")).GetAll()
 	if err != nil {
@@ -467,27 +603,33 @@ func (s *GameStore) readInputs(tx *firestore.Transaction, game *firestore.Docume
 		return a.Actor+string(a.Kind) < b.Actor+string(b.Kind)
 	})
 
-	if end, ok := st.KmFrameEnd(); ok && !now.Before(end) {
-		kms, err := tx.GetAll(kmRefs(game, st))
+	if _, closes, col, ok := dueKmSnapshot(st, testMode); ok && !now.Before(closes) {
+		kms, err := tx.GetAll(kmRefs(game, st, col))
 		if err != nil {
 			return in, err
 		}
-		in.Km = map[string]float64{}
+		meters := map[string]float64{}
 		for _, d := range kms {
 			if !d.Exists() {
 				return in, errKmNotReady
 			}
-			in.Km[d.Ref.ID] = number(d.Data()["meters"])
+			meters[d.Ref.ID] = number(d.Data()["meters"])
+		}
+		if col == biteKmCol {
+			in.BiteKm = meters
+		} else {
+			in.Km = meters
 		}
 	}
 
-	in.Left, err = s.readLeft(tx, game, st)
+	in.Left, err = s.readLeft(tx, game, st, psc)
 	return in, err
 }
 
 // readLeft: người chơi còn sống mà tgLinks báo không còn ở PSC, hoặc không còn
 // liên kết (xoá tài khoản, R33). Người chơi giả của testMode không rời được.
-func (s *GameStore) readLeft(tx *firestore.Transaction, game *firestore.DocumentRef, st *werewolf.State) ([]string, error) {
+// psc false (ván của bot ván, group riêng) thì không xét inPsc, chỉ xét liên kết.
+func (s *GameStore) readLeft(tx *firestore.Transaction, game *firestore.DocumentRef, st *werewolf.State, psc bool) ([]string, error) {
 	uids := sortedPlayers(st)
 	var refs []*firestore.DocumentRef
 	for _, uid := range uids {
@@ -524,7 +666,7 @@ func (s *GameStore) readLeft(tx *firestore.Transaction, game *firestore.Document
 			return nil, err
 		}
 		for i, l := range links {
-			if !l.Exists() || l.Data()["inPsc"] != true || stringValue(l.Data()["uid"]) != linkUIDs[i] {
+			if !l.Exists() || (psc && l.Data()["inPsc"] != true) || stringValue(l.Data()["uid"]) != linkUIDs[i] {
 				left = append(left, linkUIDs[i])
 			}
 		}
@@ -549,7 +691,7 @@ func decodeAction(d map[string]any) (werewolf.Action, bool) {
 	if d["cleared"] == true {
 		return werewolf.Action{}, false
 	}
-	a := werewolf.Action{Kind: werewolf.Kind(stringValue(d["kind"])), Actor: stringValue(d["uid"]), Choice: stringValue(d["choice"])}
+	a := werewolf.Action{KmChecked: d["kmChecked"] == true, Kind: werewolf.Kind(stringValue(d["kind"])), Actor: stringValue(d["uid"]), Choice: stringValue(d["choice"])}
 	if t, ok := d["receivedAt"].(time.Time); ok {
 		a.ReceivedAt = t
 	}
@@ -615,6 +757,12 @@ type stepWrite struct {
 	now, wall time.Time
 	// extra gộp thêm vào games/{id} (Start ghi playerCount sau khi loại người).
 	extra map[string]any
+	// users là collection users, để bước kết thúc ván ghi thẻ cho phe thắng.
+	users *firestore.CollectionRef
+	// clubCards và public: thẻ của người phe thắng để hồ sơ công khai tự lên
+	// club (publicWinners).
+	clubCards *firestore.CollectionRef
+	public    map[string]bool
 }
 
 func (w *stepWrite) status() string {
@@ -659,7 +807,7 @@ func (w *stepWrite) commit(event map[string]any) error {
 	if w.before != nil && !reminderOnly {
 		feedSeq := int64(number(w.gameData["feedSeq"])) + 1
 		public["feedSeq"] = feedSeq
-		feed, err := json.Marshal(publicEvents(w.events))
+		feed, err := json.Marshal(publicEvents(w.after, w.events))
 		if err != nil {
 			return err
 		}
@@ -688,16 +836,98 @@ func (w *stepWrite) commit(event map[string]any) error {
 			}
 		}
 	}
+	if err := w.writeGameCards(); err != nil {
+		return err
+	}
 	return w.writeOutbox(eventSeq)
+}
+
+// writeGameCards trao thẻ cho người phe thắng, kể cả người đã chết, ở đúng bước
+// ván chuyển sang kết thúc. Người chơi giả của ván thử không có tài khoản nên
+// không nhận. Ván huỷ không đi qua đây nên không ai có thẻ.
+func (w *stepWrite) writeGameCards() error {
+	if w.before == nil || w.before.Phase == werewolf.PhaseEnded || w.after.Phase != werewolf.PhaseEnded {
+		return nil
+	}
+	if w.users == nil {
+		return errors.New("stepWrite: ván kết thúc mà thiếu users để ghi thẻ")
+	}
+	fake := fakeUIDs(w.gameData)
+	for _, uid := range w.after.Winners() {
+		if fake[uid] {
+			continue
+		}
+		ref := w.users.Doc(uid).Collection("gameCards").Doc(w.game.ID)
+		card := gameCardDoc(w.game.ID, uid, w.after, w.wall)
+		if err := w.tx.Set(ref, card); err != nil {
+			return err
+		}
+		if w.public[uid] {
+			club := w.clubCards.Doc(keptClubCardID(uid, "game", w.game.ID))
+			if err := w.tx.Set(club, keptClubCardDoc("game", uid, card, w.wall)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// publicWinners đọc trong tx hồ sơ của người phe thắng khi bước này kết thúc
+// ván, trả những uid để công khai. Transaction phải đọc xong mới ghi, nên đọc
+// trước stepWrite. Ván thử không khoe gì nên không đọc.
+func publicWinners(tx *firestore.Transaction, profiles *firestore.CollectionRef, before, after *werewolf.State) (map[string]bool, error) {
+	if before.Phase == werewolf.PhaseEnded || after.Phase != werewolf.PhaseEnded || after.Config.TestMode {
+		return nil, nil
+	}
+	var refs []*firestore.DocumentRef
+	for _, uid := range after.Winners() {
+		refs = append(refs, profiles.Doc(uid))
+	}
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	snaps, err := tx.GetAll(refs)
+	if err != nil {
+		return nil, err
+	}
+	public := map[string]bool{}
+	for _, snap := range snaps {
+		if snap.Exists() && publicProfile(snap.Data()) {
+			public[snap.Ref.ID] = true
+		}
+	}
+	return public, nil
 }
 
 // publicGame là phần của games/{id} mà API được đọc: không có vai của người còn
 // sống, không có seed, km chi tiết hay lựa chọn.
+// gameNominees là người lên giàn trên doc ván; doc ghi trước khi có nhiều
+// phiên chỉ có "nominee".
+func gameNominees(data map[string]any) []string {
+	var out []string
+	for _, v := range anyList(data["nominees"]) {
+		if uid := stringValue(v); uid != "" {
+			out = append(out, uid)
+		}
+	}
+	if len(out) == 0 {
+		if uid := stringValue(data["nominee"]); uid != "" {
+			out = []string{uid}
+		}
+	}
+	return out
+}
+
 func (w *stepWrite) publicGame() map[string]any {
 	st := w.after
-	revealed := map[string]any{}
+	// revealed là lá bài đã lật, revealedTeams là phe của người chỉ lộ phe
+	// (roleHidden). MergeAll không xoá key cũ, nên một uid đã lật thì giữ nguyên.
+	revealed, revealedTeams := map[string]any{}, map[string]any{}
 	for uid, p := range st.Players {
-		if !p.Alive || st.Phase == werewolf.PhaseEnded {
+		switch {
+		case roleHidden(st, uid):
+			revealedTeams[uid] = string(werewolf.Side(p.Role))
+		case !p.Alive || p.Revealed || st.Phase == werewolf.PhaseEnded:
 			revealed[uid] = string(p.Role)
 		}
 	}
@@ -706,11 +936,16 @@ func (w *stepWrite) publicGame() map[string]any {
 		"paused": st.Paused, "nextAt": nil, "taskKey": st.TaskKey(), "updatedAt": w.wall,
 		"deadline": nil, "winner": string(st.Winner), "nominee": nil,
 	}
-	if st.Phase == werewolf.PhaseTrial && st.Nominee != "" {
-		out["nominee"] = st.Nominee
+	if nominees := st.TrialNominees(); st.Phase == werewolf.PhaseTrial && len(nominees) > 0 {
+		out["nominee"], out["nominees"] = nominees[0], nominees
+	} else {
+		out["nominees"] = nil
 	}
 	if len(revealed) > 0 {
 		out["revealed"] = revealed
+	}
+	if len(revealedTeams) > 0 {
+		out["revealedTeams"] = revealedTeams
 	}
 	if st.Phase != werewolf.PhaseEnded {
 		out["deadline"], out["nextAt"] = st.Deadline(), st.NextAt()

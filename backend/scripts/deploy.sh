@@ -123,7 +123,11 @@ MOBILE_RETURN_URI: ${MOBILE_RETURN_URI}
 WEB_RETURN_URI: ${WEB_RETURN_URI}
 ALLOWED_WEB_ORIGINS: ${ALLOWED_WEB_ORIGINS}
 STRAVA_CLIENT_ID: '${STRAVA_CLIENT_ID}'
+STRAVA_ENABLED: '${STRAVA_ENABLED:-false}'
 STRAVA_SUBSCRIPTION_ID: '${STRAVA_SUBSCRIPTION_ID:-}'
+GARMIN_CLIENT_ID: '${GARMIN_CLIENT_ID:-}'
+LIVEKIT_URL: '${LIVEKIT_URL:-}'
+LIVEKIT_API_KEY: '${LIVEKIT_API_KEY:-}'
 TASK_INVOKER_SERVICE_ACCOUNT: ${INVOKER_SA}
 STRAVA_EVENTS_QUEUE: strava-events
 STRAVA_BACKFILL_QUEUE: strava-backfill
@@ -138,7 +142,9 @@ GEMINI_LOCATION: '${GEMINI_LOCATION:-global}'
 GEMINI_MODEL: '${GEMINI_MODEL:-gemini-3.8-flash}'
 GEMINI_THINKING_LEVEL: '${GEMINI_THINKING_LEVEL:-LOW}'
 AGENT_LEARN: '${AGENT_LEARN:-off}'
+AGENT_TELEGRAM_BOTS: '${AGENT_TELEGRAM_BOTS:-off}'
 BOT_GROUP_FACTS: '${BOT_GROUP_FACTS:-off}'
+BOT_IMAGES: '${BOT_IMAGES:-off}'
 BOT_HOURLY_LIMIT: '${BOT_HOURLY_LIMIT:-100}'
 EOF
 }
@@ -224,6 +230,11 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member "serviceAccount:${BOT_RUNTIME_SA}" \
   --role roles/storage.objectAdmin \
   --condition=None >/dev/null
+# Push của app (queue notifications) chạy trên bot: chỉ bot gửi FCM.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member "serviceAccount:${BOT_RUNTIME_SA}" \
+  --role roles/firebasecloudmessaging.admin \
+  --condition=None >/dev/null
 for strip_sa in "$API_RUNTIME_SA" "$WORKER_RUNTIME_SA"; do
   gcloud projects remove-iam-policy-binding "$PROJECT_ID" \
     --member "serviceAccount:${strip_sa}" \
@@ -260,9 +271,22 @@ if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
   # bộ nên bỏ token khỏi danh sách là nó tự bị gỡ khỏi api/worker.
   BOT_SECRETS="${BOT_SECRETS},TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest"
 fi
+# Garmin cũng tuỳ chọn: chỉ đòi secret khi đã đặt GARMIN_CLIENT_ID. Chỉ api
+# cần: api đổi mã lấy token, nhận push (push mang sẵn dữ liệu buổi chạy, ghi
+# luôn trong request) và gọi Garmin khi ngắt kết nối. Worker, bot không gọi Garmin.
+if [[ -n "${GARMIN_CLIENT_ID:-}" ]]; then
+  require_secret GARMIN_CLIENT_SECRET
+  require_secret GARMIN_WEBHOOK_TOKEN
+  API_SECRETS="${API_SECRETS},GARMIN_CLIENT_SECRET=GARMIN_CLIENT_SECRET:latest,GARMIN_WEBHOOK_TOKEN=GARMIN_WEBHOOK_TOKEN:latest"
+fi
+# Voice tuỳ chọn: chỉ api ký token nói chuyện, nên chỉ api cầm secret LiveKit.
+if [[ -n "${LIVEKIT_URL:-}" ]]; then
+  require_secret LIVEKIT_API_SECRET
+  API_SECRETS="${API_SECRETS},LIVEKIT_API_SECRET=LIVEKIT_API_SECRET:latest"
+fi
 
 if is_full_deploy; then
-  for ttl_collection in oauthStates integrationEvents activityTombstones botRateLimits botMessages linkCodes chatMessages learnLog; do
+  for ttl_collection in oauthStates integrationEvents activityTombstones botRateLimits botMessages linkCodes chatMessages learnLog tgUpdates tgOutbox messages; do
     gcloud firestore fields ttls update expiresAt \
       --collection-group "$ttl_collection" \
       --enable-ttl \
@@ -374,23 +398,31 @@ gcloud run services add-iam-policy-binding "$BOT_SERVICE" \
   --role roles/run.invoker \
   --project "$PROJECT_ID" >/dev/null
 
+# Job reconcile chỉ để rà kết nối Strava, nên chỉ có khi Strava bật.
 if gcloud scheduler jobs describe "$SCHEDULER_JOB" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  scheduler_exists=true
   scheduler_action=update
   scheduler_header_flag=--update-headers
 else
+  scheduler_exists=false
   scheduler_action=create
   scheduler_header_flag=--headers
 fi
-gcloud scheduler jobs "${scheduler_action}" http "$SCHEDULER_JOB" \
-  --location "$REGION" \
-  --schedule '17 */6 * * *' \
-  --uri "${WORKER_URL}/tasks/reconcile-connections" \
-  --http-method POST \
-  "${scheduler_header_flag}" 'Content-Type=application/json' \
-  --message-body '{}' \
-  --oidc-service-account-email "$INVOKER_SA" \
-  --oidc-token-audience "$WORKER_URL" \
-  --project "$PROJECT_ID"
+if [[ "${STRAVA_ENABLED:-false}" == "true" ]]; then
+  gcloud scheduler jobs "${scheduler_action}" http "$SCHEDULER_JOB" \
+    --location "$REGION" \
+    --schedule '17 */6 * * *' \
+    --uri "${WORKER_URL}/tasks/reconcile-connections" \
+    --http-method POST \
+    "${scheduler_header_flag}" 'Content-Type=application/json' \
+    --message-body '{}' \
+    --oidc-service-account-email "$INVOKER_SA" \
+    --oidc-token-audience "$WORKER_URL" \
+    --project "$PROJECT_ID"
+elif [[ "$scheduler_exists" == "true" ]]; then
+  echo "Strava đang tắt: xoá scheduler job $SCHEDULER_JOB"
+  gcloud scheduler jobs delete "$SCHEDULER_JOB" --location "$REGION" --project "$PROJECT_ID" --quiet
+fi
 
 # Chưng cất trí nhớ bot mỗi đêm 20:00 giờ VN (13:00 UTC). Một lần/ngày là đủ
 # — trí nhớ dài hạn không cần cập nhật liên tục.

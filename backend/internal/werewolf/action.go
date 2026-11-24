@@ -1,6 +1,9 @@
 package werewolf
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // Kind là loại hành động. Giá trị chuỗi nằm trong id doc action và API, đừng đổi.
 type Kind string
@@ -9,13 +12,33 @@ const (
 	KindWolfBite    Kind = "wolf_bite"
 	KindSeerPeek    Kind = "seer_peek"
 	KindGuard       Kind = "guard"
-	KindWitchSave   Kind = "witch_save" // cứu người bị cắn đêm nay, không có target
+	KindWitchSave   Kind = "witch_save" // cứu người bị cắn đêm nay; target chỉ cần khi sói cắn nhiều người
 	KindWitchPoison Kind = "witch_poison"
 	KindHunterShoot Kind = "hunter_shoot"
 	KindCupidPair   Kind = "cupid_pair"
 	KindNominate    Kind = "nominate"
-	KindVote        Kind = "vote"
+	// KindWolfDark: sói chọn đặc quyền của đêm (dark.go). Choice là đặc quyền,
+	// Targets tuỳ đặc quyền (0 hoặc 1 người).
+	KindWolfDark Kind = "wolf_dark"
+	// Mỗi người lên giàn có một phiên biểu quyết riêng, mỗi phiên một kind (để
+	// mỗi người một doc action cho mỗi phiên, và app gửi theo kind). Phiên đầu
+	// giữ "vote" của bản chỉ treo một người.
+	KindVote  Kind = "vote"
+	KindVote2 Kind = "vote2"
+	KindVote3 Kind = "vote3"
 )
+
+// voteKinds[i] là phiên biểu quyết của Nominees[i].
+var voteKinds = []Kind{KindVote, KindVote2, KindVote3}
+
+// MaxNominees là số người lên giàn tối đa mỗi ngày, mỗi người một phiên.
+var MaxNominees = len(voteKinds)
+
+// VoteKinds trả các kind biểu quyết theo thứ tự người lên giàn.
+func VoteKinds() []Kind { return append([]Kind(nil), voteKinds...) }
+
+// IsVote: kind là một phiên biểu quyết Treo/Tha.
+func IsVote(kind Kind) bool { return slices.Contains(voteKinds, kind) }
 
 const (
 	ChoiceHang  = "hang"
@@ -31,6 +54,8 @@ type Action struct {
 	Choice     string    `json:"choice,omitempty"`
 	Clear      bool      `json:"clear,omitempty"` // bỏ lựa chọn đang có
 	ReceivedAt time.Time `json:"receivedAt"`
+	// KmChecked: đã đủ km lúc bấm (24 tiếng tới lúc đó), bước chốt không xét lại.
+	KmChecked bool `json:"kmChecked,omitempty"`
 }
 
 func (a Action) target() string {
@@ -38,6 +63,12 @@ func (a Action) target() string {
 		return ""
 	}
 	return a.Targets[0]
+}
+
+// UsesSkillKm: Validate và Precheck của kind đọc km, nên phải đưa km tới lúc bấm
+// vào (State.WithKm) thì mới đúng luật.
+func UsesSkillKm(kind Kind) bool {
+	return kindRules[kind].needsKm || kind == KindWolfDark
 }
 
 // Reject là lỗi luật, mã khớp mục 3.8 để API trả thẳng cho app.
@@ -55,12 +86,14 @@ const (
 	ErrGuardRepeat    Reject = "guard_repeat"
 	ErrAlreadyUsed    Reject = "already_used"
 	ErrPaused         Reject = "paused"
+	ErrNoVote         Reject = "no_vote" // Kẻ ngốc đã lật bài
 )
 
 type kindRule struct {
 	role       Role // rỗng: ai còn sống cũng được
 	phases     []Phase
 	targets    int
+	anyTargets bool // số mục tiêu tuỳ lựa chọn, validateKind kiểm
 	changeable bool // đổi hoặc bỏ được trong cửa sổ (bảng 1.3)
 	needsKm    bool // km của chính người đó ≥ X
 }
@@ -69,12 +102,15 @@ var kindRules = map[Kind]kindRule{
 	KindWolfBite:    {role: Wolf, phases: []Phase{PhaseNight}, targets: 1, changeable: true},
 	KindSeerPeek:    {role: Seer, phases: []Phase{PhaseNight, PhaseDawn}, targets: 1, needsKm: true},
 	KindGuard:       {role: Guard, phases: []Phase{PhaseNight, PhaseDawn}, targets: 1, changeable: true, needsKm: true},
-	KindWitchSave:   {role: Witch, phases: []Phase{PhaseDawn}, changeable: true, needsKm: true},
+	KindWitchSave:   {role: Witch, phases: []Phase{PhaseDawn}, anyTargets: true, changeable: true, needsKm: true},
 	KindWitchPoison: {role: Witch, phases: []Phase{PhaseDawn}, targets: 1, changeable: true, needsKm: true},
-	KindHunterShoot: {role: Hunter, targets: 1}, // mở theo State.Hunter, không theo phase
+	KindHunterShoot: {role: Hunter, targets: 1, needsKm: true}, // mở theo State.Hunter, không theo phase
 	KindCupidPair:   {role: Cupid, phases: []Phase{PhaseSetup, PhaseNight}, targets: 2},
 	KindNominate:    {phases: []Phase{PhaseDay}, targets: 1, changeable: true},
+	KindWolfDark:    {role: Wolf, phases: []Phase{PhaseNight}, anyTargets: true, changeable: true},
 	KindVote:        {phases: []Phase{PhaseTrial}, changeable: true},
+	KindVote2:       {phases: []Phase{PhaseTrial}, changeable: true},
+	KindVote3:       {phases: []Phase{PhaseTrial}, changeable: true},
 }
 
 // Validate kiểm một hành động theo luật, trước khi service hành động ghi nó.
@@ -93,7 +129,7 @@ func Validate(st *State, a Action, mine []Action, now time.Time) error {
 		}
 		return nil
 	}
-	if len(a.Targets) != rule.targets {
+	if !rule.anyTargets && len(a.Targets) != rule.targets {
 		return ErrInvalidTarget
 	}
 	seen := map[string]bool{}
@@ -116,9 +152,6 @@ func validateKind(st *State, a Action, mine []Action) error {
 		if t == st.loverOf(a.Actor) {
 			return ErrLoverTarget
 		}
-		if !wolvesHaveKm(st) {
-			return ErrKmInsufficient
-		}
 	case KindSeerPeek:
 		if t == a.Actor {
 			return ErrInvalidTarget
@@ -131,10 +164,16 @@ func validateKind(st *State, a Action, mine []Action) error {
 		if !st.SavePotion {
 			return ErrAlreadyUsed
 		}
-		if !witchCanSave(st, a.Actor) {
+		if len(a.Targets) > 1 {
 			return ErrInvalidTarget
 		}
-		if poison := findAction(mine, KindWitchPoison); poison != nil && poison.target() == st.Bitten {
+		// Sói cắn một người thì bình cứu không cần chọn ai; cắn nhiều người
+		// thì phải chọn một trong số đó.
+		saved := saveTarget(st, &a)
+		if saved == "" || !slices.Contains(WitchSaveTargets(st, a.Actor), saved) {
+			return ErrInvalidTarget
+		}
+		if poison := findAction(mine, KindWitchPoison); poison != nil && poison.target() == saved {
 			return ErrInvalidTarget
 		}
 	case KindWitchPoison:
@@ -144,24 +183,27 @@ func validateKind(st *State, a Action, mine []Action) error {
 		if t == a.Actor {
 			return ErrInvalidTarget
 		}
-		if findAction(mine, KindWitchSave) != nil && t == st.Bitten {
+		if save := findAction(mine, KindWitchSave); save != nil && t == saveTarget(st, save) {
 			return ErrInvalidTarget
 		}
+	case KindWolfDark:
+		return validateDark(st, a)
 	case KindHunterShoot, KindNominate:
 		if t == a.Actor {
 			return ErrInvalidTarget
 		}
-	case KindVote:
-		if st.Nominee == "" {
-			return ErrPhaseClosed // hôm nay không ai lên giàn
+	case KindVote, KindVote2, KindVote3:
+		nominee := st.NomineeOf(a.Kind)
+		if nominee == "" {
+			return ErrPhaseClosed // phiên này không có ai lên giàn
 		}
-		if a.Actor == st.Nominee {
+		if a.Actor == nominee {
 			return ErrNotYourRole
 		}
 		if a.Choice != ChoiceHang && a.Choice != ChoiceSpare {
 			return ErrInvalidTarget
 		}
-		if a.Choice == ChoiceHang && st.loverOf(a.Actor) == st.Nominee {
+		if a.Choice == ChoiceHang && st.loverOf(a.Actor) == nominee {
 			return ErrLoverTarget
 		}
 	}
@@ -200,6 +242,9 @@ func precheck(st *State, kind Kind, actor string, mine []Action, now time.Time) 
 		if !phaseOpen(rule.phases, st.Phase) || !st.windowOpen(kind, now) {
 			return ErrPhaseClosed
 		}
+		if IsVote(kind) && !st.CanVote(actor) {
+			return ErrNoVote
+		}
 	}
 	if kind == KindCupidPair && st.Round > 1 {
 		return ErrPhaseClosed // Cupid chỉ ghép tới 0h đêm 1 (R6, R12)
@@ -210,25 +255,91 @@ func precheck(st *State, kind Kind, actor string, mine []Action, now time.Time) 
 	return nil
 }
 
-// wolvesHaveKm: tổng km của sói còn sống ≥ X × số sói còn sống (R1).
-func wolvesHaveKm(st *State) bool {
-	var n int
-	var sum float64
+// wolvesHaveKm: còn sói sống, và tổng km của sói còn sống ≥ km mỗi sói × số
+// sói còn sống (R1). Km mỗi sói là 0 thì phe cắn tự do.
+func wolvesHaveKm(st *State, km map[string]float64) bool {
+	if st.Config.KmTie() {
+		// Luật km: sói bầu, phiếu chỉ bị loại lúc chốt; còn ít nhất một phiếu
+		// được tính thì phe vẫn cắn được.
+		return st.aliveWolves() > 0 && WolfVotePlan(st, km).Allowed > 0
+	}
+	have, need := wolfKmIn(st, km)
+	return st.aliveWolves() > 0 && have >= need
+}
+
+// WolfKm trả tổng km (mét) của sói còn sống và mức phe cần để cắn, để tin riêng
+// cho sói nói được phe thiếu bao nhiêu. Luật cũ cần km mỗi sói × số sói còn
+// sống; luật km chỉ cần đủ một phiếu (WolfVotePlan). need = 0 là không cần km.
+func WolfKm(st *State) (have, need float64) { return wolfKmIn(st, st.Km) }
+
+func wolfKmIn(st *State, km map[string]float64) (have, need float64) {
+	unit := st.Config.SkillMeters(Wolf)
+	for _, uid := range st.aliveUIDs() {
+		if st.role(uid) == Wolf {
+			have += km[uid]
+			need += unit
+		}
+	}
+	if st.Config.KmTie() {
+		need = 0
+		if st.Config.VoteMode() == VoteCut && st.aliveWolves() > 0 {
+			need = unit
+		}
+	}
+	return have, need
+}
+
+func (st *State) aliveWolves() int {
+	n := 0
 	for _, uid := range st.aliveUIDs() {
 		if st.role(uid) == Wolf {
 			n++
-			sum += st.Km[uid]
 		}
 	}
-	return n > 0 && sum >= float64(n)*st.Config.unitMeters()
+	return n
 }
 
-// witchCanSave: có người bị cắn, và chỉ tự cứu được ở đêm 1 (R4).
-func witchCanSave(st *State, witch string) bool {
-	if st.Bitten == "" {
-		return false
+// kmRole: vai có kỹ năng cần km (bảng 1.3), nên SkillKm đặt được cho vai đó.
+// Thợ săn bắn khi chết cũng cần km (openHunterTurn).
+func kmRole(r Role) bool {
+	if r == Wolf || r == Hunter {
+		return true
 	}
-	return st.Bitten != witch || st.Round == 1
+	for _, rule := range kindRules {
+		if rule.needsKm && rule.role == r {
+			return true
+		}
+	}
+	return false
+}
+
+// witchCanSave: có người bị cắn mà phù thuỷ cứu được (R4).
+func witchCanSave(st *State, witch string) bool {
+	return len(WitchSaveTargets(st, witch)) > 0
+}
+
+// WitchSaveTargets là những người bị cắn đêm nay mà phù thuỷ cứu được: còn
+// sống, và chỉ tự cứu được ở đêm 1 (R4).
+func WitchSaveTargets(st *State, witch string) []string {
+	var out []string
+	for _, uid := range st.BittenUIDs() {
+		if st.alive(uid) && (uid != witch || st.Round == 1) {
+			out = append(out, uid)
+		}
+	}
+	return out
+}
+
+// saveTarget là người bình cứu nhắm tới: target của action, hoặc người duy
+// nhất bị cắn khi action không chọn ai. Rỗng khi không xác định được.
+func saveTarget(st *State, a *Action) string {
+	if t := a.target(); t != "" {
+		return t
+	}
+	if bites := st.BittenUIDs(); len(bites) == 1 {
+		return bites[0]
+	}
+	return ""
 }
 
 func phaseOpen(phases []Phase, p Phase) bool {

@@ -2,7 +2,7 @@
 # Xem hoặc đặt lại webhook Telegram của bot 3i mà không làm mất secret_token.
 #
 #   backend/scripts/telegram_webhook.sh info
-#   backend/scripts/telegram_webhook.sh set              # 5 loại update Ma Sói cần
+#   backend/scripts/telegram_webhook.sh set              # 5 loại update Ma Sói cần + managed_bot (MyBot)
 #   backend/scripts/telegram_webhook.sh set message      # quay lại như trước T3
 #   backend/scripts/telegram_webhook.sh commands         # thêm /vai vào menu DM của bot
 #
@@ -34,7 +34,7 @@ case "${1:-info}" in
     shift
     : "${TELEGRAM_WEBHOOK_SECRET:?thiếu TELEGRAM_WEBHOOK_SECRET trong $LOCAL_SECRETS_FILE}"
     types=("$@")
-    [[ ${#types[@]} -eq 0 ]] && types=(message callback_query chat_member my_chat_member chat_join_request)
+    [[ ${#types[@]} -eq 0 ]] && types=(message callback_query chat_member my_chat_member chat_join_request managed_bot)
     url="$(curl -fsS "$API/getWebhookInfo" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"].get("url",""))')"
     [[ -n "$url" ]] || { echo "webhook chưa có URL, không tự đoán URL" >&2; exit 1; }
     # Body đi qua stdin để secret không nằm trên dòng lệnh (ps, history).
