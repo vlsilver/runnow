@@ -130,6 +130,10 @@ func TestEmulatorRankRewards(t *testing.T) {
 	if len(pushes) != 1 || pushes[0].Payload.(rankRewardPushTask).BoardID != board {
 		t.Fatalf("chốt hai lần phải hẹn đúng một push của bảng có quà: %+v", pushes)
 	}
+	announces := e.tasksTo(rankRewardAnnouncePath)
+	if len(announces) != 1 || announces[0].Payload.(rankRewardPushTask).BoardID != board || announces[0].Queue != QueueNotify {
+		t.Fatalf("chốt hai lần phải hẹn đúng một bài báo quà trong group: %+v", announces)
+	}
 
 	// Trao và nhận.
 	given := path + "/winners/%s/given"

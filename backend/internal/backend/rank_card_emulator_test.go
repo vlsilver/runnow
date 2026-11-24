@@ -289,11 +289,12 @@ func TestEmulatorRankCloseDrawOutsideTop(t *testing.T) {
 	w := entries[10].(map[string]any)
 	winner := w["uid"].(string)
 	loser := map[string]string{"r11": "r12", "r12": "r11"}[winner]
-	if loser == "" || w["reward"].(map[string]any)["itemId"] != "ao" {
+	// Lượt bốc chỉ còn hạng 11 và 12: top 10 đã có giày.
+	if wr := w["reward"].(map[string]any); loser == "" || wr["itemId"] != "ao" || wr["kind"] != "draw" || number(wr["pool"]) != 2 {
 		t.Fatalf("người trúng ngoài top = %v", w)
 	}
 	card := rankDoc(t, db, "users/"+winner+"/rankCards/"+boardID)
-	if reward, _ := card["reward"].(map[string]any); reward["itemId"] != "ao" || number(card["rank"]) != number(w["rank"]) {
+	if reward, _ := card["reward"].(map[string]any); reward["itemId"] != "ao" || number(reward["pool"]) != 2 || number(card["rank"]) != number(w["rank"]) {
 		t.Fatalf("thẻ người trúng = %v", card)
 	}
 	if _, err := db.Doc("users/" + loser + "/rankCards/" + boardID).Get(context.Background()); status.Code(err) != codes.NotFound {
@@ -341,4 +342,46 @@ func TestEmulatorPushSendOver30(t *testing.T) {
 	if len(sender.sent) != 31 {
 		t.Fatalf("gửi %d tin, muốn 31", len(sender.sent))
 	}
+}
+
+// Bài báo quà đăng một lần vào group, kèm nút mở bảng; task chạy lại thì thôi.
+func TestEmulatorRankRewardAnnounceOnce(t *testing.T) {
+	db := emulatorDB(t)
+	const boardID = "week_2026-11-23_run"
+	seed(t, db, "rankBoards/"+boardID, map[string]any{"entries": []any{
+		map[string]any{"uid": "an", "rank": 12, "displayName": "An & Bình", "reward": map[string]any{"itemId": "ao", "name": "Áo Kiprun", "kind": "draw", "pool": 9}},
+	}})
+	seed(t, db, "telegramLinks/an", map[string]any{"tgUserId": int64(4242)})
+	tg := newFakeTelegram(t)
+	mem := &announceMemory{}
+	a := rankRewardAnnouncer{db: db, telegram: tg.service("-100club"), links: NewTelegramLinkService(db, "threei_bot"), broadcast: mem, webBaseURL: "https://threei.run"}
+	for range 2 {
+		if err := a.Announce(context.Background(), boardID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sent := tg.Calls("sendMessage")
+	if len(sent) != 1 {
+		t.Fatalf("đăng %d bài, muốn 1", len(sent))
+	}
+	p := sent[0].Params
+	text, _ := p["text"].(string)
+	if p["chat_id"] != "-100club" || !strings.Contains(text, `<a href="tg://user?id=4242">An &amp; Bình</a> (bốc thăm trong 9 người)`) {
+		t.Fatalf("bài báo quà = %v", p)
+	}
+	if !strings.Contains(fmt.Sprint(p["reply_markup"]), "https://threei.run/bxh/"+boardID) {
+		t.Fatalf("nút mở bảng = %v", p["reply_markup"])
+	}
+	// Bot nhớ bài đã đăng, một lần, dạng chữ thường không thẻ HTML.
+	if len(mem.texts) != 1 || !strings.Contains(mem.texts[0], "🎁 Áo Kiprun → An & Bình (bốc thăm trong 9 người)") {
+		t.Fatalf("trí nhớ bot = %q", mem.texts)
+	}
+}
+
+type announceMemory struct{ texts []string }
+
+func (*announceMemory) Enabled() bool { return true }
+func (m *announceMemory) RecordBroadcast(_ context.Context, _, text string) error {
+	m.texts = append(m.texts, text)
+	return nil
 }

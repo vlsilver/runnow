@@ -4,6 +4,7 @@ import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/club_ranking.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rank/rank_card.dart';
+import 'package:myrun/src/rank/rank_gift_card.dart';
 import 'package:myrun/src/rank/rank_reward.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/theme.dart';
@@ -204,7 +205,7 @@ Future<void> showRankRewardsSheet(BuildContext context, RankRewards rewards) {
   );
 }
 
-/// Dòng quà dưới thẻ hạng của mình; chạm mở sheet nhận quà.
+/// Dòng quà dưới thẻ hạng của mình; chạm mở thẻ quà, từ đó khoe hay nhận quà.
 class RankCardRewardLine extends StatelessWidget {
   const RankCardRewardLine({required this.card, super.key});
 
@@ -217,7 +218,7 @@ class RankCardRewardLine extends StatelessWidget {
     final received = reward.receivedBy(DateTime.now());
     return InkWell(
       borderRadius: palette.radius(12),
-      onTap: () => showRankCardRewardSheet(context, card),
+      onTap: () => showRankGiftCardViewer(context, card),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(

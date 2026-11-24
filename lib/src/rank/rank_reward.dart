@@ -141,6 +141,7 @@ class RankCardReward {
     required this.giverName,
     this.givenAt,
     this.receivedAt,
+    this.drawPool,
   });
 
   static RankCardReward? fromJson(Object? raw) {
@@ -154,6 +155,9 @@ class RankCardReward {
       giverName: raw['giverName'] as String? ?? '',
       givenAt: rewardTime(raw['givenAt']),
       receivedAt: rewardTime(raw['receivedAt']),
+      drawPool: raw['kind'] == 'draw'
+          ? (raw['pool'] as num?)?.toInt() ?? 0
+          : null,
     );
   }
 
@@ -164,6 +168,9 @@ class RankCardReward {
 
   final DateTime? givenAt;
   final DateTime? receivedAt;
+
+  /// Số người trong lượt bốc khi quà là món bốc thăm; null là quà theo hạng.
+  final int? drawPool;
 
   bool receivedBy(DateTime now) => rewardReceived(receivedAt, givenAt, now);
 }

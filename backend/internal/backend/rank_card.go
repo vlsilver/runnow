@@ -276,6 +276,7 @@ func (s *RankCardService) writeBoard(ctx context.Context, r rankRange, sport ran
 	// còn hai lần ghi cùng lúc thì Create của batch chỉ một lần thành công, nên
 	// kết quả bốc đã ghi không bị bốc lại.
 	items := rewards.assign(ranked, cryptoShuffle[int])
+	pools := rewards.drawPools(ranked, items)
 	entries := make([]map[string]any, 0, len(top))
 	b := s.db.Batch()
 	winners := 0
@@ -288,7 +289,11 @@ func (s *RankCardService) writeBoard(ctx context.Context, r rankRange, sport ran
 		m := rm.member
 		entry := map[string]any{"uid": m.uid, "rank": rm.rank, "displayName": m.name, "avatarUrl": m.avatar, "score": rm.score}
 		if item != nil {
-			entry["reward"] = map[string]any{"itemId": item.ID, "name": item.Name, "icon": item.Icon}
+			reward := map[string]any{"itemId": item.ID, "name": item.Name, "icon": item.Icon}
+			if item.Kind == rankRewardDraw {
+				reward["kind"], reward["pool"] = rankRewardDraw, pools[item.ID]
+			}
+			entry["reward"] = reward
 			winners++
 		}
 		// Người trúng bốc thăm ngoài top cũng vào entries, sau top: app chỉ cho
@@ -317,7 +322,7 @@ func (s *RankCardService) writeBoard(ctx context.Context, r rankRange, sport ran
 			"revealedAt":   nil,
 		}
 		if item != nil {
-			card["reward"] = rewards.cardReward(item)
+			card["reward"] = rewards.cardReward(item, pools[item.ID])
 		}
 		b.Create(s.db.Collection("users").Doc(m.uid).Collection("rankCards").Doc(boardID), card)
 	}
@@ -339,7 +344,7 @@ func (s *RankCardService) writeBoard(ctx context.Context, r rankRange, sport ran
 		return err
 	}
 	slog.InfoContext(ctx, "rank_card.closed", "board", boardID, "cards", len(entries), "participants", len(ranked), "winners", winners)
-	logDraws(ctx, boardID, rewards, ranked, items)
+	logDraws(ctx, boardID, rewards, ranked, items, pools)
 	if winners > 0 {
 		s.notifyWinners(ctx, boardID)
 	}
@@ -347,9 +352,9 @@ func (s *RankCardService) writeBoard(ctx context.Context, r rankRange, sport ran
 	return nil
 }
 
-// logDraws ghi kết quả từng món bốc thăm sau khi bảng đã ghi: số người đủ mốc
-// trên cả bảng, số suất và số người trúng.
-func logDraws(ctx context.Context, boardID string, rewards *rankRewards, ranked []rankedMember, items []*RankRewardItem) {
+// logDraws ghi kết quả từng món bốc thăm sau khi bảng đã ghi: số người trong
+// lượt bốc, số suất và số người trúng.
+func logDraws(ctx context.Context, boardID string, rewards *rankRewards, ranked []rankedMember, items []*RankRewardItem, pools map[string]int) {
 	if rewards == nil {
 		return
 	}
@@ -358,16 +363,13 @@ func logDraws(ctx context.Context, boardID string, rewards *rankRewards, ranked 
 		if it.Kind != rankRewardDraw {
 			continue
 		}
-		eligible, won := 0, 0
-		for i, rm := range ranked {
-			if rm.score >= it.MinScore {
-				eligible++
-			}
+		won := 0
+		for i := range ranked {
 			if items[i] == it {
 				won++
 			}
 		}
-		slog.InfoContext(ctx, "rank_reward.draw", "board", boardID, "item", it.ID, "slots", it.Slots, "eligible", eligible, "won", won)
+		slog.InfoContext(ctx, "rank_reward.draw", "board", boardID, "item", it.ID, "slots", it.Slots, "pool", pools[it.ID], "won", won)
 	}
 }
 
@@ -385,10 +387,11 @@ func (s *RankCardService) notifyTop(ctx context.Context, boardID string, entries
 	}
 }
 
-// notifyWinners hẹn push quà sau khi bảng đã ghi. Hẹn hỏng (Publish đã tự thử
-// lại) thì log chứ không trả lỗi: bảng đã có nên chạy lại Close cũng không
-// hẹn lại, trả lỗi chỉ làm task chốt báo hỏng. Bỏ hủy của ctx vì bảng đã ghi
-// rồi: request chốt bị hủy ngay sau commit thì push vẫn phải được hẹn.
+// notifyWinners hẹn push quà và bài báo quà trong group sau khi bảng đã ghi.
+// Hẹn hỏng (Publish đã tự thử lại) thì log chứ không trả lỗi: bảng đã có nên
+// chạy lại Close cũng không hẹn lại, trả lỗi chỉ làm task chốt báo hỏng. Bỏ hủy
+// của ctx vì bảng đã ghi rồi: request chốt bị hủy ngay sau commit thì push vẫn
+// phải được hẹn.
 func (s *RankCardService) notifyWinners(ctx context.Context, boardID string) {
 	if s.enqueue == nil {
 		return
@@ -396,6 +399,10 @@ func (s *RankCardService) notifyWinners(ctx context.Context, boardID string) {
 	task := PublishTask{Queue: QueueNotify, HandlerPath: rankRewardPushPath, Payload: rankRewardPushTask{BoardID: boardID}, TaskID: StableTaskID("rank-reward-push", boardID)}
 	if _, err := s.enqueue(context.WithoutCancel(ctx), task); err != nil {
 		slog.ErrorContext(ctx, "rank_reward.push_enqueue_failed", "board", boardID, "error", err)
+	}
+	task = PublishTask{Queue: QueueNotify, HandlerPath: rankRewardAnnouncePath, Payload: rankRewardPushTask{BoardID: boardID}, TaskID: StableTaskID("rank-reward-announce", boardID)}
+	if _, err := s.enqueue(context.WithoutCancel(ctx), task); err != nil {
+		slog.ErrorContext(ctx, "rank_reward.announce_enqueue_failed", "board", boardID, "error", err)
 	}
 }
 

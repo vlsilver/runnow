@@ -76,6 +76,7 @@ func (s *Server) botRoutes() {
 	s.route("POST /tasks/agent-learn", s.agentLearn)
 	s.route("POST /tasks/rank-close", s.rankClose)
 	s.route("POST "+rankRewardPushPath, s.rankRewardPush)
+	s.route("POST "+rankRewardAnnouncePath, s.rankRewardAnnounce)
 	s.route("POST "+contractGiftPushPath, s.contractGiftPush)
 	s.route("POST /tasks/managed-bot-sync", s.managedBotSync)
 	s.route("POST /tasks/managed-send", s.managedSend)

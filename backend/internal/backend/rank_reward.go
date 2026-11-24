@@ -242,13 +242,45 @@ func rankRewardItemsData(items []RankRewardItem) []any {
 	return out
 }
 
-// cardReward là phần quà ghi vào thẻ của người trúng.
-func (r *rankRewards) cardReward(it *RankRewardItem) map[string]any {
-	return map[string]any{
+// cardReward là quà ghi lên thẻ. pool là số người trong lượt bốc của món bốc
+// thăm, để thẻ quà ghi "bốc thăm trong N người"; món theo hạng bỏ qua pool.
+func (r *rankRewards) cardReward(it *RankRewardItem, pool int) map[string]any {
+	out := map[string]any{
 		"itemId": it.ID, "name": it.Name, "icon": it.Icon, "photos": it.Photos,
 		"giverUid": r.giverUID, "giverName": r.giverName,
 		"givenAt": nil, "receivedAt": nil,
 	}
+	if it.Kind == rankRewardDraw {
+		out["kind"], out["pool"] = rankRewardDraw, pool
+	}
+	return out
+}
+
+// drawPools là số người trong lượt bốc của từng món bốc thăm, theo id món:
+// người đạt mốc mà chưa có quà theo hạng hay quà của món bốc trước đó, đúng
+// tập ứng viên assign đã bốc.
+func (r *rankRewards) drawPools(ranked []rankedMember, items []*RankRewardItem) map[string]int {
+	if r == nil {
+		return nil
+	}
+	order := map[*RankRewardItem]int{}
+	for k := range r.items {
+		order[&r.items[k]] = k
+	}
+	pools := map[string]int{}
+	for k := range r.items {
+		it := &r.items[k]
+		if it.Kind != rankRewardDraw {
+			continue
+		}
+		for i, rm := range ranked {
+			got := items[i]
+			if rm.score >= it.MinScore && (got == nil || (got.Kind == rankRewardDraw && order[got] >= k)) {
+				pools[it.ID]++
+			}
+		}
+	}
+	return pools
 }
 
 // rankRewardAutoReceived: trao quá 14 ngày mà người trúng chưa bấm thì coi như

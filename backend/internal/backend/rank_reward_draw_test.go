@@ -146,3 +146,41 @@ func TestKeepsOldDraw(t *testing.T) {
 		t.Error("đổi icon và thêm suất phải được")
 	}
 }
+
+// Hai món bốc thăm lần lượt: món sau chỉ bốc trong số người món trước chưa
+// lấy. Giày hạng 1, áo 2 suất mốc 15 km, tất 1 suất mốc 20 km.
+func TestRankRewardsDrawPools(t *testing.T) {
+	top := drawBoard() // đủ 15 km: minh nvl tam loc lan; đủ 20 km: minh nvl tam loc
+	r := &rankRewards{items: []RankRewardItem{
+		{ID: "giay", FromRank: 1, ToRank: 1, Name: "Giày", Icon: "shoes"},
+		{ID: "ao", Kind: rankRewardDraw, MinScore: 15000, Slots: 2, Name: "Áo", Icon: "shirt"},
+		{ID: "tat", Kind: rankRewardDraw, MinScore: 20000, Slots: 1, Name: "Tất", Icon: "socks"},
+	}}
+	keep := func([]int) {}
+	items := r.assign(top, keep) // áo về nvl, tam; tất về loc
+	got := r.drawPools(top, items)
+	// Áo: nvl tam loc lan (minh có giày). Tất: loc (nvl, tam đã có áo).
+	if want := map[string]int{"ao": 4, "tat": 1}; !maps.Equal(got, want) {
+		t.Fatalf("pools %v, muốn %v", got, want)
+	}
+}
+
+func TestRankRewardAnnounceText(t *testing.T) {
+	key, _ := parseRankBoardID("week_2026-11-23_run")
+	entries := []any{
+		map[string]any{"uid": "minh", "rank": 1, "displayName": "Minh", "reward": map[string]any{"name": "Giày"}},
+		map[string]any{"rank": 2, "displayName": "Nam"},
+		map[string]any{"uid": "an", "rank": 14, "displayName": "<An>", "reward": map[string]any{"name": "Áo & tất", "kind": "draw", "pool": 23}},
+	}
+	want := "🏆 Quà BXH tuần 23/11–29/11 đã có chủ!\n" +
+		"🎁 <b>Giày</b> → <a href=\"tg://user?id=5551\">Minh</a> (hạng 1)\n" +
+		"🎁 <b>Áo &amp; tất</b> → &lt;An&gt; (bốc thăm trong 23 người)\n" +
+		"Mở thẻ quà để nhận quà và khoe với mọi người."
+	// Minh đã liên kết Telegram nên được tag; An chưa liên kết thì tên thường.
+	if got := rankRewardAnnounceText(key, entries, map[string]string{"minh": "5551"}); got != want {
+		t.Fatalf("bài báo quà:\n%s\nmuốn:\n%s", got, want)
+	}
+	if got := rankRewardAnnounceText(key, entries[1:2], nil); got != "" {
+		t.Fatalf("không ai trúng mà có bài: %q", got)
+	}
+}

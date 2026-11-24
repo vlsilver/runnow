@@ -302,6 +302,19 @@ func (s *TelegramLinkService) UIDForTelegram(ctx context.Context, tgID int64) (s
 	return stringValue(d.Data()["uid"]), nil
 }
 
+// TelegramIDForUID là Telegram user id đang liên kết với uid, rỗng nếu chưa
+// liên kết. Dùng để tag người đó trong group, không trả ra ngoài API.
+func (s *TelegramLinkService) TelegramIDForUID(ctx context.Context, uid string) (string, error) {
+	d, err := s.uidLinkRef(uid).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return tgIDString(d.Data()["tgUserId"]), nil
+}
+
 // inActiveGame: có uid nào là người chơi của một ván đang starting/running không.
 // Ván đang đăng ký thì chưa tính: lúc Start bot kiểm lại liên kết của từng người.
 func inActiveGame(tx *firestore.Transaction, db *firestore.Client, uids ...string) (bool, error) {

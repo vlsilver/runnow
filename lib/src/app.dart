@@ -38,6 +38,7 @@ import 'package:myrun/src/screens/journey_screen.dart';
 import 'package:myrun/src/screens/keo_hub_screen.dart';
 import 'package:myrun/src/screens/live_viewer_screen.dart';
 import 'package:myrun/src/screens/member_profile_screen.dart';
+import 'package:myrun/src/rank/rank_board_link.dart';
 import 'package:myrun/src/screens/onboarding_screen.dart';
 import 'package:myrun/src/screens/public_activity_screen.dart';
 import 'package:myrun/src/screens/push_prefs_screen.dart';
@@ -180,6 +181,12 @@ final _router = GoRouter(
           ),
         ),
       ],
+    ),
+    // Link bảng đã chốt trong bài báo quà; trên web URL vào thẳng route này.
+    GoRoute(
+      path: '/bxh/:board',
+      redirect: (context, state) =>
+          rankBoardLocation(state.pathParameters['board']!) ?? '/club',
     ),
     // Cài đặt từng là tab riêng ở /settings, giờ nằm trong tab Hồ sơ.
     GoRoute(path: '/settings', redirect: (context, state) => '/me'),

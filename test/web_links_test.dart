@@ -32,6 +32,20 @@ void main() {
     expect(webLinkLocation(Uri.parse('https://threei.run/support')), isNull);
   });
 
+  test('link bảng đã chốt mở tab Club đúng bảng, khoá sai dạng thì không', () {
+    expect(
+      webLinkLocation(Uri.parse('https://threei.run/bxh/week_2026-11-23_run')),
+      '/club?board=week_2026-11-23_run',
+    );
+    expect(webLinkLocation(Uri.parse('https://threei.run/bxh/abc')), isNull);
+    expect(
+      webLinkLocation(
+        Uri.parse('https://evil.example/bxh/week_2026-11-23_run'),
+      ),
+      isNull,
+    );
+  });
+
   test('the link that launched the app opens once', () async {
     final uri = Uri.parse('https://threei.run/games/g1');
     final links = _FakeLinks(uri);

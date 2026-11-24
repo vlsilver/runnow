@@ -13,6 +13,7 @@ import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rank/rank_card.dart';
+import 'package:myrun/src/rank/rank_gift_card.dart';
 import 'package:myrun/src/rank/rank_reward.dart';
 import 'package:myrun/src/rank/rank_reward_widgets.dart';
 import 'package:myrun/src/share.dart';
@@ -1255,7 +1256,8 @@ void _openPastCard(BuildContext context, RankCard card, {required bool mine}) {
 /// chối lần ghi thứ hai và sẽ báo lỗi dù thẻ đã lật.
 final _flipping = <String>{};
 
-/// Ghi revealedAt rồi mở thẻ ở mặt úp để chủ tự lật trong màn xem.
+/// Ghi revealedAt rồi mở thẻ ở mặt úp để chủ tự lật trong màn xem. Hạng có
+/// quà thì mở thẻ quà đang gói: lật thẻ là mở quà; thẻ hạng xem ở "Xem thẻ".
 Future<void> _flipRankCard(BuildContext context, RankCard card) async {
   if (!_flipping.add(card.boardId)) return;
   try {
@@ -1271,7 +1273,11 @@ Future<void> _flipRankCard(BuildContext context, RankCard card) async {
     _flipping.remove(card.boardId);
   }
   if (!context.mounted) return;
-  await showRankCardViewer(context, card, faceDown: true, canShare: true);
+  if (card.reward != null) {
+    await showRankGiftCardViewer(context, card, faceDown: true);
+  } else {
+    await showRankCardViewer(context, card, faceDown: true, canShare: true);
+  }
 }
 
 /// "thiếu 1,2 km để lên hạng 3" hay, khi dẫn đầu, "hơn hạng 2 tới 4,5 km".

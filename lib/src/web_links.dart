@@ -4,14 +4,18 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/games/game_links.dart';
+import 'package:myrun/src/rank/rank_board_link.dart';
 import 'package:myrun/src/rooms/live_share.dart';
 
 /// Đổi một link web 3i ra màn trong app; null nếu link đó không mở trong app.
 typedef WebLinkLocator = String? Function(Uri link);
 
-/// Link web 3i nào mở trong app: link mời vào ván và link khoe live.
+/// Link web 3i nào mở trong app: link mời vào ván, link khoe live và link
+/// bảng xếp hạng đã chốt.
 String? webLinkLocation(Uri link) =>
-    gameLinkLocation(link) ?? liveLinkLocation(link);
+    gameLinkLocation(link) ??
+    liveLinkLocation(link) ??
+    rankBoardLinkLocation(link);
 
 /// Bấm link web 3i ở ngoài app (universal link, app link) thì mở đúng màn.
 class WebLinkOpener {

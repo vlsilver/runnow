@@ -6,8 +6,8 @@ import 'package:myrun/src/club_ranking.dart';
 import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/rank/rank_card_art.dart';
+import 'package:myrun/src/rank/rank_gift_card.dart';
 import 'package:myrun/src/rank/rank_reward.dart';
-import 'package:myrun/src/rank/rank_reward_widgets.dart';
 import 'package:myrun/src/steps_format.dart';
 
 ClubRankingRange? _rangeFrom(Object? key) => switch (key) {
@@ -204,7 +204,8 @@ String rankCardPeriod(PastRankingPeriod period) {
   return 'TUẦN $from–${last.day}/${last.month}';
 }
 
-List<AchievementStat> _extraStats(RankCard card) {
+/// Hai số phụ của thẻ theo bộ môn, dùng chung cho thẻ hạng và thẻ quà.
+List<AchievementStat> rankCardExtraStats(RankCard card) {
   final s = card.stats;
   return switch (card.sport) {
     ClubRankingSport.run => [
@@ -255,7 +256,7 @@ AchievementCardData rankCardData(RankCard card) {
     quote: card.quote.isEmpty ? null : '“${card.quote}”',
     stats: [
       (value: '#${card.rank}', label: 'TRÊN ${card.participants}'),
-      ..._extraStats(card),
+      ...rankCardExtraStats(card),
     ],
     owner: card.displayName.toUpperCase(),
     serial: 'HẠNG ${card.rank}',
@@ -303,15 +304,14 @@ Future<void> showRankCardViewer(
     cardSize: achievementCardSize,
     startBack: faceDown,
     reaction: reaction,
-    // Chủ thẻ mở quà từ thẻ ở bất cứ đâu, kể cả khi kỳ đã trôi khỏi mục Kỳ
-    // trước, để còn nhắn người trao và báo đã nhận. Thẻ đang úp chờ lật thì
-    // giấu, để quà còn là bất ngờ.
+    // Chủ thẻ mở thẻ quà từ thẻ hạng ở bất cứ đâu, kể cả khi kỳ đã trôi khỏi
+    // mục Kỳ trước. Thẻ đang úp chờ lật thì giấu, để quà còn là bất ngờ.
     leading: canShare && !faceDown && card.reward != null
         ? Builder(
             builder: (origin) => IconButton.filledTonal(
-              tooltip: 'Quà',
+              tooltip: 'Thẻ quà',
               icon: const Icon(Icons.card_giftcard),
-              onPressed: () => showRankCardRewardSheet(origin, card),
+              onPressed: () => showRankGiftCardViewer(origin, card),
             ),
           )
         : null,
