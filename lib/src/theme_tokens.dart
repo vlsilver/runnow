@@ -1321,3 +1321,16 @@ abstract final class RunNowReplaySkyTokens {
   static const moon = Color(0xFFF4F1E1);
   static const star = Color(0xCCFFFFFF);
 }
+
+/// Màu của lãnh địa. Ô người khác là tông trung tính để ô của mình (màu chính
+/// của theme) nổi lên.
+abstract final class RunNowTerritoryTokens {
+  static const otherOwners = <Color>[
+    Color(0xFF8E9AAF),
+    Color(0xFFA39E8C),
+    Color(0xFF7D8F89),
+    Color(0xFFAA9FB5),
+    Color(0xFF96887A),
+    Color(0xFF6F7F91),
+  ];
+}

@@ -49,6 +49,7 @@ import 'package:myrun/src/screens/run_contract_home_screen.dart';
 import 'package:myrun/src/screens/run_contract_route_create_screen.dart';
 import 'package:myrun/src/screens/profile_screen.dart';
 import 'package:myrun/src/screens/tracking_screen.dart';
+import 'package:myrun/src/territory/territory_screen.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/web_layout.dart';
 import 'package:myrun/src/web_links.dart';
@@ -233,6 +234,12 @@ final _router = GoRouter(
       path: '/live/:sessionId',
       builder: (context, state) =>
           LiveViewerScreen(sessionId: state.pathParameters['sessionId']!),
+    ),
+    // Push bị chiếm ô mở /lanh-dia?chunk=x_y, đúng vùng bị chiếm.
+    GoRoute(
+      path: '/lanh-dia',
+      builder: (context, state) =>
+          TerritoryScreen(chunk: state.uri.queryParameters['chunk']),
     ),
     GoRoute(
       path: '/club-runs',

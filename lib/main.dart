@@ -87,6 +87,8 @@ Future<void> _initRemoteConfig() async {
       // Ẩn Strava ở Settings khi app Strava đang Inactive. false = ẩn; bật true
       // trên console khi kết nối lại được (áp realtime, không cần build lại).
       'strava_enabled': false,
+      // Lãnh địa chạy bộ: tắt thì app không hiện màn, dòng hay nút nào của nó.
+      'territory_enabled': false,
       // Nguồn tile vector của bản đồ nền; trống thì vẽ tile ảnh.
       'map_vector_url': '',
       // Nguồn glyph cho chữ trên màn replay 3D; trống thì màn 3D không có chữ.
