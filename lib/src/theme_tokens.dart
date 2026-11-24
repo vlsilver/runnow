@@ -692,6 +692,24 @@ class RunNowBotCardTokens {
   static const revealEdge = Color(0xFF121116);
 }
 
+/// Thẻ khoe BXH: giấy kem, chữ đen, nhấn đỏ. Thẻ in ra ảnh nên giữ một kiểu,
+/// không theo theme.
+abstract final class RunNowRankBoardCardTokens {
+  static const paper = Color(0xFFF4F1EA);
+  static const ink = Color(0xFF141414);
+  static const red = Color(0xFFC2300F);
+  static const redBright = Color(0xFFE23B1E);
+  static const muted = Color(0xFF5F5B54);
+  static const rule = Color(0xFFD9D5CD);
+  static const photo = Color(0xFFEFEEEA);
+  static const photoEmpty = Color(0xFFE7E3DA);
+  static const podiumSecond = Color(0xFF3A3833);
+  static const podiumThird = Color(0xFF5C5952);
+  static const bandKicker = Color(0xFFFF7A5C);
+  static const bandText = Color(0xFFC9C5BD);
+  static const bandMark = Color(0xFF8C877E);
+}
+
 /// Thẻ thành tích: tranh phủ cả thẻ, kim loại của bậc (sắt, đồng, bạc, vàng,
 /// kim cương) chỉ còn ở ô đá và viền trong. Tông đêm như lá Ma
 /// Sói, nhưng nền là ảnh thật nên chữ cần lớp tối phía dưới để đọc được.

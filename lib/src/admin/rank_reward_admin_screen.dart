@@ -132,7 +132,7 @@ class _RankRewardAdminScreenState extends ConsumerState<RankRewardAdminScreen> {
   Future<void> _edit(int? index) async {
     final view = _view!;
     final old = index == null ? null : _items[index];
-    // Đang chạy thì món đã lưu chỉ đổi được biểu tượng và ảnh.
+    // Đang chạy thì món đã lưu chỉ đổi được biểu tượng, ảnh và thêm suất.
     final locked =
         old != null &&
         old.id.isNotEmpty &&
@@ -144,6 +144,7 @@ class _RankRewardAdminScreenState extends ConsumerState<RankRewardAdminScreen> {
       showDragHandle: true,
       builder: (_) => _ItemEditor(
         boardId: _boardId,
+        sport: _sport,
         others: [
           for (var i = 0; i < _items.length; i++)
             if (i != index) _items[i],
@@ -170,8 +171,11 @@ class _RankRewardAdminScreenState extends ConsumerState<RankRewardAdminScreen> {
     } else {
       items[index] = result.item!;
     }
-    items.sort((a, b) => a.fromRank.compareTo(b.fromRank));
-    setState(() => _items = items);
+    // Quà theo hạng theo thứ tự hạng, món bốc thăm sau và giữ thứ tự đã nhập:
+    // backend bốc lần lượt, món sau không bốc lại người món trước đã trúng.
+    final ranked = items.where((it) => !it.isDraw).toList()
+      ..sort((a, b) => a.fromRank.compareTo(b.fromRank));
+    setState(() => _items = [...ranked, ...items.where((it) => it.isDraw)]);
   }
 
   @override
@@ -282,7 +286,9 @@ class _RankRewardAdminScreenState extends ConsumerState<RankRewardAdminScreen> {
                   photos: _items[i].photos,
                   size: 44,
                 ),
-                title: Text('${_items[i].ranks} · ${_items[i].name}'),
+                title: Text(
+                  '${rankRewardRule(_items[i], _sport)} · ${_items[i].name}',
+                ),
                 subtitle: Text('${_items[i].photos.length} ảnh'),
                 trailing: view.state == RankRewardState.closed
                     ? null
@@ -368,6 +374,7 @@ class _EditResult {
 class _ItemEditor extends StatefulWidget {
   const _ItemEditor({
     required this.boardId,
+    required this.sport,
     required this.others,
     required this.item,
     required this.locked,
@@ -376,13 +383,17 @@ class _ItemEditor extends StatefulWidget {
 
   final String boardId;
 
+  /// Mốc bốc thăm nhập theo km, riêng bảng Bước chân nhập theo bước.
+  final ClubRankingSport sport;
+
   /// Các món khác của bảng, để chặn chồng hạng ngay trong sheet: backend chỉ
   /// báo chung "Quà không hợp lệ", còn đóng sheet rồi mới báo thì mất món vừa
   /// nhập.
   final List<RankRewardItem> others;
   final RankRewardItem item;
 
-  /// Món đã lưu của kỳ đang chạy: không đổi tên, hạng.
+  /// Món đã lưu của kỳ đang chạy: không đổi tên, hạng, kiểu, mốc; suất chỉ
+  /// thêm.
   final bool locked;
   final bool removable;
 
@@ -392,14 +403,89 @@ class _ItemEditor extends StatefulWidget {
 
 class _ItemEditorState extends State<_ItemEditor> {
   late final _name = TextEditingController(text: widget.item.name);
+  late final _minScore = TextEditingController(
+    text: widget.item.isDraw ? _scoreText(widget.item.minScore) : '',
+  );
+  late final _slots = TextEditingController(
+    text: widget.item.isDraw ? '${widget.item.slots}' : '',
+  );
   late var _item = widget.item;
   bool _uploading = false;
+
+  bool get _steps => widget.sport == ClubRankingSport.steps;
+
+  String _scoreText(double score) => _steps || score % 1000 == 0
+      ? '${(_steps ? score : score / 1000).round()}'
+      : '${score / 1000}';
+
+  /// Mốc sẽ gửi đi, đơn vị backend (mét hay bước); sai thì null. Món đã
+  /// khoá giữ đúng mốc đã lưu: backend so mốc bằng !=, tính lại từ chữ trong ô
+  /// mà lệch phần lẻ là cả lần lưu bị từ chối.
+  double? get _parsedScore {
+    if (widget.locked) return widget.item.minScore;
+    final v = double.tryParse(_minScore.text.trim().replaceAll(',', '.'));
+    if (v == null || !v.isFinite) return null;
+    final score = _steps ? v.roundToDouble() : (v * 1000).roundToDouble();
+    // Số quá lớn nhân 1000 thành Infinity, gửi đi thì jsonEncode ném lỗi.
+    return score > 0 && score.isFinite ? score : null;
+  }
+
+  void _setKind(String kind) => setState(() {
+    if (kind == rankRewardDrawKind) {
+      // Giữ số đã gõ nếu admin đổi qua đổi lại.
+      if (_minScore.text.isEmpty) _minScore.text = _steps ? '70000' : '15';
+      if (_slots.text.isEmpty) _slots.text = '1';
+      _item = _item.copyWith(kind: kind, fromRank: 0, toRank: 0);
+    } else {
+      _item = _item.copyWith(kind: '', fromRank: 1, toRank: 1);
+    }
+  });
 
   @override
   void dispose() {
     _name.dispose();
+    _minScore.dispose();
+    _slots.dispose();
     super.dispose();
   }
+
+  /// Lỗi của phần hạng hay phần bốc thăm, chặn nút Xong; null là hợp lệ.
+  String? _ruleError() {
+    if (!_item.isDraw) {
+      final clash = widget.others
+          .where(
+            (o) =>
+                !o.isDraw &&
+                o.fromRank <= _item.toRank &&
+                _item.fromRank <= o.toRank,
+          )
+          .firstOrNull;
+      return clash == null
+          ? null
+          : 'Trùng hạng với ${clash.ranks} ${clash.name}.';
+    }
+    if (_parsedScore == null) return 'Nhập mốc lớn hơn 0.';
+    final slots = int.tryParse(_slots.text.trim());
+    if (slots == null || slots < 1) return 'Nhập số suất từ 1.';
+    if (widget.locked && slots < widget.item.slots) {
+      return 'Kỳ đang chạy chỉ thêm suất, không bớt dưới ${widget.item.slots}.';
+    }
+    final total = widget.others
+        .where((o) => o.isDraw)
+        .fold(slots, (sum, o) => sum + o.slots);
+    if (total > rankRewardMaxDrawSlots) {
+      return 'Tổng suất bốc thăm tối đa $rankRewardMaxDrawSlots.';
+    }
+    return null;
+  }
+
+  RankRewardItem _result(String name) => _item.isDraw
+      ? _item.copyWith(
+          name: name,
+          minScore: _parsedScore!,
+          slots: int.parse(_slots.text.trim()),
+        )
+      : _item.copyWith(name: name);
 
   Future<void> _addPhoto() async {
     setState(() => _uploading = true);
@@ -429,14 +515,12 @@ class _ItemEditorState extends State<_ItemEditor> {
     final palette = context.runNowPalette;
     final locked = widget.locked;
     final name = _name.text.trim();
-    final clash = widget.others
-        .where((o) => o.fromRank <= _item.toRank && _item.fromRank <= o.toRank)
-        .firstOrNull;
+    final ruleError = _ruleError();
     final valid =
         name.isNotEmpty &&
         name.runes.length <= rankRewardNameMaxRunes &&
         _item.fromRank <= _item.toRank &&
-        clash == null;
+        ruleError == null;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         16,
@@ -456,33 +540,73 @@ class _ItemEditorState extends State<_ItemEditor> {
               decoration: const InputDecoration(labelText: 'Tên quà'),
               onChanged: (_) => setState(() {}),
             ),
-            Row(
-              children: [
-                const Text('Hạng'),
-                const SizedBox(width: 12),
-                _RankPicker(
-                  value: _item.fromRank,
-                  enabled: !locked,
-                  onChanged: (v) => setState(
-                    () => _item = _item.copyWith(
-                      fromRank: v,
-                      toRank: max(v, _item.toRank),
-                    ),
-                  ),
-                ),
-                const Text('  tới  '),
-                _RankPicker(
-                  value: _item.toRank,
-                  enabled: !locked,
-                  min: _item.fromRank,
-                  onChanged: (v) =>
-                      setState(() => _item = _item.copyWith(toRank: v)),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: '', label: Text('Theo hạng')),
+                ButtonSegment(
+                  value: rankRewardDrawKind,
+                  label: Text('Bốc thăm'),
                 ),
               ],
+              selected: {_item.kind},
+              onSelectionChanged: locked ? null : (v) => _setKind(v.first),
             ),
-            if (clash != null)
+            const SizedBox(height: 8),
+            if (_item.isDraw)
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _minScore,
+                      enabled: !locked,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: _steps ? 'Đạt từ (bước)' : 'Đạt từ (km)',
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _slots,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Số suất'),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                ],
+              )
+            else
+              Row(
+                children: [
+                  const Text('Hạng'),
+                  const SizedBox(width: 12),
+                  _RankPicker(
+                    value: _item.fromRank,
+                    enabled: !locked,
+                    onChanged: (v) => setState(
+                      () => _item = _item.copyWith(
+                        fromRank: v,
+                        toRank: max(v, _item.toRank),
+                      ),
+                    ),
+                  ),
+                  const Text('  tới  '),
+                  _RankPicker(
+                    value: _item.toRank,
+                    enabled: !locked,
+                    min: _item.fromRank,
+                    onChanged: (v) =>
+                        setState(() => _item = _item.copyWith(toRank: v)),
+                  ),
+                ],
+              ),
+            if (ruleError != null)
               Text(
-                'Trùng hạng với ${clash.ranks} ${clash.name}.',
+                ruleError,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             const SizedBox(height: 12),
@@ -547,7 +671,7 @@ class _ItemEditorState extends State<_ItemEditor> {
               onPressed: valid && !_uploading
                   ? () => Navigator.of(
                       context,
-                    ).pop(_EditResult.saved(_item.copyWith(name: name)))
+                    ).pop(_EditResult.saved(_result(name)))
                   : null,
               child: const Text('Xong'),
             ),

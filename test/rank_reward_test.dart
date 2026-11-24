@@ -129,6 +129,191 @@ void main() {
     );
   });
 
+  group('món bốc thăm', () {
+    const ao = RankRewardItem(
+      id: 'ao',
+      name: 'Áo',
+      icon: 'shirt',
+      kind: rankRewardDrawKind,
+      minScore: 15000,
+      slots: 1,
+    );
+    const giay = RankRewardItem(
+      id: 'g',
+      fromRank: 1,
+      toRank: 1,
+      name: 'Giày',
+      icon: 'shoes',
+    );
+
+    test('đọc được món bốc thăm như backend ghi, gửi lại đủ field', () {
+      final rewards = RankRewards.fromJson({
+        'giverName': 'NVL',
+        'periodEnd': '2026-11-30',
+        'items': [
+          {
+            'id': '05975f240e7c',
+            'kind': 'draw',
+            'minScore': 15000,
+            'slots': 1,
+            'name': 'Áo chạy Kiprun Run 100',
+            'icon': 'shirt',
+            'photos': ['rankRewards/week_2026-11-23_run/addfd9395872.jpg'],
+          },
+        ],
+      });
+      final item = rewards.items.single;
+      expect(item.isDraw, isTrue);
+      expect(item.covers(1), isFalse);
+      expect(item.toJson(), {
+        'id': '05975f240e7c',
+        'kind': 'draw',
+        'minScore': 15000.0,
+        'slots': 1,
+        'name': 'Áo chạy Kiprun Run 100',
+        'icon': 'shirt',
+        'photos': ['rankRewards/week_2026-11-23_run/addfd9395872.jpg'],
+      });
+      expect(rankRewardRule(item, ClubRankingSport.run), 'Bốc 1 · ≥15 km');
+      expect(rankRewardTags(item, ClubRankingSport.run), [
+        'Random',
+        '15 km',
+        '1 suất',
+      ]);
+    });
+
+    test('đầu sheet quà: số người nhận, điều kiện, lịch chốt', () {
+      final end = DateTime(2026, 11, 30);
+      final one = RankRewards(giverName: '', items: [ao], periodEnd: end);
+      expect(rankRewardWinnerCount(one), 1);
+      expect(rankRewardCondition(one, ClubRankingSport.run), (
+        '≥15 km',
+        'đủ để bốc thăm',
+      ));
+      expect(rankRewardSheetNote(one), isNull);
+      expect(rankRewardSchedule(one), [
+        ('CN 29/11', 'tính tới hết'),
+        ('12:00 T2 30/11', 'chốt và công bố'),
+      ]);
+      // Hạng 1, hạng 2–3 và áo 3 suất: 1 + 2 + 3 người nhận.
+      final mixed = RankRewards(
+        giverName: '',
+        items: [
+          giay,
+          giay.copyWith(fromRank: 2, toRank: 3),
+          ao.copyWith(slots: 3),
+        ],
+      );
+      expect(rankRewardWinnerCount(mixed), 6);
+      expect(rankRewardCondition(mixed, ClubRankingSport.run), (
+        'Top 3',
+        'hoặc ≥15 km',
+      ));
+      expect(
+        rankRewardSheetNote(mixed),
+        'Mỗi người nhận tối đa 1 quà. Xét quà theo hạng trước, rồi bốc thăm '
+        'trong số người còn lại.',
+      );
+      expect(rankRewardSchedule(mixed), isEmpty);
+    });
+
+    test('điều kiện theo hạng: liền từ 1 là top, có lỗ thì kể từng dải', () {
+      const only = RankRewards(giverName: '', items: [giay]);
+      expect(rankRewardCondition(only, ClubRankingSport.run), (
+        '#1',
+        'theo hạng',
+      ));
+      final holes = RankRewards(
+        giverName: '',
+        items: [giay.copyWith(fromRank: 8, toRank: 10), giay],
+      );
+      expect(rankRewardCondition(holes, ClubRankingSport.run), (
+        '#1 · #8–10',
+        'theo hạng',
+      ));
+      expect(rankRewardSheetNote(holes), 'Mỗi người nhận tối đa 1 quà.');
+    });
+
+    test('dòng của mình trong sheet quà', () {
+      final end = DateTime(2026, 11, 30);
+      final both = RankRewards(
+        giverName: '',
+        items: [giay, ao],
+        periodEnd: end,
+      );
+      final holder = [_ranked('nvl', 1, 12), _ranked('dan', 2, 9)];
+      expect(rankRewardMe(holder, 0, both, ClubRankingSport.run), (
+        rank: '#1',
+        title: 'Đang giữ Giày',
+        detail: 'Giữ hạng tới hết CN 29/11',
+      ));
+      // dan chưa giữ quà, chưa đủ mốc: nhắc mục tiêu gần nhất.
+      expect(rankRewardMe(holder, 1, both, ClubRankingSport.run), (
+        rank: '#2',
+        title: 'Thêm 3.00 km để lên #1 nhận Giày',
+        detail: 'Bạn đang có 9.00 km',
+      ));
+      final drawOnly = RankRewards(giverName: '', items: [ao], periodEnd: end);
+      expect(
+        rankRewardMe(
+          [_ranked('nvl', 1, 16)],
+          0,
+          drawOnly,
+          ClubRankingSport.run,
+        ),
+        (
+          rank: null,
+          title: 'Đã vào lượt bốc Áo',
+          detail: 'Bạn đang có 16.00 km',
+        ),
+      );
+    });
+
+    test('mốc ghi gọn theo bộ môn', () {
+      expect(rankRewardThreshold(12500, ClubRankingSport.bike), '12,5 km');
+      // In tới mét như backend so mốc.
+      expect(rankRewardThreshold(12345, ClubRankingSport.run), '12,345 km');
+      expect(rankRewardThreshold(70000, ClubRankingSport.steps), '70.000 bước');
+    });
+
+    test('chưa đủ mốc thì nhắc thêm bao nhiêu để vào lượt bốc', () {
+      final ranked = [_ranked('nvl', 1, 12.93), _ranked('dan', 2, 9.58)];
+      const rewards = RankRewards(giverName: 'NVL', items: [ao]);
+      expect(
+        rankRewardGapLabel(ranked, 0, rewards, ClubRankingSport.run),
+        'Thêm 2.07 km để vào lượt bốc Áo',
+      );
+    });
+
+    test('đủ mốc thì báo đã vào lượt bốc', () {
+      final ranked = [_ranked('nvl', 1, 16), _ranked('dan', 2, 9.58)];
+      const rewards = RankRewards(giverName: 'NVL', items: [ao]);
+      expect(
+        rankRewardGapLabel(ranked, 0, rewards, ClubRankingSport.run),
+        'Đã vào lượt bốc Áo',
+      );
+    });
+
+    test('đang giữ quà theo hạng thì không nhắc lượt bốc', () {
+      final ranked = [_ranked('nvl', 1, 12), _ranked('dan', 2, 9)];
+      const rewards = RankRewards(giverName: 'NVL', items: [giay, ao]);
+      expect(
+        rankRewardGapLabel(ranked, 0, rewards, ClubRankingSport.run),
+        isNull,
+      );
+    });
+
+    test('nhắc mục tiêu gần hơn giữa lên hạng và vào lượt bốc', () {
+      // dan 9 km: lên #1 cần 3 km, vào lượt bốc cần 6 km.
+      final ranked = [_ranked('nvl', 1, 12), _ranked('dan', 2, 9)];
+      const rewards = RankRewards(giverName: 'NVL', items: [giay, ao]);
+      expect(
+        rankRewardGapLabel(ranked, 1, rewards, ClubRankingSport.run),
+        'Thêm 3.00 km để lên #1 nhận Giày',
+      );
+    });
+  });
+
   test('a reward push opens the club on that board', () {
     expect(
       pushLocation({'kind': 'rank_reward', 'boardId': 'week_2026-10-26_run'}),
@@ -245,9 +430,9 @@ void main() {
 
       await open(500);
       expect(find.text('Server down'), findsOneWidget);
-    // Snackbar xếp hàng: chờ cái lỗi tắt rồi mới chắc không có câu sai đi sau.
-    await tester.pump(const Duration(seconds: 5));
-    await tester.pumpAndSettle();
+      // Snackbar xếp hàng: chờ cái lỗi tắt rồi mới chắc không có câu sai đi sau.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
       expect(find.text('Bình chưa liên kết Telegram.'), findsNothing);
     },
   );

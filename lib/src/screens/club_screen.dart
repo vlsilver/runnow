@@ -14,6 +14,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/rank/rank_card.dart';
 import 'package:myrun/src/rank/rank_gift_card.dart';
+import 'package:myrun/src/rank/rank_board_card.dart';
 import 'package:myrun/src/rank/rank_reward.dart';
 import 'package:myrun/src/rank/rank_reward_widgets.dart';
 import 'package:myrun/src/share.dart';
@@ -109,10 +110,8 @@ class _RankingTab extends ConsumerWidget {
     final ranked = items == null
         ? const <ClubRankedMember>[]
         : rankClubMembers(items, sport, range);
-    final rewardBoard = rankBoardId(
-      currentRankingPeriod(DateTime.now(), range),
-      sport,
-    );
+    final period = currentRankingPeriod(DateTime.now(), range);
+    final rewardBoard = rankBoardId(period, sport);
     final rewards = ref.watch(rankRewardsProvider(rewardBoard)).asData?.value;
     final hasRewards = rewards != null && rewards.items.isNotEmpty;
     return RefreshIndicator(
@@ -132,17 +131,32 @@ class _RankingTab extends ConsumerWidget {
             // Web không gửi được file ảnh; bảng trống thì không có gì để khoe.
             onShare: kIsWeb || ranked.isEmpty
                 ? null
+                // Có quà thì khoe thẻ hai mặt: BXH trước, quà và luật sau.
+                : hasRewards
+                ? () => showRankBoardCard(
+                    context,
+                    RankBoardCard(
+                      boardId: rewardBoard,
+                      ranked: ranked,
+                      sport: sport,
+                      period: period,
+                      rewards: rewards,
+                      currentUid: currentUid,
+                    ),
+                  )
                 : () => showShareCardSheet(
                     context,
                     caption:
                         '3i bảng xếp hạng ${_sportLabel(sport)} ${_rangeLabel(range)}',
                     fileName: '3i-xep-hang.png',
                     label: 'Khoe bảng xếp hạng',
-                    card: _RankingPoster(
-                      ranked: ranked,
-                      sport: sport,
-                      range: range,
-                      currentUid: currentUid,
+                    card: RankBoardPoster(
+                      board: RankBoardSnapshot(
+                        ranked: ranked,
+                        sport: sport,
+                        period: period,
+                        currentUid: currentUid,
+                      ),
                     ),
                   ),
           ),
@@ -154,7 +168,14 @@ class _RankingTab extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
           if (hasRewards) ...[
-            RankRewardStrip(rewards: rewards),
+            RankRewardStrip(
+              rewards: rewards,
+              sport: sport,
+              me: switch (ranked.indexWhere((m) => m.entry.uid == currentUid)) {
+                -1 => null,
+                final index => rankRewardMe(ranked, index, rewards, sport),
+              },
+            ),
             const SizedBox(height: 12),
           ],
           board.when(
@@ -573,86 +594,6 @@ class _RankingList extends StatelessWidget {
                 ],
               ],
             ),
-    );
-  }
-}
-
-/// Ảnh khoe bảng xếp hạng: 10 dòng đầu, thêm dòng của người khoe nếu họ nằm
-/// ngoài 10 dòng đó.
-class _RankingPoster extends StatelessWidget {
-  const _RankingPoster({
-    required this.ranked,
-    required this.sport,
-    required this.range,
-    required this.currentUid,
-  });
-
-  final List<ClubRankedMember> ranked;
-  final ClubRankingSport sport;
-  final ClubRankingRange range;
-  final String? currentUid;
-
-  static const _rows = 10;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    final mine = ranked.indexWhere((m) => m.entry.uid == currentUid);
-    final shown = [
-      for (var i = 0; i < ranked.length && i < _rows; i++) i,
-      if (mine >= _rows) mine,
-    ];
-    return Container(
-      width: 360,
-      padding: const EdgeInsets.fromLTRB(8, 18, 8, 10),
-      decoration: BoxDecoration(
-        color: palette.background,
-        borderRadius: palette.radius(20),
-        border: Border.all(color: palette.border),
-      ),
-      // Dòng trong ảnh không mở nhật ký.
-      child: AbsorbPointer(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Expanded(child: _SectionTitle('XẾP HẠNG')),
-                  Text(
-                    '${_sportLabel(sport)} · ${_rangeLabel(range)}',
-                    style: TextStyle(
-                      color: palette.textMuted,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            for (final index in shown) ...[
-              if (index == mine && mine >= _rows)
-                Center(
-                  child: Text(
-                    '···',
-                    style: TextStyle(color: palette.textMuted, fontSize: 16),
-                  ),
-                ),
-              _RankingRow(
-                member: ranked[index],
-                sport: sport,
-                isMe: index == mine,
-                // Tính trên cả bảng, vì dòng liền dưới có thể không nằm trong ảnh.
-                gapLabel: index == mine
-                    ? clubRankingGapLabel(ranked, index, sport)
-                    : null,
-              ),
-            ],
-          ],
-        ),
-      ),
     );
   }
 }
