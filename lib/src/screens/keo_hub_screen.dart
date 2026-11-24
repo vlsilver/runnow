@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:myrun/src/achievements/club_card_widgets.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/club_ranking.dart';
+import 'package:myrun/src/rank/rank_reward_widgets.dart';
 import 'package:myrun/src/club_runs.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_models.dart';
@@ -1133,7 +1134,7 @@ class _InviteRow extends StatelessWidget {
 
 /// Top 5 BXH Chạy/Đi bộ tuần này trên ngọn núi và hạng của mình. Đọc
 /// chung bảng với tab Club (đã tải sẵn lúc mở app). Tuần chưa ai có km thì
-/// ẩn. Nút chia sẻ chụp đúng khung ngọn núi thành ảnh để khoe ra ngoài app.
+/// ẩn. Tuần có quà thì dải quà nằm trên núi, chạm mở sheet quà. Nút chia sẻ chụp đúng khung ngọn núi thành ảnh để khoe ra ngoài app.
 class _RankSection extends ConsumerStatefulWidget {
   const _RankSection();
 
@@ -1189,6 +1190,11 @@ class _RankSectionState extends ConsumerState<_RankSection> {
     final myIndex = ranked.indexWhere((member) => member.entry.uid == uid);
     final myEntry = entries.where((e) => e.uid == uid).firstOrNull;
     final private = myEntry != null && !myEntry.isPublic;
+    final period = currentRankingPeriod(DateTime.now(), _range);
+    final rewards = ref
+        .watch(rankRewardsProvider(rankBoardId(period, _sport)))
+        .asData
+        ?.value;
     void open() {
       ref.read(clubRankingSportProvider.notifier).state = _sport;
       ref.read(clubRankingRangeProvider.notifier).state = _range;
@@ -1199,6 +1205,16 @@ class _RankSectionState extends ConsumerState<_RankSection> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         HubSectionHeader(title: 'BXH tuần', onMore: open),
+        if (rewards != null && rewards.items.isNotEmpty) ...[
+          RankRewardStrip(
+            rewards: rewards,
+            sport: _sport,
+            me: myIndex < 0
+                ? null
+                : rankRewardMe(ranked, myIndex, rewards, _sport),
+          ),
+          const SizedBox(height: 12),
+        ],
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           // Nút khoe đè lên góc khung nhưng nằm ngoài RepaintBoundary nên

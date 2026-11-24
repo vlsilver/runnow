@@ -14,6 +14,7 @@ import 'package:myrun/src/hearts.dart';
 import 'package:myrun/src/live_cheers.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/rank/rank_reward.dart';
 import 'package:myrun/src/repository.dart';
 import 'package:myrun/src/rooms/run_room_models.dart';
 import 'package:myrun/src/rooms/run_room_repository.dart';
@@ -110,21 +111,20 @@ TrainingPlan _plan(
   bool isDraft = false,
   bool ended = false,
   int daysToTarget = 30,
-}) =>
-    TrainingPlan(
-      id: id,
-      goal: goal,
-      goalDistanceKm: 10,
-      weeks: 8,
-      startDate: DateTime.now().subtract(const Duration(days: 26)),
-      targetDate: DateTime.now().add(Duration(days: daysToTarget)),
-      summary: '',
-      days: const [],
-      isDraft: isDraft,
-      ended: ended,
-      ownerUid: id,
-      visibility: CoachVisibility.club,
-    );
+}) => TrainingPlan(
+  id: id,
+  goal: goal,
+  goalDistanceKm: 10,
+  weeks: 8,
+  startDate: DateTime.now().subtract(const Duration(days: 26)),
+  targetDate: DateTime.now().add(Duration(days: daysToTarget)),
+  summary: '',
+  days: const [],
+  isDraft: isDraft,
+  ended: ended,
+  ownerUid: id,
+  visibility: CoachVisibility.club,
+);
 
 ClubCard _card(String id, String tier) =>
     ClubCard.fromJson({'ownerUid': 'u1', 'activityId': id, 'tier': tier})!;
@@ -149,6 +149,8 @@ Future<_Fetches> _pumpHome(
   Future<RunContractPage>? clubContracts,
   TrainingPlan? ownedCoach,
   List<TrainingPlan> publicCoaches = const [],
+  RankRewards? rewards,
+  List<String>? rewardBoards,
 }) async {
   tester.view.physicalSize = Size(400, height);
   tester.view.devicePixelRatio = 1;
@@ -180,6 +182,10 @@ Future<_Fetches> _pumpHome(
           (ref) => Stream.value(publicCoaches),
         ),
         gameListProvider.overrideWith((ref) async => null),
+        rankRewardsProvider.overrideWith((ref, id) {
+          rewardBoards?.add(id);
+          return Stream.value(rewards);
+        }),
         totalKmLeaderboardProvider.overrideWith(
           (ref) => leaderboard ?? Future.value(const <LeaderboardEntry>[]),
         ),
@@ -384,6 +390,52 @@ void main() {
     expect(find.text('Bình', skipOffstage: false), findsOneWidget);
     // Dòng hạng cao theo font thật, nên chỉ đòi lệch không quá một dòng chữ.
     expect(tester.getTopLeft(header).dy, moreOrLessEquals(before, epsilon: 20));
+  });
+
+  testWidgets('tuần có quà thì dải quà nằm trên ngọn núi BXH', (tester) async {
+    final boards = <String>[];
+    await _pumpHome(
+      tester,
+      leaderboard: Future.value([_runner('Bình', 20), _runner('an', 12)]),
+      uid: 'an',
+      height: 1400,
+      rewardBoards: boards,
+      rewards: const RankRewards(
+        giverName: 'A',
+        items: [
+          RankRewardItem(
+            id: 'a',
+            kind: rankRewardDrawKind,
+            minScore: 15000,
+            slots: 1,
+            name: 'Áo chạy',
+            icon: 'shirt',
+          ),
+        ],
+      ),
+    );
+
+    expect(boards, isNotEmpty);
+    expect(boards.toSet(), hasLength(1));
+    expect(boards.single, allOf(startsWith('week_'), endsWith('_run')));
+    final strip = find.text('Quà kỳ này');
+    expect(strip, findsOneWidget);
+    expect(find.text('Áo chạy'), findsOneWidget);
+    expect(
+      tester.getTopLeft(strip).dy,
+      lessThan(tester.getTopLeft(find.text('Bình')).dy),
+    );
+  });
+
+  testWidgets('tuần không có quà thì không có dải quà', (tester) async {
+    await _pumpHome(
+      tester,
+      leaderboard: Future.value([_runner('Bình', 20)]),
+      uid: 'an',
+      height: 1400,
+    );
+    expect(find.text('Bình'), findsOneWidget);
+    expect(find.text('Quà kỳ này'), findsNothing);
   });
 
   testWidgets('thẻ về sau không làm trang dài ra', (tester) async {
