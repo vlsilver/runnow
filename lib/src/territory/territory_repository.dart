@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/territory/territory_grid.dart';
@@ -23,6 +22,12 @@ class TerritoryRepository {
       .doc(uid)
       .snapshots()
       .map((doc) => TerritoryOwner.fromMap(doc.data()));
+
+  Stream<bool> watchEnabled() => _firestore
+      .collection('config')
+      .doc('territory')
+      .snapshots()
+      .map((doc) => doc.data()?['enabled'] == true);
 
   /// Các ô [uid] đang giữ trong [chunks], đọc một lần cho thẻ khoe.
   Future<List<TileXY>> fetchOwnedCells(
@@ -55,27 +60,14 @@ final territoryRepositoryProvider = Provider<TerritoryRepository>(
   (ref) => TerritoryRepository(FirebaseFirestore.instance),
 );
 
-/// Cờ Remote Config `territory_enabled`. Tắt thì app không hiện màn, dòng hay
-/// nút nào của lãnh địa. Mặc định và khi chưa fetch là false.
-final territoryEnabledProvider = StreamProvider<bool>((ref) async* {
-  bool read() {
-    try {
-      final v = FirebaseRemoteConfig.instance.getValue('territory_enabled');
-      return v.source == ValueSource.valueStatic ? false : v.asBool();
-    } catch (_) {
-      // Firebase chưa khởi tạo (test) hay web không chạy RC: coi như tắt.
-      return false;
-    }
-  }
-
-  yield read();
-  try {
-    final rc = FirebaseRemoteConfig.instance;
-    await for (final _ in rc.onConfigUpdated) {
-      await rc.activate();
-      yield read();
-    }
-  } catch (_) {}
+/// Lãnh địa bật hay tắt, đọc từ `config/territory.enabled`: cùng một cờ với
+/// backend (backend chỉ có kết quả và push khi cờ này bật), nên ra mắt chỉ cần
+/// bật một chỗ, và bản web cũng theo được. Chưa có doc, lỗi đọc hay chưa đăng
+/// nhập thì coi như tắt.
+final territoryEnabledProvider = StreamProvider<bool>((ref) {
+  final uid = ref.watch(firebaseUserProvider.select((u) => u.value?.uid));
+  if (uid == null) return Stream.value(false);
+  return ref.watch(territoryRepositoryProvider).watchEnabled();
 });
 
 /// Các ô của một chunk z13. autoDispose để chunk ra khỏi khung nhìn thì thôi

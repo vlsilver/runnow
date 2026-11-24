@@ -8,6 +8,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/territory/territory_grid.dart';
 import 'package:myrun/src/territory/territory_repository.dart';
@@ -45,6 +46,7 @@ void main() {
     Widget child, {
     bool enabled = true,
     Stream<bool>? flag,
+    UserProfile? profile,
     String uid = 'an',
   }) async {
     await tester.pumpWidget(
@@ -59,6 +61,7 @@ void main() {
           firebaseUserProvider.overrideWith(
             (ref) => Stream.value(MockUser(uid: uid)),
           ),
+          userProfileProvider.overrideWith((ref) => Stream.value(profile)),
           leaderboardDocsProvider.overrideWith(
             (ref) async =>
                 (await firestore.collection('leaderboardEntries').get()).docs,
@@ -151,6 +154,36 @@ void main() {
       enabled: false,
     );
     expect(find.textContaining('Lãnh địa'), findsNothing);
+  });
+
+  testWidgets('hồ sơ private thì nhắc chỉ hồ sơ công khai mới có ô', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      const TerritoryScreen(chunk: '6523_3849'),
+      profile: const UserProfile(
+        athleteId: '1',
+        displayName: 'An',
+        visibility: ProfileVisibility.private,
+      ),
+    );
+    expect(find.text('Hồ sơ công khai mới có ô'), findsOneWidget);
+    expect(find.text('3 ô'), findsNothing);
+  });
+
+  testWidgets('hồ sơ công khai thì nhãn là số ô', (tester) async {
+    await pump(
+      tester,
+      const TerritoryScreen(chunk: '6523_3849'),
+      profile: const UserProfile(
+        athleteId: '1',
+        displayName: 'An',
+        visibility: ProfileVisibility.public,
+      ),
+    );
+    expect(find.text('Hồ sơ công khai mới có ô'), findsNothing);
+    expect(find.text('3 ô'), findsOneWidget);
   });
 
   testWidgets('cờ chưa về thì đang tải, không báo chưa mở', (tester) async {

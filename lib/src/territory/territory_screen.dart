@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/territory/territory_grid.dart';
 import 'package:myrun/src/territory/territory_models.dart';
@@ -189,12 +190,20 @@ class _Badge extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final count = ref.watch(myTerritoryProvider).value?.cellCount;
-    if (!tooFar && count == null) return const SizedBox.shrink();
+    // Backend chỉ tính ô cho hồ sơ công khai, vì bản đồ ô lộ tuyến chạy.
+    final private =
+        ref.watch(userProfileProvider).value?.visibility ==
+        ProfileVisibility.private;
+    if (!tooFar && !private && count == null) return const SizedBox.shrink();
     return GlassPanel(
       borderRadius: 18,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       child: Text(
-        tooFar ? 'Phóng to để xem ô' : '$count ô',
+        tooFar
+            ? 'Phóng to để xem ô'
+            : private
+            ? 'Hồ sơ công khai mới có ô'
+            : '$count ô',
         style: Theme.of(context).textTheme.titleSmall,
       ),
     );
