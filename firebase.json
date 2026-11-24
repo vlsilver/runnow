@@ -8,7 +8,13 @@
   },
   "hosting": {
     "public": "build/web",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": ["firebase.json", "**/.DS_Store", "**/.last_build_id", "**/node_modules/**"],
+    "headers": [
+      {
+        "source": "/.well-known/apple-app-site-association",
+        "headers": [{ "key": "Content-Type", "value": "application/json" }]
+      }
+    ],
     "rewrites": [
       { "source": "/delete-account", "destination": "/delete-account.html" },
       { "source": "/connect-health", "destination": "/connect-health.html" },

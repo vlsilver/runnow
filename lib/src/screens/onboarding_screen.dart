@@ -46,7 +46,7 @@ class _SignInButton extends StatelessWidget {
           disabledBackgroundColor: background.withValues(alpha: 0.4),
           disabledForegroundColor: foreground.withValues(alpha: 0.6),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: context.runNowPalette.radius(14),
           ),
         ),
         child: Row(
@@ -132,7 +132,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                       builder: (context, child) {
                         return DecoratedBox(
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(22),
+                            borderRadius: palette.radius(22),
                             boxShadow: [
                               BoxShadow(
                                 color: palette.secondary.withValues(
@@ -148,7 +148,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                         );
                       },
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(22),
+                        borderRadius: palette.radius(22),
                         child: Image.asset(
                           'assets/brand/3i-mark.png',
                           width: 96,

@@ -10,6 +10,8 @@ import 'package:http/testing.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/repository.dart';
+import 'package:myrun/src/rooms/run_room_models.dart';
+import 'package:myrun/src/rooms/run_room_repository.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_repository.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -87,12 +89,17 @@ Map<String, dynamic> _games(
   'items': items,
 };
 
-Map<String, dynamic> _game(String title, {bool hasTodo = false}) => {
+Map<String, dynamic> _game(
+  String title, {
+  bool hasTodo = false,
+  String status = 'running',
+  String statusLabel = 'Đang chơi',
+}) => {
   'id': 'g1',
   'title': title,
   'subtitle': 'Đêm 2',
-  'status': 'running',
-  'statusLabel': 'Đang chơi',
+  'status': status,
+  'statusLabel': statusLabel,
   'playerCount': 12,
   'minPlayers': 8,
   'maxPlayers': 20,
@@ -106,14 +113,20 @@ Future<void> _pump(
   WidgetTester tester, {
   required List<RunContract> contracts,
   required Future<http.Response> Function() games,
+  Future<http.Response> Function()? history,
   List<RunContract> myActive = const [],
+  List<RunRoom> endedRooms = const [],
 }) async {
   final api = RunNowApiClient(
     baseUri: Uri.parse('https://api.example.test'),
     tokenProvider: ({required forceRefresh}) async => 'token',
     appVersion: () async => '1.5.0+12',
     appPlatform: 'ios',
-    httpClient: MockClient((request) => games()),
+    httpClient: MockClient(
+      (request) => request.url.path == '/v1/games/history'
+          ? (history ?? () async => _json({'items': []}))()
+          : games(),
+    ),
   );
   await tester.pumpWidget(
     ProviderScope(
@@ -133,6 +146,7 @@ Future<void> _pump(
         syncControllerProvider.overrideWith(
           (ref) => SyncController(DemoActivityRepository()),
         ),
+        myEndedRunRoomsProvider.overrideWith((ref) async => endedRooms),
         runContractRepositoryProvider.overrideWithValue(
           _FakeContracts(contracts),
         ),
@@ -213,6 +227,60 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
     expect(find.text('Ma Sói tuần 42'), findsNothing);
+  });
+
+  testWidgets('an ended game sits under completed, not running', (
+    tester,
+  ) async {
+    final ended = _game(
+      'Ma Sói tuần 41',
+      status: 'ended',
+      statusLabel: 'Đã kết thúc',
+    );
+    await _pump(
+      tester,
+      contracts: [_contract('Kèo 10km tuần này')],
+      games: () async => _json(_games([ended])),
+      history: () async => _json({
+        'items': [ended],
+      }),
+    );
+    expect(find.text('Ma Sói tuần 41'), findsNothing);
+
+    await tester.tap(find.text('Hoàn thành'));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.text('Ma Sói tuần 41'), findsOneWidget);
+  });
+
+  testWidgets('a finished run room I joined sits under completed', (
+    tester,
+  ) async {
+    final room = RunRoom.fromMap('r1', {
+      'title': 'Chạy hồ Tây sáng T7',
+      'hostName': 'Ngọc',
+      'status': 'ended',
+      'runnerCount': 6,
+      'maxRunners': 10,
+      'startsAt': DateTime(2026, 11, 8, 6),
+      'closesAt': DateTime(2026, 11, 8, 12),
+    });
+    await _pump(
+      tester,
+      contracts: const [],
+      games: () async => _json(_games(const [])),
+      endedRooms: [room],
+    );
+    expect(find.text('Chạy hồ Tây sáng T7'), findsNothing);
+
+    await tester.tap(find.text('Hoàn thành'));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.text('Chạy hồ Tây sáng T7'), findsOneWidget);
+    expect(find.text('6 người chạy'), findsOneWidget);
+    expect(find.text('Chưa có kèo nào hoàn thành'), findsNothing);
   });
 
   group('at the contract limit', () {

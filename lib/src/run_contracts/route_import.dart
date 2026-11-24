@@ -144,7 +144,10 @@ List<LatLng> projectShapeOntoMap(
   const earthRadiusMeters = 6371008.8;
   final centerLatRad = center.latitude * math.pi / 180;
 
-  LatLng offsetLatLng({required double eastMeters, required double northMeters}) {
+  LatLng offsetLatLng({
+    required double eastMeters,
+    required double northMeters,
+  }) {
     final deltaLat = (northMeters / earthRadiusMeters) * (180 / math.pi);
     final deltaLon =
         (eastMeters / (earthRadiusMeters * math.cos(centerLatRad))) *

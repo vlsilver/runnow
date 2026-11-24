@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
+import 'package:myrun/src/widgets/map_vector.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
@@ -10,9 +11,8 @@ import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/photo_pin_marker.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
-const _liveRouteTileTemplate =
-    'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const _clusterThresholdMeters = 15.0;
 const _distance = Distance();
 
@@ -248,7 +248,7 @@ class _LiveRouteViewState extends State<LiveRouteView> {
                   child: SafeArea(
                     child: _CircleIconButton(
                       icon: Icons.my_location_rounded,
-                      iconColor: RunNowSemanticColors.info,
+                      iconColor: context.runNowPalette.info,
                       onTap: () => setState(() => _autoFollow = true),
                     ),
                   ),
@@ -284,7 +284,7 @@ class _CircleIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
-      shape: const CircleBorder(),
+      shape: context.runNowPalette.roundBorder,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -293,7 +293,7 @@ class _CircleIconButton extends StatelessWidget {
           height: 38,
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.72),
-            shape: BoxShape.circle,
+            shape: context.runNowPalette.round,
           ),
           child: Icon(icon, color: iconColor, size: 18),
         ),
@@ -357,15 +357,15 @@ class _RunnerChip extends StatelessWidget {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
+                shape: context.runNowPalette.round,
                 border: Border.all(
                   color: focused
-                      ? RunNowSemanticColors.danger
+                      ? context.runNowPalette.danger
                       : Colors.white.withValues(alpha: 0.25),
                   width: 2,
                 ),
               ),
-              child: ClipOval(
+              child: RunNowRoundClip(
                 child: _avatarOrInitial(avatarUrl, session.ownerName, 34),
               ),
             ),
@@ -377,7 +377,7 @@ class _RunnerChip extends StatelessWidget {
                 height: 9,
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  shape: BoxShape.circle,
+                  shape: context.runNowPalette.round,
                   border: Border.all(color: Colors.black, width: 1.5),
                 ),
               ),
@@ -432,7 +432,7 @@ class _StatsOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: context.runNowPalette.radius(18),
       child: Container(
         width: 300,
         decoration: BoxDecoration(
@@ -451,7 +451,7 @@ class _StatsOverlay extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    ClipOval(
+                    RunNowRoundClip(
                       child: _avatarOrInitial(
                         session.ownerAvatarUrl,
                         session.ownerName,
@@ -482,8 +482,8 @@ class _StatsOverlay extends StatelessWidget {
                                 width: 6,
                                 height: 6,
                                 decoration: BoxDecoration(
-                                  color: RunNowSemanticColors.danger,
-                                  shape: BoxShape.circle,
+                                  color: context.runNowPalette.danger,
+                                  shape: context.runNowPalette.round,
                                 ),
                               ),
                               const SizedBox(width: 5),
@@ -673,11 +673,7 @@ class _LiveMap extends StatelessWidget {
         },
       ),
       children: [
-        TileLayer(
-          urlTemplate: _liveRouteTileTemplate,
-          userAgentPackageName: 'com.threei.run',
-          retinaMode: RetinaMode.isHighDensity(context),
-        ),
+        mapBaseLayer(context, dark: true, around: points),
         const MapAttribution(),
         PolylineLayer(
           polylines: [
@@ -693,15 +689,17 @@ class _LiveMap extends StatelessWidget {
           markers: [
             if (points.isNotEmpty)
               _waypointMarker(
+                context.runNowPalette.corner(10),
                 points.first,
-                RunNowSemanticColors.success,
+                context.runNowPalette.success,
                 Icons.play_arrow_rounded,
                 'Điểm bắt đầu',
               ),
             if (points.length > 1)
               _waypointMarker(
+                context.runNowPalette.corner(10),
                 points.last,
-                RunNowSemanticColors.danger,
+                context.runNowPalette.danger,
                 Icons.sports_score_rounded,
                 'Điểm kết thúc',
               ),
@@ -743,6 +741,7 @@ class _LiveMap extends StatelessWidget {
 }
 
 Marker _waypointMarker(
+  double corner,
   LatLng point,
   Color color,
   IconData icon,
@@ -757,7 +756,7 @@ Marker _waypointMarker(
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(corner),
           border: Border.all(color: Colors.white, width: 2),
           boxShadow: [
             BoxShadow(color: color.withValues(alpha: 0.42), blurRadius: 10),
@@ -795,8 +794,8 @@ class _RunnerMapMarkerState extends State<_RunnerMapMarker>
   @override
   Widget build(BuildContext context) {
     final ringColor = widget.focused
-        ? RunNowSemanticColors.danger
-        : RunNowSemanticColors.info;
+        ? context.runNowPalette.danger
+        : context.runNowPalette.info;
     return Opacity(
       opacity: widget.focused ? 1 : 0.55,
       child: Semantics(
@@ -807,7 +806,7 @@ class _RunnerMapMarkerState extends State<_RunnerMapMarker>
           children: [
             DecoratedBox(
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
+                shape: context.runNowPalette.round,
                 border: Border.all(color: ringColor, width: 2.5),
                 boxShadow: [
                   BoxShadow(
@@ -816,7 +815,7 @@ class _RunnerMapMarkerState extends State<_RunnerMapMarker>
                   ),
                 ],
               ),
-              child: ClipOval(
+              child: RunNowRoundClip(
                 child: _avatarOrInitial(
                   widget.session.ownerAvatarUrl,
                   widget.session.ownerName,
@@ -838,7 +837,7 @@ class _RunnerMapMarkerState extends State<_RunnerMapMarker>
                     height: 12,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      shape: BoxShape.circle,
+                      shape: context.runNowPalette.round,
                       border: Border.all(color: Colors.black, width: 2),
                     ),
                   ),
@@ -998,7 +997,7 @@ class _PhotoViewerCaption extends StatelessWidget {
     final kmLabel = (photo.photo.distanceMeters / 1000).toStringAsFixed(1);
     return Row(
       children: [
-        ClipOval(
+        RunNowRoundClip(
           child: _avatarOrInitial(photo.ownerAvatarUrl, photo.ownerName, 30),
         ),
         const SizedBox(width: 10),
@@ -1039,7 +1038,7 @@ class _PhotoViewerCaption extends StatelessWidget {
                     width: 6,
                     height: 6,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
+                      shape: context.runNowPalette.round,
                       color: i == index
                           ? Colors.white
                           : Colors.white.withValues(alpha: 0.35),

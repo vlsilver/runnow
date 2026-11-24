@@ -141,6 +141,7 @@ void main() {
       element: RunNowElement.earth,
       appearance: RunNowAppearance.light,
       darkTone: RunNowDarkTone.warm,
+      style: RunNowStyle.elemental,
     );
 
     expect(controller.element, RunNowElement.earth);
@@ -179,6 +180,187 @@ void main() {
     },
   );
 
+  test('kiểu Thép: giấy trắng ngà, mực đen, một màu đỏ, giữ nguyên hành', () {
+    final palette = RunNowPalette.forSelection(
+      RunNowElement.water,
+      appearance: RunNowAppearance.light,
+      style: RunNowStyle.iron,
+    );
+
+    expect(palette.accent, const Color(0xffe63b1f));
+    expect(palette.background, const Color(0xfff2f1ed));
+    expect(palette.ink, const Color(0xff111111));
+    expect(palette.accentNight, const Color(0xff111111));
+    expect(palette.onAccent, const Color(0xff111111));
+    expect(palette.warmMark, palette.accent);
+    // Thẻ chạy tô theo hành, nên đổi kiểu không được đổi hành.
+    expect(palette.element, RunNowElement.water);
+  });
+
+  test('kiểu Thép: nút chính là khối đỏ góc vuông, tiêu đề chữ hẹp', () {
+    final theme = buildRunNowTheme(
+      RunNowElement.water,
+      appearance: RunNowAppearance.light,
+      style: RunNowStyle.iron,
+    );
+    final filled = theme.filledButtonTheme.style!;
+
+    expect(filled.backgroundColor!.resolve({}), const Color(0xffe63b1f));
+    expect(filled.foregroundColor!.resolve({}), const Color(0xff111111));
+    expect(filled.shape!.resolve({}), const RoundedRectangleBorder());
+    expect(theme.appBarTheme.titleTextStyle!.fontFamily, 'Barlow Condensed');
+    expect(theme.textTheme.titleLarge!.fontFamily, 'Barlow Condensed');
+  });
+
+  test('kiểu Thép được lưu và đọc lại, hành đã chọn vẫn còn', () async {
+    FlutterSecureStorage.setMockInitialValues({});
+    const storage = FlutterSecureStorage();
+    final first = ThemeController(storage: storage, loadFromStorage: false);
+    await first.setSelection(
+      element: RunNowElement.wood,
+      appearance: RunNowAppearance.dark,
+      darkTone: RunNowDarkTone.elemental,
+      style: RunNowStyle.iron,
+    );
+
+    final restarted = ThemeController(storage: storage);
+    await restarted.loaded;
+
+    expect(restarted.style, RunNowStyle.iron);
+    expect(restarted.element, RunNowElement.wood);
+    expect(restarted.appearance, RunNowAppearance.dark);
+  });
+
+  test('kiểu Pixel lấy màu của hành đang chọn, chỉ đổi hình khối', () {
+    for (final element in RunNowElement.values) {
+      for (final appearance in RunNowAppearance.values) {
+        final plain = RunNowPalette.forSelection(
+          element,
+          appearance: appearance,
+        );
+        final pixel = RunNowPalette.forSelection(
+          element,
+          appearance: appearance,
+          style: RunNowStyle.pixel,
+        );
+        final reason = '${element.name} ${appearance.name}';
+
+        expect(pixel.accent, plain.accent, reason: reason);
+        expect(pixel.background, plain.background, reason: reason);
+        expect(pixel.foreground, plain.foreground, reason: reason);
+        expect(pixel.ink, plain.ink, reason: reason);
+        expect(pixel.accentNight, plain.accentNight, reason: reason);
+        expect(pixel.onAccent, plain.onAccent, reason: reason);
+        expect(pixel.warmMark, plain.warmMark, reason: reason);
+        expect(pixel.corner(18), 0, reason: reason);
+      }
+    }
+  });
+
+  test('kiểu Pixel: mọi chữ là VT323, nút giữ màu hành và có viền mực', () {
+    final plain = buildRunNowTheme(RunNowElement.water);
+    final theme = buildRunNowTheme(
+      RunNowElement.water,
+      style: RunNowStyle.pixel,
+    );
+    final filled = theme.filledButtonTheme.style!;
+    final ink = theme.extension<RunNowPalette>()!.foreground;
+
+    expect(
+      filled.backgroundColor!.resolve({}),
+      plain.filledButtonTheme.style!.backgroundColor!.resolve({}),
+    );
+    expect(
+      filled.shape!.resolve({}),
+      PixelBorder(side: BorderSide(color: ink, width: 2)),
+    );
+    for (final style in [
+      theme.textTheme.bodySmall,
+      theme.textTheme.bodyMedium,
+      theme.textTheme.bodyLarge,
+      theme.textTheme.labelSmall,
+      theme.textTheme.titleLarge,
+      theme.appBarTheme.titleTextStyle,
+    ]) {
+      expect(style!.fontFamily, 'VT323');
+    }
+    // VT323 chỉ có một độ đậm; ép đậm thì máy tự tô dày, nhoè ô vuông.
+    expect(theme.textTheme.titleLarge!.fontWeight, FontWeight.w400);
+  });
+
+  test('PixelBorder khuyết đúng một ô vuông ở mỗi góc', () {
+    // Ô 30×20, bậc 3: góc (0..3, 0..3) nằm ngoài, sát trong nó thì nằm trong.
+    final path = const PixelBorder(
+      step: 3,
+    ).getOuterPath(const Rect.fromLTWH(0, 0, 30, 20));
+
+    for (final corner in const [
+      Offset(1.5, 1.5),
+      Offset(28.5, 1.5),
+      Offset(1.5, 18.5),
+      Offset(28.5, 18.5),
+    ]) {
+      expect(path.contains(corner), isFalse, reason: '$corner');
+    }
+    for (final inside in const [
+      Offset(4.5, 1.5),
+      Offset(1.5, 4.5),
+      Offset(25.5, 18.5),
+      Offset(15, 10),
+    ]) {
+      expect(path.contains(inside), isTrue, reason: '$inside');
+    }
+  });
+
+  test('kiểu Pixel được lưu và đọc lại', () async {
+    FlutterSecureStorage.setMockInitialValues({});
+    const storage = FlutterSecureStorage();
+    final first = ThemeController(storage: storage, loadFromStorage: false);
+    await first.setSelection(
+      element: RunNowElement.wood,
+      appearance: RunNowAppearance.dark,
+      darkTone: RunNowDarkTone.elemental,
+      style: RunNowStyle.pixel,
+    );
+
+    final restarted = ThemeController(storage: storage);
+    await restarted.loaded;
+
+    expect(restarted.style, RunNowStyle.pixel);
+    expect(restarted.element, RunNowElement.wood);
+  });
+
+  test('chưa từng chọn kiểu thì app mở bằng kiểu ngũ hành', () async {
+    FlutterSecureStorage.setMockInitialValues({'runnow_theme_element': 'fire'});
+    final controller = ThemeController();
+
+    await controller.loaded;
+
+    expect(controller.style, RunNowStyle.elemental);
+  });
+
+  test('loaded xong thì đã có lựa chọn đã lưu', () async {
+    FlutterSecureStorage.setMockInitialValues({
+      'runnow_theme_element': 'fire',
+      'runnow_theme_appearance': 'dark',
+    });
+    final controller = ThemeController();
+
+    await controller.loaded;
+
+    expect(controller.element, RunNowElement.fire);
+    expect(controller.appearance, RunNowAppearance.dark);
+  });
+
+  test('đọc lựa chọn lỗi thì loaded vẫn xong và giữ mặc định', () async {
+    final controller = ThemeController(storage: _BrokenStorage());
+
+    await controller.loaded;
+
+    expect(controller.element, RunNowElement.water);
+    expect(controller.appearance, RunNowAppearance.light);
+  });
+
   test('legacy dark selection migrates from the foggy dim default', () async {
     FlutterSecureStorage.setMockInitialValues({
       'runnow_theme_element': 'fire',
@@ -193,4 +375,11 @@ void main() {
     expect(controller.appearance, RunNowAppearance.dark);
     expect(controller.darkTone, RunNowDarkTone.elemental);
   });
+}
+
+/// Keychain đọc lỗi, như máy vừa khôi phục từ bản sao lưu.
+class _BrokenStorage implements FlutterSecureStorage {
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      Future<String?>.error(StateError('keychain'));
 }

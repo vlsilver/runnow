@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myrun/src/games/game_chat_screen.dart';
+import 'package:myrun/src/games/game_chat_seen.dart';
 import 'package:myrun/src/games/game_chat_terms.dart';
 import 'package:myrun/src/providers.dart';
 
@@ -32,6 +33,18 @@ Map<String, dynamic> _msg(
   'at': DateTime.utc(2026, 10, 17, 15, seq).toIso8601String(),
 };
 
+class _MemoryChatSeen extends GameChatSeen {
+  final marks = <String>[];
+
+  @override
+  Future<void> markSeen(
+    String uid,
+    String gameId,
+    String chatKey,
+    int seq,
+  ) async => marks.add('$uid/$gameId/$chatKey/$seq');
+}
+
 class _MemoryTerms implements GameChatTerms {
   _MemoryTerms(this.value);
 
@@ -48,6 +61,7 @@ void main() {
   late DateTime now;
   late FakeGameBackend backend;
   late _MemoryTerms terms;
+  late _MemoryChatSeen seen;
 
   Future<void> pumpScreen(WidgetTester tester) async {
     await tester.pumpWidget(
@@ -56,6 +70,7 @@ void main() {
           runNowApiClientProvider.overrideWithValue(backend.client()),
           firebaseUserProvider.overrideWith((ref) => Stream.value(_FakeUser())),
           gameChatTermsProvider.overrideWithValue(terms),
+          gameChatSeenProvider.overrideWithValue(seen),
         ],
         child: const MaterialApp(
           home: GameChatScreen(gameId: 'g1', chatKey: 'wolves'),
@@ -92,6 +107,7 @@ void main() {
   setUp(() {
     now = DateTime.utc(2026, 10, 17, 16);
     terms = _MemoryTerms(true);
+    seen = _MemoryChatSeen();
     backend = FakeGameBackend(() => now);
     backend.chatPages[''] = {
       'key': 'wolves',
@@ -147,6 +163,12 @@ void main() {
       tester.widget<TextField>(find.byType(TextField)).controller!.text,
       'dồn',
     );
+    await close(tester);
+  });
+
+  testWidgets('remembers the newest message it has shown', (tester) async {
+    await pumpScreen(tester);
+    expect(seen.marks, ['me/g1/wolves/3']);
     await close(tester);
   });
 
@@ -264,6 +286,32 @@ void main() {
     // Tin hệ thống về sói chọn cắn vẫn là thông tin của ván.
     expect(find.textContaining('W1 chọn cắn V2.'), findsOneWidget);
     expect(find.textContaining('Đã gửi báo cáo'), findsOneWidget);
+    await close(tester);
+  });
+
+  // Phòng chung có bot của ván: tin bot hiện tên bot, không báo cáo được;
+  // chữ mờ trong ô nhập là câu backend gửi.
+  testWidgets('shows the game bot and the backend hint', (tester) async {
+    final page = backend.chatPages['']!;
+    backend.chatPages[''] = {
+      ...page,
+      'hint': 'Gọi “Cú Đêm” để bot trả lời',
+      'messages': [
+        {..._msg(4, 'bot', 'Chào cả nhà'), 'name': 'Cú Đêm', 'bot': true},
+        ...(page['messages'] as List),
+      ],
+    };
+    await pumpScreen(tester);
+
+    expect(find.text('Cú Đêm'), findsOneWidget);
+    expect(find.byIcon(Icons.smart_toy_outlined), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).decoration!.hintText,
+      'Gọi “Cú Đêm” để bot trả lời',
+    );
+    await tester.longPress(find.text('Chào cả nhà'));
+    await tester.pumpAndSettle();
+    expect(find.text('Báo cáo tin này'), findsNothing);
     await close(tester);
   });
 

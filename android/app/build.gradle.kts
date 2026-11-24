@@ -61,6 +61,19 @@ android {
     }
 }
 
+// Bản release chỉ gói arm64. x86_64 chỉ có trên emulator, armeabi-v7a là máy
+// 32-bit đời cũ; mỗi kiến trúc để lại thì APK nặng thêm 40-54 MB thư viện
+// native (Flutter, WebRTC, MapLibre). Flutter tự đặt abiFilters nên phải loại
+// ở bước đóng gói.
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.packaging.jniLibs.excludes.addAll(
+            "lib/x86_64/**",
+            "lib/armeabi-v7a/**",
+        )
+    }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17

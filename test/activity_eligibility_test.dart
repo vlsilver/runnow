@@ -9,6 +9,21 @@ void main() {
     expect(isCountedNonStravaRun(_runNow('short', 499.9)), isFalse);
   });
 
+  // Backend coi Health Connect (Android) là nguồn phụ như Apple Health: buổi
+  // ngắn hơn 500 m không tính, và không đi qua đường hydrate của Strava.
+  test('Health Connect is a secondary source, not Strava', () {
+    final short = ActivitySummary.fromMap({
+      'id': 'health-1',
+      'sportType': 'Run',
+      'startedAt': '2026-07-05T01:00:00Z',
+      'distanceMeters': 300,
+      'source': 'health_connect',
+    });
+    expect(short.source, ActivitySource.healthConnect);
+    expect(isPotentialStravaRecording(short), isFalse);
+    expect(isCountedNonStravaRun(short), isFalse);
+  });
+
   test(
     'journal keeps overlapping RunNow session and links preferred Strava',
     () {
@@ -166,6 +181,39 @@ void main() {
     }
   });
 
+  test('a garmin run counts and wins over its apple_health copy', () {
+    final start = DateTime.utc(2026, 7, 6, 6);
+    expect(
+      isCountedNonStravaRun(_appleHealth('g', 5000, garmin: true)),
+      isTrue,
+    );
+
+    // Garmin Connect ghi buổi chạy sang Apple Health: hai bản cùng giờ. Id đặt
+    // ngược thứ tự chữ cái để chỉ ưu tiên nguồn mới chọn được Garmin.
+    final garmin = _appleHealth(
+      'z-garmin',
+      5000,
+      startedAt: start,
+      garmin: true,
+    );
+    final health = _appleHealth(
+      'a-health',
+      5000,
+      startedAt: start.add(const Duration(minutes: 1)),
+    );
+    final runNow = _runNow('runnow', 5000, startedAt: start);
+    for (final input in [
+      [health, garmin],
+      [garmin, health],
+    ]) {
+      expect(selectOfficialActivities(input), [garmin]);
+    }
+    // 3i native vẫn đứng trên Garmin, Strava vẫn luôn thắng.
+    expect(selectOfficialActivities([garmin, runNow]), [runNow]);
+    final strava = _strava('strava', start);
+    expect(selectOfficialActivities([garmin, strava]), [strava]);
+  });
+
   test('two apple_health runs at different times both count', () {
     final base = DateTime.utc(2026, 7, 6, 6);
     final a = _appleHealth('h-a', 5000, startedAt: base);
@@ -183,6 +231,7 @@ ActivitySummary _appleHealth(
   double distanceMeters, {
   int elapsedSeconds = 1800,
   DateTime? startedAt,
+  bool garmin = false,
 }) => ActivitySummary(
   id: id,
   name: id,
@@ -191,7 +240,7 @@ ActivitySummary _appleHealth(
   distanceMeters: distanceMeters,
   movingTimeSeconds: elapsedSeconds,
   elapsedTimeSeconds: elapsedSeconds,
-  source: ActivitySource.appleHealth,
+  source: garmin ? ActivitySource.garmin : ActivitySource.appleHealth,
 );
 
 ActivitySummary _runNow(

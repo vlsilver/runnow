@@ -1,20 +1,34 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/achievements/achievement_card.dart';
+import 'package:myrun/src/achievements/card_share.dart';
+import 'package:myrun/src/achievements/run_card.dart';
+import 'package:myrun/src/achievements/run_card_flow.dart';
+import 'package:myrun/src/achievements/run_card_panel.dart';
+import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/formatters.dart';
+import 'package:myrun/src/games/game_card_viewer.dart';
+import 'package:myrun/src/games/game_role_card.dart';
+import 'package:myrun/src/hearts.dart';
+import 'package:myrun/src/live_cheers.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
+import 'package:myrun/src/screens/route_replay_screen.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
-import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
-import 'package:myrun/src/widgets/activity_recap_card.dart';
+import 'package:myrun/src/widgets/activity_overview.dart';
 import 'package:myrun/src/widgets/glass.dart';
+import 'package:myrun/src/widgets/heart_button.dart';
 import 'package:myrun/src/widgets/photo_viewer.dart';
 import 'package:myrun/src/widgets/route_map.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
+import 'package:myrun/src/widgets/split_pace_chart.dart';
 import 'package:myrun/src/widgets/strava_activity_link.dart';
 import 'package:myrun/src/widgets/stream_chart.dart';
 
@@ -51,13 +65,45 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
               activityId: widget.activityId,
             )),
           );
+    final ownerUid = widget.ownerUid;
+    final owner = ownerUid == null
+        ? null
+        : ref
+              .watch(membersProvider)
+              .value
+              ?.where((member) => member.uid == ownerUid)
+              .firstOrNull;
+    final runnerAvatarUrl = ownerUid == null
+        ? ref.watch(userProfileProvider).value?.avatarUrl
+        : owner?.avatarUrl;
+    final heartOwner = ownerUid ?? ref.watch(firebaseUserProvider).value?.uid;
+    final heart = heartOwner == null
+        ? null
+        : runHeartTarget(heartOwner, widget.activityId);
+    // Buổi ghi bằng 3i có phòng live cùng id, cổ vũ nằm ở đó.
+    final members = ref.watch(membersProvider).value ?? const [];
+    final cheerMoments = [
+      for (final cheer
+          in ref.watch(liveCheersProvider(widget.activityId)).value ??
+              const <LiveCheer>[])
+        if (members.where((member) => member.uid == cheer.uid).firstOrNull
+            case final sender)
+          for (final mark in cheer.marks)
+            ReplayMoment.cheer(
+              distanceMeters: mark.distanceMeters,
+              emoji: mark.emoji,
+              name: sender?.displayName,
+              avatarUrl: sender?.avatarUrl,
+            ),
+    ];
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chi tiết hoạt động'),
         actions: [
-          if (detail.asData?.value case final item?)
+          if (detail.asData?.value case final item?
+              when widget.ownerUid == null && hasRunCard(item.summary))
             IconButton(
-              onPressed: () => _openShareComposer(item),
+              onPressed: () => _share(item),
               tooltip: 'Chia sẻ hoạt động',
               icon: const Icon(Icons.ios_share),
             ),
@@ -80,6 +126,8 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                       selectedDistanceMeters: _selectedDistanceMeters,
                       onPhotoTap: _openPhoto,
                       showSyncBadge: widget.ownerUid == null,
+                      runnerAvatarUrl: runnerAvatarUrl,
+                      cheerMoments: cheerMoments,
                     ),
                   ),
                 SliverToBoxAdapter(
@@ -101,22 +149,52 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                             ),
                           ),
                         ),
-                      if (item.streams.isEmpty) ...[
+                      // Brand guideline của Garmin: dữ liệu từ Garmin phải ghi
+                      // "Garmin [tên đồng hồ]" ngay cạnh phần hiển thị chính.
+                      if (item.summary.source == ActivitySource.garmin)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 16, top: 8),
+                          child: Text(
+                            item.summary.recordingDevice ?? 'Garmin',
+                            style: Theme.of(context).textTheme.labelMedium,
+                          ),
+                        ),
+                      ActivityOverview(detail: item, owner: owner),
+                      if (heart != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 8, 16, 0),
+                          child: Row(
+                            children: [
+                              HeartButton(target: heart),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: HeartCheerers(
+                                  target: heart,
+                                  label: 'thả tim',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (widget.ownerUid == null &&
+                          hasRunCard(item.summary)) ...[
+                        const SizedBox(height: 12),
+                        _RunCardEntry(
+                          activity: item.summary,
+                          onOpen: () => _openShareComposer(item),
+                        ),
+                      ],
+                      if (item.splits.isNotEmpty) ...[
                         const SizedBox(height: 16),
-                        _CachedSummaryFallback(
-                          detail: item,
-                          isMemberView: widget.ownerUid != null,
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: SplitPaceChart(splits: item.splits),
                         ),
                       ],
                       const SizedBox(height: 16),
-                      if (item.photos.isNotEmpty) ...[
-                        _ActivityPhotoGallery(
-                          photos: item.photos,
-                          onPhotoTap: _openPhoto,
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      if (item.streams.isNotEmpty) ...[
+                      if (item.streams.isEmpty)
+                        _NoChartsNote(isMemberView: widget.ownerUid != null)
+                      else ...[
                         StreamChart(
                           streams: item.streams,
                           onDistanceSelected: (distance) =>
@@ -126,6 +204,13 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                           const SizedBox(height: 12),
                           HeartRateZoneChart(streams: item.streams),
                         ],
+                      ],
+                      if (item.photos.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        _ActivityPhotoGallery(
+                          photos: item.photos,
+                          onPhotoTap: _openPhoto,
+                        ),
                       ],
                       const SizedBox(height: 24),
                     ],
@@ -142,13 +227,19 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
     );
   }
 
-  Future<void> _openShareComposer(ActivityDetail detail) {
-    return showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _ShareComposer(detail: detail),
+  Future<void> _openShareComposer(ActivityDetail detail) =>
+      showRunCardFlow(context, detail.summary);
+
+  /// Thẻ đã lật thì vào thẳng màn khoe; chưa lật thì phải lật trước.
+  Future<void> _share(ActivityDetail detail) {
+    final card = ref.read(runCardProvider(detail.summary.id)).value;
+    if (card == null) return _openShareComposer(detail);
+    final owner =
+        ref.read(userProfileProvider).asData?.value?.displayName ?? '3i member';
+    return showRunCardShare(
+      context,
+      card: card,
+      data: runCardData(card, owner: owner),
     );
   }
 
@@ -162,12 +253,16 @@ class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.selectedDistanceMeters,
     required this.onPhotoTap,
     required this.showSyncBadge,
+    required this.runnerAvatarUrl,
+    required this.cheerMoments,
   });
 
   final ActivityDetail detail;
   final ValueListenable<double?> selectedDistanceMeters;
   final ValueChanged<ActivityPhoto> onPhotoTap;
   final bool showSyncBadge;
+  final String? runnerAvatarUrl;
+  final List<ReplayMoment> cheerMoments;
 
   @override
   double get minExtent => 176;
@@ -194,6 +289,11 @@ class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
             onPhotoTap: onPhotoTap,
             highlightedDistanceMeters: selectedDistance,
             totalDistanceMeters: detail.summary.distanceMeters,
+            movingTimeSeconds: detail.summary.movingTimeSeconds,
+            startedAt: detail.summary.startedAt,
+            runnerAvatarUrl: runnerAvatarUrl,
+            streams: detail.streams,
+            cheerMoments: cheerMoments,
             height: height,
           ),
           activity: showSyncBadge ? detail.summary : null,
@@ -206,7 +306,9 @@ class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(covariant _ActivityRouteHeaderDelegate oldDelegate) {
     return oldDelegate.detail != detail ||
         oldDelegate.selectedDistanceMeters != selectedDistanceMeters ||
-        oldDelegate.showSyncBadge != showSyncBadge;
+        oldDelegate.showSyncBadge != showSyncBadge ||
+        oldDelegate.runnerAvatarUrl != runnerAvatarUrl ||
+        !listEquals(oldDelegate.cheerMoments, cheerMoments);
   }
 }
 
@@ -266,7 +368,7 @@ class _ActivityPhotoGallery extends StatelessWidget {
             child: GestureDetector(
               onTap: () => onPhotoTap(photo),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: context.runNowPalette.radius(12),
                 child: SizedBox(
                   width: 148,
                   child: Stack(
@@ -283,7 +385,7 @@ class _ActivityPhotoGallery extends StatelessWidget {
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.62),
-                            borderRadius: BorderRadius.circular(999),
+                            borderRadius: context.runNowPalette.radius(999),
                           ),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
@@ -558,7 +660,7 @@ class _SyncIconButton extends StatelessWidget {
               color: synced
                   ? palette.tertiary
                   : Colors.black.withValues(alpha: 0.75),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: palette.radius(14),
               border: synced
                   ? null
                   : Border.all(
@@ -589,8 +691,8 @@ class _SyncIconButton extends StatelessWidget {
                 width: 15,
                 height: 15,
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: RunNowSemanticColors.success,
+                  shape: context.runNowPalette.round,
+                  color: context.runNowPalette.success,
                   border: Border.all(color: Colors.white, width: 2),
                 ),
               ),
@@ -641,7 +743,7 @@ class _SyncPopup extends StatelessWidget {
         // giống quy ước Colors.black.withValues(...) đã dùng ở _RoutePill
         // trong route_map.dart — không dùng Color(0x...) hex thô mới.
         color: Colors.black.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: context.runNowPalette.radius(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
         boxShadow: const [
           BoxShadow(
@@ -671,8 +773,8 @@ class _SyncPopup extends StatelessWidget {
               width: 26,
               height: 26,
               decoration: BoxDecoration(
-                color: palette.tertiary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
+                color: palette.wash(palette.tertiary, 0.15),
+                borderRadius: palette.radius(8),
               ),
               child: Icon(
                 Icons.link_rounded,
@@ -758,13 +860,16 @@ class _SyncPopup extends StatelessWidget {
               width: 26,
               height: 26,
               decoration: BoxDecoration(
-                color: RunNowSemanticColors.success.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
+                color: context.runNowPalette.wash(
+                  context.runNowPalette.success,
+                  0.15,
+                ),
+                borderRadius: palette.radius(8),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.check_rounded,
                 size: 16,
-                color: RunNowSemanticColors.success,
+                color: context.runNowPalette.success,
               ),
             ),
             const SizedBox(width: 8),
@@ -806,8 +911,8 @@ class _SyncPopup extends StatelessWidget {
               width: 28,
               height: 28,
               decoration: BoxDecoration(
-                color: palette.tertiary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
+                color: palette.wash(palette.tertiary, 0.15),
+                borderRadius: palette.radius(8),
               ),
               child: Icon(
                 Icons.flag_rounded,
@@ -919,8 +1024,8 @@ class _ApplyErrorBanner extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colorScheme.error.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
+        color: context.runNowPalette.wash(colorScheme.error, 0.12),
+        borderRadius: context.runNowPalette.radius(12),
       ),
       child: Padding(
         padding: const EdgeInsets.all(10),
@@ -1054,7 +1159,7 @@ class _ApplyToContractPickerSheetState
                   color: Theme.of(
                     context,
                   ).colorScheme.onSurface.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: context.runNowPalette.radius(999),
                 ),
               ),
             ),
@@ -1154,23 +1259,23 @@ class _ContractApplyOptionTile extends StatelessWidget {
     final eligible = option.eligible;
     final muted = onSurface.withValues(alpha: 0.5);
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: palette.radius(14),
       onTap: onSelected,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: eligible && selected
-              ? palette.accent.withValues(alpha: 0.12)
+              ? palette.wash(palette.accent, 0.12)
               : eligible
               ? Colors.transparent
               : Color.alphaBlend(
-                  palette.accent.withValues(alpha: 0.05),
+                  palette.wash(palette.accent, 0.05),
                   palette.glassStart,
                 ),
           border: Border.all(
             color: eligible && selected ? palette.accent : palette.border,
           ),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: palette.radius(14),
         ),
         child: Row(
           children: [
@@ -1178,7 +1283,7 @@ class _ContractApplyOptionTile extends StatelessWidget {
               width: 20,
               height: 20,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
+                shape: context.runNowPalette.round,
                 border: Border.all(
                   color: eligible && selected
                       ? palette.accent
@@ -1194,7 +1299,7 @@ class _ContractApplyOptionTile extends StatelessWidget {
                         width: 10,
                         height: 10,
                         decoration: BoxDecoration(
-                          shape: BoxShape.circle,
+                          shape: context.runNowPalette.round,
                           color: palette.accent,
                         ),
                       ),
@@ -1282,86 +1387,108 @@ int _ratioPercent(double value, double target) =>
 String _formatShortDate(DateTime date) =>
     '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}';
 
-class _CachedSummaryFallback extends StatelessWidget {
-  const _CachedSummaryFallback({
-    required this.detail,
-    required this.isMemberView,
-  });
+/// Buổi chưa có stream: số tổng đã có ở phần đầu, chỉ báo vì sao chưa có
+/// biểu đồ.
+class _NoChartsNote extends StatelessWidget {
+  const _NoChartsNote({required this.isMemberView});
 
-  final ActivityDetail detail;
   final bool isMemberView;
 
   @override
   Widget build(BuildContext context) {
-    final summary = detail.summary;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    final palette = context.runNowPalette;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Text(
+        isMemberView
+            ? 'Buổi này chưa có biểu đồ chi tiết (pace, nhịp tim, độ cao).'
+            : 'Biểu đồ chi tiết sẽ hiện sau khi đồng bộ xong dữ liệu hoạt động.',
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _RunCardEntry extends ConsumerWidget {
+  const _RunCardEntry({required this.activity, required this.onOpen});
+
+  final ActivitySummary activity;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final card = ref.watch(runCardProvider(activity.id)).value;
+    if (card == null) {
+      // Lật trượt thì không có doc thẻ, chỉ GET mới biết. Sheet lật dùng chung
+      // provider này nên trượt xong ngoài màn đổi theo.
+      final view = ref.watch(runCardViewProvider(activity.id));
+      final reason = view.value?.reason;
+      // Buổi phụ của lần chạy hai nguồn cùng ghi: thẻ ở buổi chính, ở đây chỉ
+      // cần một dòng báo.
+      if (reason == 'card_duplicate') return const _RunCardOnMainRun();
+      final (detail, hint) = switch (reason) {
+        _ when !view.hasValue && !view.hasError => ('', ''),
+        null => ('Chưa lật', 'Chạm để lật · mỗi buổi một lần'),
+        'card_missed' => ('Không ra thẻ', 'Lần lật trượt · buổi này hết lượt'),
+        _ => ('Không có thẻ', 'Buổi này không lật được thẻ'),
+      };
+      return _RunCardSection(
+        detail: detail,
+        hint: hint,
+        card: (width) => GestureDetector(
+          onTap: onOpen,
+          child: GameCardScaled(
+            width: width,
+            size: achievementCardSize,
+            child: RunCardFaceDown(
+              km: (activity.distanceMeters / 100).round() / 10,
+              title: activity.name,
+              failureReason: reason,
+            ),
+          ),
+        ),
+      );
+    }
+    final owner =
+        ref.watch(userProfileProvider).asData?.value?.displayName ??
+        '3i member';
+    final data = runCardData(card, owner: owner);
+    return _RunCardSection(
+      detail: '${gameCardTiers[card.tier]!.label} · ${runCardKm(card.km)} km',
+      hint: 'Kéo để xoay · chạm để lật',
+      onShare: () => showRunCardShare(context, card: card, data: data),
+      card: (width) => TiltFlipCard(
+        front: (pose) => AchievementCard(data: data, pose: pose),
+        back: (pose) => AchievementCard(data: data, pose: pose, back: true),
+        width: width,
+        cardSize: achievementCardSize,
+      ),
+    );
+  }
+}
+
+class _RunCardOnMainRun extends StatelessWidget {
+  const _RunCardOnMainRun();
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.6);
     return GlassPanel(
       borderRadius: 0,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(Icons.insights_rounded, color: palette.accent, size: 18),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'TỔNG QUAN HOẠT ĐỘNG',
-                  style: TextStyle(
-                    color: onSurface.withValues(alpha: 0.66),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.1,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              _FallbackMetric(
-                label: 'KM',
-                value: formatDistance(summary.distanceMeters),
-              ),
-              _FallbackMetric(
-                label: 'TIME',
-                value: formatDuration(summary.movingTimeSeconds),
-              ),
-              _FallbackMetric(
-                label: 'PACE',
-                value: formatPace(summary.paceSecondsPerKm),
-              ),
-              if (summary.averageHeartRate != null)
-                _FallbackMetric(
-                  label: 'HR',
-                  value: '${summary.averageHeartRate!.round()} bpm',
-                ),
-              if (summary.averageCadence != null)
-                _FallbackMetric(
-                  label: 'CADENCE',
-                  value: '${summary.averageCadence!.round()} rpm',
-                ),
-              if (summary.elevationGainMeters != null)
-                _FallbackMetric(
-                  label: 'ELEV',
-                  value: '${summary.elevationGainMeters!.round()} m',
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            isMemberView
-                ? 'Hoạt động này chưa có biểu đồ chi tiết (pace, nhịp tim, độ cao theo thời gian).'
-                : 'Biểu đồ chi tiết sẽ hiện sau khi đồng bộ xong dữ liệu hoạt động.',
-            style: TextStyle(
-              color: onSurface.withValues(alpha: 0.58),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+          Icon(Icons.style, size: 18, color: context.runNowPalette.secondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Thẻ của lần chạy này nằm ở buổi chính',
+              style: TextStyle(color: muted, fontSize: 13),
             ),
           ),
         ],
@@ -1370,164 +1497,77 @@ class _CachedSummaryFallback extends StatelessWidget {
   }
 }
 
-class _FallbackMetric extends StatelessWidget {
-  const _FallbackMetric({required this.label, required this.value});
+/// Khung chung của khối thẻ, cùng khuôn với các khối biểu đồ bên dưới: tràn
+/// ngang, góc vuông.
+class _RunCardSection extends StatelessWidget {
+  const _RunCardSection({
+    required this.detail,
+    required this.hint,
+    required this.card,
+    this.onShare,
+  });
 
-  final String label;
-  final String value;
+  final String detail;
+  final String hint;
+  final Widget Function(double width) card;
+  final VoidCallback? onShare;
 
   @override
   Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
     final palette = context.runNowPalette;
-    return SizedBox(
-      width: 96,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
-        decoration: BoxDecoration(
-          border: Border(
-            left: BorderSide(
-              color: palette.secondary.withValues(alpha: 0.7),
-              width: 2,
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final muted = onSurface.withValues(alpha: 0.6);
+    return GlassPanel(
+      borderRadius: 0,
+      padding: const EdgeInsets.fromLTRB(16, 6, 6, 16),
+      child: Column(
+        children: [
+          // Cao bằng nhau dù có icon share hay không, để lật xong thẻ không
+          // nhảy chỗ.
+          SizedBox(
+            height: 48,
+            child: Row(
+              children: [
+                Icon(Icons.style, size: 18, color: palette.secondary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'THẺ BUỔI CHẠY',
+                    style: TextStyle(
+                      color: onSurface,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
+                ),
+                Text(detail, style: TextStyle(color: muted, fontSize: 13)),
+                if (onShare case final onShare?)
+                  IconButton(
+                    onPressed: onShare,
+                    tooltip: 'Khoe thẻ',
+                    icon: const Icon(Icons.ios_share, size: 20),
+                  )
+                else
+                  const SizedBox(width: 10),
+              ],
             ),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: onSurface.withValues(alpha: 0.48),
-                fontSize: 9,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1,
-              ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: LayoutBuilder(
+              builder: (context, constraints) =>
+                  card(math.min(constraints.maxWidth * 0.72, 260)),
             ),
-            const SizedBox(height: 5),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: palette.secondary,
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: Text(hint, style: TextStyle(color: muted, fontSize: 12)),
+          ),
+        ],
       ),
     );
-  }
-}
-
-class _ShareComposer extends ConsumerStatefulWidget {
-  const _ShareComposer({required this.detail});
-
-  final ActivityDetail detail;
-
-  @override
-  ConsumerState<_ShareComposer> createState() => _ShareComposerState();
-}
-
-class _ShareComposerState extends ConsumerState<_ShareComposer> {
-  final _recapKey = GlobalKey();
-  bool _sharing = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.92,
-      minChildSize: 0.64,
-      maxChildSize: 0.96,
-      builder: (context, scrollController) => GlassPanel(
-        borderRadius: 18,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            palette.backgroundDeep,
-            palette.glassStart,
-            palette.backgroundMid,
-          ],
-        ),
-        child: ListView(
-          controller: scrollController,
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          children: [
-            Center(
-              child: Container(
-                width: 48,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withValues(alpha: 0.38),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'SHARE // ACTIVITY',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: palette.secondary,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.4,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Tạo poster thành tích để chia sẻ.',
-              style: TextStyle(
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
-            ),
-            const SizedBox(height: 16),
-            ActivityRecapCard(
-              repaintBoundaryKey: _recapKey,
-              activity: widget.detail.summary,
-              streams: widget.detail.streams,
-            ),
-            const SizedBox(height: 12),
-            Builder(
-              builder: (buttonContext) => FilledButton.icon(
-                onPressed: _sharing ? null : () => _share(buttonContext),
-                icon: _sharing
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.ios_share),
-                label: Text(_sharing ? 'Đang tạo poster...' : 'Chia sẻ poster'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _share(BuildContext buttonContext) async {
-    setState(() => _sharing = true);
-    try {
-      await shareActivityRecap(
-        recapKey: _recapKey,
-        shareButtonContext: buttonContext,
-        activity: widget.detail.summary,
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không thể chia sẻ poster: $error')),
-      );
-    } finally {
-      if (mounted) setState(() => _sharing = false);
-    }
   }
 }

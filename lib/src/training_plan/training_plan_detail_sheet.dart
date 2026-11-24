@@ -21,14 +21,20 @@ class TrainingDaySheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final tColor = workoutTypeColor(day.type, dark: dark);
-    final onAccent = dark ? RunNowDataColors.coachOnAccentDark : Colors.white;
-    final bg = dark ? RunNowDataColors.coachSheetDark : Colors.white;
+    final tColor = workoutLoadColor(day.type, palette);
+    final onAccent = context.runNowPalette.onAccent;
+    final bg = palette.squared
+        ? palette.glassStart
+        : dark
+        ? RunNowDataColors.coachSheetDark
+        : Colors.white;
 
     return Container(
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(34)),
+        borderRadius: BorderRadius.vertical(
+          top: context.runNowPalette.cornerRadius(34),
+        ),
       ),
       padding: EdgeInsets.fromLTRB(
         20,
@@ -47,7 +53,7 @@ class TrainingDaySheet extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
                 color: palette.border,
-                borderRadius: BorderRadius.circular(3),
+                borderRadius: context.runNowPalette.radius(3),
               ),
             ),
           ),
@@ -72,17 +78,23 @@ class TrainingDaySheet extends StatelessWidget {
               Flexible(
                 child: Text(
                   day.title,
-                  style: TextStyle(
-                    fontSize: 27,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                    color: palette.ink,
+                  style: palette.heading(
+                    TextStyle(
+                      fontSize: 27,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
+                      color: palette.ink,
+                    ),
                   ),
                 ),
               ),
               if (day.done) ...[
                 const SizedBox(width: 8),
-                Icon(Icons.check_circle_rounded, size: 24, color: palette.accent),
+                Icon(
+                  Icons.check_circle_rounded,
+                  size: 24,
+                  color: palette.accent,
+                ),
               ],
             ],
           ),
@@ -90,11 +102,23 @@ class TrainingDaySheet extends StatelessWidget {
             const SizedBox(height: 16),
             _StatsGrid(day: day, palette: palette),
           ],
+          const SizedBox(height: 16),
+          _SectionLabel('ĐỂ LÀM GÌ', palette: palette),
+          const SizedBox(height: 6),
+          Text(
+            day.purposeText,
+            style: TextStyle(fontSize: 14.5, height: 1.45, color: palette.ink),
+          ),
           if (day.detail != null) ...[
             const SizedBox(height: 16),
             _SectionLabel('CHI TIẾT BÀI', palette: palette),
             const SizedBox(height: 8),
-            _DetailBox(text: day.detail!, color: tColor, palette: palette, dark: dark),
+            _DetailBox(
+              text: day.detail!,
+              color: tColor,
+              palette: palette,
+              dark: dark,
+            ),
           ],
           if (day.note != null) ...[
             const SizedBox(height: 16),
@@ -117,12 +141,14 @@ class TrainingDaySheet extends StatelessWidget {
                         backgroundColor: palette.accent,
                         foregroundColor: onAccent,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: palette.radius(16),
                         ),
                       ),
                       icon: const Icon(Icons.play_arrow_rounded, size: 20),
-                      label: const Text('Bắt đầu chạy',
-                          style: TextStyle(fontWeight: FontWeight.w700)),
+                      label: const Text(
+                        'Bắt đầu chạy',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
                     ),
                   ),
                 ),
@@ -136,11 +162,13 @@ class TrainingDaySheet extends StatelessWidget {
                         foregroundColor: palette.ink,
                         side: BorderSide(color: palette.border),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: palette.radius(16),
                         ),
                       ),
-                      child: const Text('Đánh dấu xong',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
+                      child: const Text(
+                        'Đánh dấu xong',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
                     ),
                   ),
                 ),
@@ -164,7 +192,7 @@ class _TypePill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
       decoration: BoxDecoration(
         color: color.withValues(alpha: dark ? 0.16 : 0.12),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: context.runNowPalette.radius(10),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -172,7 +200,7 @@ class _TypePill extends StatelessWidget {
           WorkoutGlyph(type: type, color: color, size: 18),
           const SizedBox(width: 8),
           Text(
-            '${type.label} · ${type.element}',
+            type.label.toUpperCase(),
             style: TextStyle(
               fontSize: 10.5,
               fontWeight: FontWeight.w700,
@@ -208,7 +236,7 @@ class _StatsGrid extends StatelessWidget {
               padding: const EdgeInsets.all(13),
               decoration: BoxDecoration(
                 color: palette.glassStart,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: palette.radius(18),
                 border: Border.all(color: palette.border),
               ),
               child: Column(
@@ -249,14 +277,14 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Text(
-        text,
-        style: TextStyle(
-          fontSize: 10.5,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.1,
-          color: palette.textMuted,
-        ),
-      );
+    text,
+    style: TextStyle(
+      fontSize: 10.5,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 1.1,
+      color: palette.textMuted,
+    ),
+  );
 }
 
 class _DetailBox extends StatelessWidget {
@@ -273,125 +301,139 @@ class _DetailBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: dark ? 0.10 : 0.09),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w600,
-            color: palette.ink,
-          ),
-        ),
-      );
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: dark ? 0.10 : 0.09),
+      borderRadius: palette.radius(14),
+    ),
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: 13.5,
+        fontWeight: FontWeight.w600,
+        color: palette.ink,
+      ),
+    ),
+  );
 }
 
 class _CoachTip extends StatelessWidget {
-  const _CoachTip({required this.text, required this.palette, required this.dark});
+  const _CoachTip({
+    required this.text,
+    required this.palette,
+    required this.dark,
+  });
   final String text;
   final RunNowPalette palette;
   final bool dark;
 
   @override
   Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(
-          color: palette.accent.withValues(alpha: dark ? 0.09 : 0.08),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: palette.accent.withValues(alpha: dark ? 0.20 : 0.18)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    width: double.infinity,
+    padding: const EdgeInsets.all(15),
+    decoration: BoxDecoration(
+      color: context.runNowPalette.wash(palette.accent, dark ? 0.09 : 0.08),
+      borderRadius: palette.radius(20),
+      border: Border.all(
+        color: context.runNowPalette.wash(palette.accent, dark ? 0.20 : 0.18),
+      ),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                Icon(Icons.info_outline_rounded, size: 14, color: palette.accentDeep),
-                const SizedBox(width: 6),
-                Text(
-                  'LỜI KHUYÊN HLV',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1,
-                    color: palette.accentDeep,
-                  ),
-                ),
-              ],
+            Icon(
+              Icons.info_outline_rounded,
+              size: 14,
+              color: palette.accentDeep,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(width: 6),
             Text(
-              text,
-              style: TextStyle(fontSize: 13.5, height: 1.55, color: palette.ink),
+              'LỜI KHUYÊN HLV',
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1,
+                color: palette.accentDeep,
+              ),
             ),
           ],
         ),
-      );
+        const SizedBox(height: 8),
+        Text(
+          text,
+          style: TextStyle(fontSize: 13.5, height: 1.55, color: palette.ink),
+        ),
+      ],
+    ),
+  );
 }
 
 class _MatchedCard extends StatelessWidget {
-  const _MatchedCard({required this.day, required this.palette, required this.dark});
+  const _MatchedCard({
+    required this.day,
+    required this.palette,
+    required this.dark,
+  });
   final TrainingDay day;
   final RunNowPalette palette;
   final bool dark;
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: palette.accent.withValues(alpha: dark ? 0.10 : 0.08),
-          borderRadius: BorderRadius.circular(16),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: context.runNowPalette.wash(palette.accent, dark ? 0.10 : 0.08),
+      borderRadius: palette.radius(16),
+    ),
+    child: Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: palette.accent,
+            borderRadius: palette.radius(12),
+          ),
+          child: Icon(
+            Icons.check_rounded,
+            color: context.runNowPalette.onAccent,
+          ),
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: palette.accent,
-                borderRadius: BorderRadius.circular(12),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'ĐÃ KHỚP BUỔI CHẠY THẬT',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: palette.accentDeep,
+                ),
               ),
-              child: Icon(
-                Icons.check_rounded,
-                color: dark ? RunNowDataColors.coachOnAccentDark : Colors.white,
+              const SizedBox(height: 3),
+              Text(
+                '${_dm(day.date)} · ${_trim(day.distanceKm ?? 0)} km'
+                '${day.paceHint != null ? ' · ${day.paceHint}/km' : ''}',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: palette.ink,
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'ĐÃ KHỚP BUỔI CHẠY THẬT',
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.8,
-                      color: palette.accentDeep,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '${_dm(day.date)} · ${_trim(day.distanceKm ?? 0)} km'
-                    '${day.paceHint != null ? ' · ${day.paceHint}/km' : ''}',
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                      color: palette.ink,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right_rounded, color: palette.textMuted),
-          ],
+            ],
+          ),
         ),
-      );
+        Icon(Icons.chevron_right_rounded, color: palette.textMuted),
+      ],
+    ),
+  );
 }
 
 // helpers
@@ -407,7 +449,8 @@ String? _durationEstimate(TrainingDay day) {
   if (km == null || pace == null) return null;
   final parts = pace.split(':');
   if (parts.length != 2) return null;
-  final sec = (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
+  final sec =
+      (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
   if (sec == 0) return null;
   final total = (km * sec).round();
   final h = total ~/ 3600;

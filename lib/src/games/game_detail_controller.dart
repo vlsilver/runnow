@@ -186,6 +186,12 @@ class GameDetailController extends ChangeNotifier {
     unawaited(refresh());
   }
 
+  /// Bật hay tắt MyBot chơi thay. Lỗi ném ra cho màn hình báo.
+  Future<void> setStandIn(bool on) async {
+    await _api.setGameStandIn(gameId, on: on);
+    await refresh();
+  }
+
   Future<void> register() async {
     await _api.registerForGame(gameId);
     await refresh();

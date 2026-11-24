@@ -54,9 +54,9 @@ class _CoachChatScreenState extends ConsumerState<CoachChatScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _sending = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Coach chưa trả lời được: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Coach chưa trả lời được: $e')));
         _input.text = text; // trả lại câu hỏi để không phải gõ lại
       }
     }
@@ -104,7 +104,10 @@ class _CoachChatScreenState extends ConsumerState<CoachChatScreen> {
               error: (e, _) => Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text('Lỗi tải hội thoại: $e', textAlign: TextAlign.center),
+                  child: Text(
+                    'Lỗi tải hội thoại: $e',
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
               data: (list) => list.isEmpty
@@ -139,11 +142,7 @@ class _CoachChatScreenState extends ConsumerState<CoachChatScreen> {
                 ],
               ),
             ),
-          _Composer(
-            controller: _input,
-            enabled: !_sending,
-            onSend: _send,
-          ),
+          _Composer(controller: _input, enabled: !_sending, onSend: _send),
         ],
       ),
     );
@@ -171,10 +170,10 @@ class _Bubble extends StatelessWidget {
         decoration: BoxDecoration(
           color: fromCoach ? palette.glassStart : palette.accent,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(14),
-            topRight: const Radius.circular(14),
-            bottomLeft: Radius.circular(fromCoach ? 4 : 14),
-            bottomRight: Radius.circular(fromCoach ? 14 : 4),
+            topLeft: context.runNowPalette.cornerRadius(14),
+            topRight: context.runNowPalette.cornerRadius(14),
+            bottomLeft: context.runNowPalette.cornerRadius(fromCoach ? 4 : 14),
+            bottomRight: context.runNowPalette.cornerRadius(fromCoach ? 14 : 4),
           ),
           border: fromCoach ? Border.all(color: palette.border) : null,
         ),
@@ -222,10 +221,12 @@ class _EmptyChat extends StatelessWidget {
       children: [
         Text(
           'Hỏi gì cũng được',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            color: palette.ink,
+          style: palette.heading(
+            TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: palette.ink,
+            ),
           ),
         ),
         const SizedBox(height: 8),
@@ -243,11 +244,14 @@ class _EmptyChat extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 10),
             child: InkWell(
               onTap: () => onPick(s),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: palette.radius(12),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 15,
+                  vertical: 13,
+                ),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: palette.radius(12),
                   border: Border.all(color: palette.border),
                 ),
                 child: Row(
@@ -258,8 +262,11 @@ class _EmptyChat extends StatelessWidget {
                         style: TextStyle(fontSize: 14.5, color: palette.ink),
                       ),
                     ),
-                    Icon(Icons.north_east_rounded,
-                        size: 16, color: palette.textMuted),
+                    Icon(
+                      Icons.north_east_rounded,
+                      size: 16,
+                      color: palette.textMuted,
+                    ),
                   ],
                 ),
               ),
@@ -304,14 +311,16 @@ class _Composer extends StatelessWidget {
                   hintText: 'Hỏi coach…',
                   filled: true,
                   fillColor: palette.glassStart,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(22),
+                    borderRadius: palette.radius(22),
                     borderSide: BorderSide(color: palette.border),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(22),
+                    borderRadius: palette.radius(22),
                     borderSide: BorderSide(color: palette.border),
                   ),
                 ),
@@ -323,8 +332,7 @@ class _Composer extends StatelessWidget {
               icon: const Icon(Icons.arrow_upward_rounded),
               style: IconButton.styleFrom(
                 backgroundColor: palette.accent,
-                foregroundColor:
-                    Theme.of(context).brightness == Brightness.dark
+                foregroundColor: Theme.of(context).brightness == Brightness.dark
                     ? RunNowDataColors.coachOnAccentDark
                     : Colors.white,
               ),

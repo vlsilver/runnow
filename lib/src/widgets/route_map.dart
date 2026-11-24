@@ -4,18 +4,17 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
+import 'package:myrun/src/widgets/map_vector.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:myrun/src/models.dart';
+import 'package:myrun/src/screens/route_replay_screen.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/live_route_view.dart';
 import 'package:myrun/src/widgets/photo_pin_marker.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
-const _lightTileTemplate =
-    'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-const _darkTileTemplate =
-    'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const _photoClusterThresholdMeters = 15.0;
 const _photoClusterDistance = Distance();
 
@@ -59,6 +58,11 @@ class RouteMap extends StatelessWidget {
     this.onPhotoTap,
     this.highlightedDistanceMeters,
     this.totalDistanceMeters,
+    this.movingTimeSeconds,
+    this.startedAt,
+    this.runnerAvatarUrl,
+    this.streams = const {},
+    this.cheerMoments = const [],
     this.liveRunners = const [],
     this.liveRunnersStream,
     this.liveRoutePhotos = const [],
@@ -74,6 +78,11 @@ class RouteMap extends StatelessWidget {
     this.onPhotoTap,
     this.highlightedDistanceMeters,
     this.totalDistanceMeters,
+    this.movingTimeSeconds,
+    this.startedAt,
+    this.runnerAvatarUrl,
+    this.streams = const {},
+    this.cheerMoments = const [],
     this.liveRunners = const [],
     this.liveRunnersStream,
     this.liveRoutePhotos = const [],
@@ -84,6 +93,14 @@ class RouteMap extends StatelessWidget {
 
   final String? encodedPolyline;
   final List<RoutePoint>? routePoints;
+
+  /// Chuỗi số đo theo quãng đường (nhịp tim, độ cao...) cho biểu đồ của màn
+  /// xem lại 3D.
+  final Map<String, List<double>> streams;
+
+  /// Những lần buổi chạy được cổ vũ kèm quãng đường lúc đó, màn xem lại 3D
+  /// hiện đúng chỗ.
+  final List<ReplayMoment> cheerMoments;
   final double height;
 
   /// Chế độ theo dõi live: camera bám vị trí hiện tại (điểm cuối) + xoay theo
@@ -94,6 +111,15 @@ class RouteMap extends StatelessWidget {
   final ValueChanged<ActivityPhoto>? onPhotoTap;
   final double? highlightedDistanceMeters;
   final double? totalDistanceMeters;
+
+  /// Thời gian chạy của buổi, màn replay 3D dùng để hiện đồng hồ.
+  final int? movingTimeSeconds;
+
+  /// Lúc bắt đầu buổi chạy, màn replay 3D tô map theo giờ trong ngày.
+  final DateTime? startedAt;
+
+  /// Ảnh người chạy, màn replay 3D dùng làm hình di chuyển trên tuyến.
+  final String? runnerAvatarUrl;
   final List<LiveTrackingSession> liveRunners;
 
   /// Nguồn live tiếp tục cập nhật vị trí/ảnh trong lúc màn full màn hình
@@ -137,6 +163,7 @@ class RouteMap extends StatelessWidget {
                 totalDistanceMeters: totalDistanceMeters,
                 liveRunners: liveRunners,
                 follow: follow,
+                daylight: _daylight,
               ),
             ),
             // Map tracking (follow) đã tràn viền toàn màn → không cần nút
@@ -152,6 +179,43 @@ class RouteMap extends StatelessWidget {
                     : _MapExpandButton(
                         onTap: () => _openFullscreen(context, points),
                       ),
+              ),
+            if (!follow &&
+                liveRunnersStream == null &&
+                hasVectorMap &&
+                vectorMapCovers(points) &&
+                points.length > 1)
+              Positioned(
+                top: 54,
+                right: 10,
+                child: _MapExpandButton(
+                  icon: Icons.view_in_ar_rounded,
+                  label: 'Xem lại buổi chạy dạng 3D',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      fullscreenDialog: true,
+                      builder: (_) => RouteReplayScreen(
+                        points: points,
+                        distanceMeters: totalDistanceMeters,
+                        movingTimeSeconds: movingTimeSeconds,
+                        startedAt: startedAt,
+                        avatarUrl: runnerAvatarUrl,
+                        series: replaySeries(
+                          routePoints: routePoints,
+                          streams: streams,
+                        ),
+                        moments: [
+                          for (final photo in photos)
+                            ReplayMoment.photo(
+                              distanceMeters: photo.distanceMeters,
+                              photoPath: photo.storagePath,
+                            ),
+                          ...cheerMoments,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
           ],
         ),
@@ -188,10 +252,16 @@ class RouteMap extends StatelessWidget {
           totalDistanceMeters: totalDistanceMeters,
           liveRunners: liveRunners,
           liveRunnersStream: liveRunnersStream,
+          daylight: _daylight,
         ),
       ),
     );
   }
+
+  ReplayDaylight? get _daylight => switch (startedAt) {
+    final at? => replayDaylightAt(at.toLocal()),
+    null => null,
+  };
 
   List<LatLng> _mapPoints() {
     final directPoints = routePoints;
@@ -207,18 +277,24 @@ class RouteMap extends StatelessWidget {
 }
 
 class _MapExpandButton extends StatelessWidget {
-  const _MapExpandButton({required this.onTap});
+  const _MapExpandButton({
+    required this.onTap,
+    this.icon = Icons.open_in_full_rounded,
+    this.label = 'Phóng to bản đồ toàn màn hình',
+  });
 
   final VoidCallback onTap;
+  final IconData icon;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: 'Phóng to bản đồ toàn màn hình',
+      label: label,
       child: Material(
         color: Colors.transparent,
-        shape: const CircleBorder(),
+        shape: context.runNowPalette.roundBorder,
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
@@ -227,14 +303,10 @@ class _MapExpandButton extends StatelessWidget {
             height: 36,
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.55),
-              shape: BoxShape.circle,
+              shape: context.runNowPalette.round,
               border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
             ),
-            child: const Icon(
-              Icons.open_in_full_rounded,
-              color: Colors.white,
-              size: 18,
-            ),
+            child: Icon(icon, color: Colors.white, size: 18),
           ),
         ),
       ),
@@ -277,14 +349,14 @@ class _ViewLiveButtonState extends State<_ViewLiveButton>
       child: RepaintBoundary(
         child: Material(
           color: Colors.transparent,
-          shape: const StadiumBorder(),
+          shape: context.runNowPalette.pillBorder,
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: widget.onTap,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: RunNowSemanticColors.danger,
-                borderRadius: BorderRadius.circular(999),
+                color: context.runNowPalette.danger,
+                borderRadius: context.runNowPalette.radius(999),
                 border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
               ),
               child: Padding(
@@ -303,9 +375,9 @@ class _ViewLiveButtonState extends State<_ViewLiveButton>
                       child: Container(
                         width: 7,
                         height: 7,
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           color: Colors.white,
-                          shape: BoxShape.circle,
+                          shape: context.runNowPalette.round,
                         ),
                       ),
                     ),
@@ -343,6 +415,7 @@ class _FullscreenRouteMap extends StatefulWidget {
     required this.totalDistanceMeters,
     required this.liveRunners,
     required this.liveRunnersStream,
+    this.daylight,
   });
 
   final List<LatLng> points;
@@ -352,6 +425,7 @@ class _FullscreenRouteMap extends StatefulWidget {
   final double? totalDistanceMeters;
   final List<LiveTrackingSession> liveRunners;
   final Stream<List<LiveTrackingSession>>? liveRunnersStream;
+  final ReplayDaylight? daylight;
 
   @override
   State<_FullscreenRouteMap> createState() => _FullscreenRouteMapState();
@@ -373,6 +447,7 @@ class _FullscreenRouteMapState extends State<_FullscreenRouteMap> {
                     highlightedDistanceMeters: widget.highlightedDistanceMeters,
                     totalDistanceMeters: widget.totalDistanceMeters,
                     liveRunners: widget.liveRunners,
+                    daylight: widget.daylight,
                   )
                 : StreamBuilder<List<LiveTrackingSession>>(
                     stream: widget.liveRunnersStream,
@@ -393,6 +468,7 @@ class _FullscreenRouteMapState extends State<_FullscreenRouteMap> {
                             widget.highlightedDistanceMeters,
                         totalDistanceMeters: widget.totalDistanceMeters,
                         liveRunners: sessions,
+                        daylight: widget.daylight,
                       );
                     },
                   ),
@@ -413,6 +489,15 @@ class _FullscreenRouteMapState extends State<_FullscreenRouteMap> {
   }
 }
 
+/// Bản đồ nền có tối không. Biết giờ chạy ([daylight]) thì theo giờ chạy như
+/// màn replay, không thì theo theme của app.
+bool _mapIsDark(BuildContext context, ReplayDaylight? daylight) =>
+    switch (daylight) {
+      ReplayDaylight.night => true,
+      ReplayDaylight.morning || ReplayDaylight.afternoon => false,
+      null => Theme.of(context).brightness == Brightness.dark,
+    };
+
 class _FlutterRouteMap extends StatefulWidget {
   const _FlutterRouteMap({
     required this.points,
@@ -422,6 +507,7 @@ class _FlutterRouteMap extends StatefulWidget {
     required this.totalDistanceMeters,
     required this.liveRunners,
     this.follow = false,
+    this.daylight,
   });
 
   final List<LatLng> points;
@@ -431,6 +517,9 @@ class _FlutterRouteMap extends StatefulWidget {
   final double? totalDistanceMeters;
   final List<LiveTrackingSession> liveRunners;
   final bool follow;
+
+  /// Buổi trong ngày lúc chạy; có thì nền map theo giờ chạy.
+  final ReplayDaylight? daylight;
 
   @override
   State<_FlutterRouteMap> createState() => _FlutterRouteMapState();
@@ -529,8 +618,7 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
     final totalDistanceMeters = widget.totalDistanceMeters;
     final liveRunners = widget.liveRunners;
     final palette = context.runNowPalette;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tileTemplate = isDark ? _darkTileTemplate : _lightTileTemplate;
+    final isDark = _mapIsDark(context, widget.daylight);
     final routeOutline = isDark
         ? Colors.black.withValues(alpha: 0.5)
         : Colors.white.withValues(alpha: 0.88);
@@ -581,11 +669,11 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
         ),
       ),
       children: [
-        TileLayer(
-          key: ValueKey(tileTemplate),
-          urlTemplate: tileTemplate,
-          userAgentPackageName: 'com.threei.run',
-          retinaMode: RetinaMode.isHighDensity(context),
+        mapBaseLayer(
+          context,
+          dark: isDark,
+          around: points,
+          daylight: widget.daylight,
         ),
         MapAttribution(top: widget.follow),
         PolylineLayer(
@@ -608,22 +696,24 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
         MarkerLayer(
           markers: [
             _routeMarker(
+              corner: context.runNowPalette.corner(10),
               point: points.first,
               // Xanh lá/đỏ tương phản mạnh, không phụ thuộc ramp màu theme —
               // trước đó dùng secondary/accent (2 bậc liền kề trong ramp)
               // nhìn gần như cùng màu, khó phân biệt bắt đầu/kết thúc.
-              color: RunNowSemanticColors.success,
+              color: context.runNowPalette.success,
               icon: Icons.play_arrow_rounded,
               semanticLabel: 'Điểm bắt đầu',
             ),
             // Đang chạy (follow): điểm cuối là VỊ TRÍ HIỆN TẠI → chấm định vị,
             // KHÔNG phải cờ đích. Cờ đích chỉ cho buổi đã xong.
             if (widget.follow)
-              _currentPositionMarker(points.last)
+              _currentPositionMarker(points.last, context.runNowPalette)
             else
               _routeMarker(
+                corner: context.runNowPalette.corner(10),
                 point: points.last,
-                color: RunNowSemanticColors.danger,
+                color: context.runNowPalette.danger,
                 icon: Icons.sports_score_rounded,
                 semanticLabel: 'Điểm kết thúc',
               ),
@@ -660,7 +750,7 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
                   point: LatLng(location.latitude, location.longitude),
                   width: 42,
                   height: 42,
-                  child: _LiveRunnerMarker(session: runner),
+                  child: LiveRunnerMarker(session: runner),
                 ),
           ],
         ),
@@ -710,7 +800,7 @@ class _MapCircleButton extends StatelessWidget {
       color: scheme.surface.withValues(alpha: 0.92),
       elevation: 3,
       shadowColor: Colors.black.withValues(alpha: 0.3),
-      shape: const CircleBorder(),
+      shape: context.runNowPalette.roundBorder,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -739,7 +829,7 @@ class _TelemetryMapMarker extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.2),
-          shape: BoxShape.circle,
+          shape: context.runNowPalette.round,
           border: Border.all(color: Colors.white, width: 2),
           boxShadow: [
             BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 12),
@@ -749,7 +839,10 @@ class _TelemetryMapMarker extends StatelessWidget {
           child: Container(
             width: 13,
             height: 13,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: color,
+              shape: context.runNowPalette.round,
+            ),
           ),
         ),
       ),
@@ -757,16 +850,23 @@ class _TelemetryMapMarker extends StatelessWidget {
   }
 }
 
-class _LiveRunnerMarker extends StatefulWidget {
-  const _LiveRunnerMarker({required this.session});
+/// Avatar người đang chạy live trên bản đồ, viền nhấp nháy. [selected] thì
+/// viền đổi màu để nổi giữa nhiều người.
+class LiveRunnerMarker extends StatefulWidget {
+  const LiveRunnerMarker({
+    required this.session,
+    this.selected = false,
+    super.key,
+  });
 
   final LiveTrackingSession session;
+  final bool selected;
 
   @override
-  State<_LiveRunnerMarker> createState() => _LiveRunnerMarkerState();
+  State<LiveRunnerMarker> createState() => _LiveRunnerMarkerState();
 }
 
-class _LiveRunnerMarkerState extends State<_LiveRunnerMarker>
+class _LiveRunnerMarkerState extends State<LiveRunnerMarker>
     with SingleTickerProviderStateMixin {
   late final _pulseController = AnimationController(
     vsync: this,
@@ -783,6 +883,9 @@ class _LiveRunnerMarkerState extends State<_LiveRunnerMarker>
   Widget build(BuildContext context) {
     final avatarUrl = widget.session.ownerAvatarUrl;
     final ownerName = widget.session.ownerName;
+    final ring = widget.selected
+        ? context.runNowPalette.danger
+        : context.runNowPalette.info;
     return Semantics(
       label: '$ownerName đang chạy live',
       child: Stack(
@@ -791,19 +894,16 @@ class _LiveRunnerMarkerState extends State<_LiveRunnerMarker>
         children: [
           DecoratedBox(
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: RunNowSemanticColors.info, width: 2.5),
+              shape: context.runNowPalette.round,
+              border: Border.all(color: ring, width: 2.5),
               boxShadow: [
-                BoxShadow(
-                  color: RunNowSemanticColors.info.withValues(alpha: 0.45),
-                  blurRadius: 10,
-                ),
+                BoxShadow(color: ring.withValues(alpha: 0.45), blurRadius: 10),
               ],
             ),
-            child: ClipOval(
+            child: RunNowRoundClip(
               child: avatarUrl == null || avatarUrl.isEmpty
                   ? ColoredBox(
-                      color: RunNowSemanticColors.info,
+                      color: context.runNowPalette.info,
                       child: SizedBox(
                         width: 38,
                         height: 38,
@@ -841,8 +941,8 @@ class _LiveRunnerMarkerState extends State<_LiveRunnerMarker>
                   width: 12,
                   height: 12,
                   decoration: BoxDecoration(
-                    color: RunNowSemanticColors.info,
-                    shape: BoxShape.circle,
+                    color: context.runNowPalette.info,
+                    shape: context.runNowPalette.round,
                     border: Border.all(color: Colors.white, width: 2),
                   ),
                 ),
@@ -857,8 +957,8 @@ class _LiveRunnerMarkerState extends State<_LiveRunnerMarker>
 
 // "Vị trí hiện tại" cho map đang chạy (follow): icon người chạy 🏃, không phải
 // cờ đích. rotate:true để icon luôn thẳng đứng dù map xoay theo hướng chạy.
-Marker _currentPositionMarker(LatLng point) {
-  const color = RunNowSemanticColors.info;
+Marker _currentPositionMarker(LatLng point, RunNowPalette palette) {
+  final color = palette.info;
   return Marker(
     point: point,
     width: 36,
@@ -869,7 +969,7 @@ Marker _currentPositionMarker(LatLng point) {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: color,
-          shape: BoxShape.circle,
+          shape: palette.round,
           border: Border.all(color: Colors.white, width: 2.5),
           boxShadow: [
             BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 10),
@@ -886,6 +986,7 @@ Marker _currentPositionMarker(LatLng point) {
 }
 
 Marker _routeMarker({
+  required double corner,
   required LatLng point,
   required Color color,
   required IconData icon,
@@ -903,7 +1004,7 @@ Marker _routeMarker({
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(corner),
           border: Border.all(color: Colors.white, width: 2),
           boxShadow: [
             BoxShadow(color: color.withValues(alpha: 0.42), blurRadius: 10),

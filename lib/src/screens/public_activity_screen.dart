@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:myrun/src/config.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/theme.dart';
 
 /// Trang chi tiết hoạt động ở dạng TỐI GIẢN cho khách CHƯA đăng nhập, mở từ
 /// link chia sẻ (Telegram). Chỉ hiện vài số cơ bản (đọc từ endpoint public,
@@ -105,7 +106,7 @@ class _LoginPrompt extends ConsumerWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: scheme.surface.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: context.runNowPalette.radius(20),
         border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(
@@ -136,9 +137,7 @@ class _LoginPrompt extends ConsumerWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.login),
-              label: Text(
-                controller.loading ? 'Đang đăng nhập…' : 'Đăng nhập',
-              ),
+              label: Text(controller.loading ? 'Đang đăng nhập…' : 'Đăng nhập'),
             ),
           ),
           if (controller.errorMessage != null) ...[
@@ -180,7 +179,7 @@ class _ActivityCard extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: scheme.surface.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: context.runNowPalette.radius(24),
         border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(
@@ -286,7 +285,7 @@ class _MessageCard extends StatelessWidget {
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: context.runNowPalette.radius(24),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

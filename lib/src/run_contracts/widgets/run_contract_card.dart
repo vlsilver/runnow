@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:myrun/src/run_contracts/run_contract_insights.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
+import 'package:myrun/src/widgets/keo_scene.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 class RunContractCard extends StatelessWidget {
   const RunContractCard({
@@ -16,10 +19,14 @@ class RunContractCard extends StatelessWidget {
     this.onJoin,
     this.compact = false,
     this.isMine = false,
+    this.giftBadge,
     super.key,
   });
 
   final RunContract contract;
+
+  /// "4 quà" khi chủ kèo treo quà.
+  final String? giftBadge;
   final String? ownerName;
   final String? ownerAvatarUrl;
   final String? currentUid;
@@ -31,143 +38,287 @@ class RunContractCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.runNowPalette;
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final participant = contract.participantFor(currentUid);
-    final state = contractUiState(contract, DateTime.now());
-    final stateColor = _stateColor(context, state);
+    final state = contractUiStateFor(contract, DateTime.now(), currentUid);
+    final stateColor = runContractStateColor(context, state);
     final completedCount = contract.participants.values
         .where((item) => item.progressValue >= contract.targetValue)
         .length;
     final progressValue =
         participant?.progressValue ??
         contract.overallProgressRatio * contract.targetValue;
-    final ratio = contract.targetValue <= 0
-        ? 0.0
-        : progressValue / contract.targetValue;
+    final ratio = contractPercentFor(contract, currentUid) / 100;
     final percent = (ratio * 100).toStringAsFixed(0);
-    final surface = palette.glassStart;
-    const radius = 16.0;
-    return Material(
-      color: surface,
-      clipBehavior: Clip.antiAlias,
-      borderRadius: BorderRadius.circular(radius),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(radius),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return KeoSceneCard(
+      scene: KeoScene.forContract(contract),
+      seed: contract.id,
+      onTap: onTap,
+      radius: 16,
+      padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Header(
+            contract: contract,
+            state: state,
+            ownerName: ownerName,
+            ownerAvatarUrl: ownerAvatarUrl,
+            giftBadge: giftBadge,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              _Header(
-                contract: contract,
-                ownerName: ownerName,
-                ownerAvatarUrl: ownerAvatarUrl,
-              ),
-              const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          contract.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            height: 1.05,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          participant == null
-                              ? '${contract.participantCount} người · TB ${contract.overallProgressPercent.toStringAsFixed(0)}%'
-                              : _valueOverTarget(
-                                  contract.metric,
-                                  progressValue,
-                                  contract.targetValue,
-                                ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: onSurface.withValues(alpha: 0.52),
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    percent,
-                    style: TextStyle(
-                      color: stateColor,
-                      fontSize: 31,
-                      height: 0.9,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -1,
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 1),
-                    child: Text(
-                      '%',
-                      style: TextStyle(
-                        color: onSurface.withValues(alpha: 0.38),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      contract.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        height: 1.05,
                         fontWeight: FontWeight.w900,
+                        letterSpacing: -0.3,
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 9),
-              LinearProgressIndicator(
-                value: ratio.clamp(0.0, 1.0),
-                minHeight: 7,
-                borderRadius: BorderRadius.circular(999),
-                backgroundColor: onSurface.withValues(alpha: 0.09),
-                color: stateColor,
-              ),
-              const SizedBox(height: 11),
-              Row(
-                children: [
-                  _AvatarStack(urls: participantAvatarUrls),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Text(
-                      '$completedCount/${contract.participantCount} hoàn thành · TB ${contract.overallProgressPercent.toStringAsFixed(0)}%',
+                    const SizedBox(height: 4),
+                    Text(
+                      participant == null
+                          ? '${contract.participantCount} người · TB ${contract.overallProgressPercent.toStringAsFixed(0)}%'
+                          : runContractValueOverTarget(
+                              contract.metric,
+                              progressValue,
+                              contract.targetValue,
+                            ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: onSurface.withValues(alpha: 0.58),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                        color: onSurface.withValues(alpha: 0.52),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                percent,
+                style: TextStyle(
+                  color: stateColor,
+                  fontSize: 31,
+                  height: 0.9,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -1,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 1),
+                child: Text(
+                  '%',
+                  style: TextStyle(
+                    color: onSurface.withValues(alpha: 0.38),
+                    fontWeight: FontWeight.w900,
                   ),
-                  if (participant == null &&
-                      contract.isActive &&
-                      onJoin != null)
-                    FilledButton(
-                      onPressed: onJoin,
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          LinearProgressIndicator(
+            value: ratio.clamp(0.0, 1.0),
+            minHeight: 7,
+            borderRadius: context.runNowPalette.radius(999),
+            backgroundColor: onSurface.withValues(alpha: 0.09),
+            color: stateColor,
+          ),
+          const SizedBox(height: 11),
+          Row(
+            children: [
+              _AvatarStack(urls: participantAvatarUrls),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  '$completedCount/${contract.participantCount} hoàn thành · TB ${contract.overallProgressPercent.toStringAsFixed(0)}%',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: onSurface.withValues(alpha: 0.58),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (participant == null && contract.isActive && onJoin != null)
+                FilledButton(
+                  onPressed: onJoin,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('Tham gia'),
+                )
+              else
+                Text(
+                  contract.openEnded
+                      ? 'Không giới hạn'
+                      : DateFormat('dd/MM · HH:mm').format(
+                          contract.endAtExclusive.subtract(
+                            const Duration(seconds: 1),
+                          ),
                         ),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  style: TextStyle(
+                    color: onSurface.withValues(alpha: 0.42),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Ảnh khoe kèo: thẻ đứng 3:4, vừa khít khung Story 9:16 và nằm gọn trong
+/// khung Feed 4:5 (xem `shareFrameLayout`). Cỡ cố định để ảnh giống nhau trên
+/// mọi máy; không có vùng chạm.
+class RunContractPoster extends StatelessWidget {
+  const RunContractPoster({
+    required this.contract,
+    this.ownerName,
+    this.ownerAvatarUrl,
+    this.currentUid,
+    this.participantAvatarUrls = const [],
+    super.key,
+  });
+
+  static const size = Size(360, 480);
+
+  final RunContract contract;
+  final String? ownerName;
+  final String? ownerAvatarUrl;
+  final String? currentUid;
+  final List<String?> participantAvatarUrls;
+
+  @override
+  Widget build(BuildContext context) {
+    final participant = contract.participantFor(currentUid);
+    final state = contractUiStateFor(contract, DateTime.now(), currentUid);
+    final completedCount = contract.participants.values
+        .where((item) => item.progressValue >= contract.targetValue)
+        .length;
+    final ratio = contractPercentFor(contract, currentUid) / 100;
+    return SizedBox.fromSize(
+      size: size,
+      child: KeoSceneCard(
+        scene: KeoScene.forContract(contract),
+        seed: contract.id,
+        onTap: null,
+        radius: 20,
+        padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+        // Builder: màu chữ của thẻ nằm trong theme mà KeoSceneCard đặt.
+        child: Builder(
+          builder: (context) {
+            final onSurface = Theme.of(context).colorScheme.onSurface;
+            final stateColor = runContractStateColor(context, state);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Header(
+                  contract: contract,
+                  state: state,
+                  ownerName: ownerName,
+                  ownerAvatarUrl: ownerAvatarUrl,
+                ),
+                const Spacer(),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      (ratio * 100).toStringAsFixed(0),
+                      style: TextStyle(
+                        color: stateColor,
+                        fontSize: 104,
+                        height: 0.86,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -4,
                       ),
-                      child: const Text('Tham gia'),
-                    )
-                  else
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4, bottom: 6),
+                      child: Text(
+                        '%',
+                        style: TextStyle(
+                          color: onSurface.withValues(alpha: 0.38),
+                          fontSize: 34,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  contract.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 30,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.6,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  participant == null
+                      ? '${contract.participantCount} người · TB ${contract.overallProgressPercent.toStringAsFixed(0)}%'
+                      : runContractValueOverTarget(
+                          contract.metric,
+                          participant.progressValue,
+                          contract.targetValue,
+                        ),
+                  style: TextStyle(
+                    color: onSurface.withValues(alpha: 0.6),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                LinearProgressIndicator(
+                  value: ratio.clamp(0.0, 1.0),
+                  minHeight: 10,
+                  borderRadius: context.runNowPalette.radius(999),
+                  backgroundColor: onSurface.withValues(alpha: 0.09),
+                  color: stateColor,
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    _AvatarStack(urls: participantAvatarUrls),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        '$completedCount/${contract.participantCount} hoàn thành',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: onSurface.withValues(alpha: 0.6),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                     Text(
                       contract.openEnded
                           ? 'Không giới hạn'
@@ -177,15 +328,16 @@ class RunContractCard extends StatelessWidget {
                               ),
                             ),
                       style: TextStyle(
-                        color: onSurface.withValues(alpha: 0.42),
-                        fontSize: 11,
+                        color: onSurface.withValues(alpha: 0.5),
+                        fontSize: 13,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                ],
-              ),
-            ],
-          ),
+                  ],
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -195,22 +347,25 @@ class RunContractCard extends StatelessWidget {
 class _Header extends StatelessWidget {
   const _Header({
     required this.contract,
+    required this.state,
     required this.ownerName,
     required this.ownerAvatarUrl,
+    this.giftBadge,
   });
 
   final RunContract contract;
+  final RunContractUiState state;
   final String? ownerName;
   final String? ownerAvatarUrl;
+  final String? giftBadge;
 
   @override
   Widget build(BuildContext context) {
-    final state = contractUiState(contract, DateTime.now());
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final name = ownerName ?? '3i member';
     return Row(
       children: [
-        CircleAvatar(
+        RunNowAvatar(
           radius: 19,
           backgroundImage: ownerAvatarUrl == null || ownerAvatarUrl!.isEmpty
               ? null
@@ -241,14 +396,23 @@ class _Header extends StatelessWidget {
             ],
           ),
         ),
-        if (contract.route != null) ...[
+        // Chỉ kèo theo tuyến có nút chạy LIVE (xem màn chi tiết); hành trình
+        // cũng mang route nhưng không có.
+        if (contract.route != null && !contract.isJourney) ...[
           const _LiveTag(),
+          const SizedBox(width: 6),
+        ],
+        if (giftBadge case final badge?) ...[
+          _GiftTag(label: badge),
           const SizedBox(width: 6),
         ],
         DecoratedBox(
           decoration: BoxDecoration(
-            color: _stateColor(context, state).withValues(alpha: 0.13),
-            borderRadius: BorderRadius.circular(999),
+            color: runContractStateColor(
+              context,
+              state,
+            ).withValues(alpha: 0.13),
+            borderRadius: context.runNowPalette.radius(999),
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
@@ -259,15 +423,15 @@ class _Header extends StatelessWidget {
                   width: 6,
                   height: 6,
                   decoration: BoxDecoration(
-                    color: _stateColor(context, state),
-                    shape: BoxShape.circle,
+                    color: runContractStateColor(context, state),
+                    shape: context.runNowPalette.round,
                   ),
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  _stateLabel(state),
+                  runContractStateLabel(state),
                   style: TextStyle(
-                    color: _stateColor(context, state),
+                    color: runContractStateColor(context, state),
                     fontSize: 10,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0.7,
@@ -286,6 +450,41 @@ class _Header extends StatelessWidget {
 /// realtime cho người tham gia khác xem) — tĩnh (không pulse) vì hiện lặp
 /// lại trên nhiều card trong 1 danh sách cuộn, khác với [_GoLiveButton] ở
 /// màn chi tiết kèo (chỉ 1 instance, có thể animate thoải mái).
+class _GiftTag extends StatelessWidget {
+  const _GiftTag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: palette.wash(palette.accent, 0.16),
+        borderRadius: palette.radius(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.card_giftcard, size: 13, color: palette.accentDeep),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: palette.accentDeep,
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _LiveTag extends StatelessWidget {
   const _LiveTag();
 
@@ -293,8 +492,8 @@ class _LiveTag extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: RunNowSemanticColors.danger.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(999),
+        color: context.runNowPalette.wash(context.runNowPalette.danger, 0.16),
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
@@ -304,16 +503,16 @@ class _LiveTag extends StatelessWidget {
             Container(
               width: 6,
               height: 6,
-              decoration: const BoxDecoration(
-                color: RunNowSemanticColors.danger,
-                shape: BoxShape.circle,
+              decoration: BoxDecoration(
+                color: context.runNowPalette.danger,
+                shape: context.runNowPalette.round,
               ),
             ),
             const SizedBox(width: 5),
             Text(
               'LIVE',
               style: TextStyle(
-                color: RunNowSemanticColors.danger,
+                color: context.runNowPalette.danger,
                 fontSize: 10,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 0.7,
@@ -352,7 +551,7 @@ class _AvatarStack extends StatelessWidget {
           for (var index = 0; index < shown.length; index++)
             Positioned(
               left: index * 17,
-              child: CircleAvatar(
+              child: RunNowAvatar(
                 radius: 14,
                 backgroundColor: context.runNowPalette.accent,
                 backgroundImage: shown[index] == null || shown[index]!.isEmpty
@@ -385,7 +584,12 @@ String _value(RunContractMetric metric, double value) => switch (metric) {
   RunContractMetric.routeCompletion => '${value.toInt()} lần',
 };
 
-String _valueOverTarget(RunContractMetric metric, double value, double target) {
+/// Tiến độ trên mục tiêu kèm đơn vị: `12 / 50 km`, `3 / 5 buổi`.
+String runContractValueOverTarget(
+  RunContractMetric metric,
+  double value,
+  double target,
+) {
   String n(double v) => v.toStringAsFixed(v % 1 == 0 ? 0 : 1);
   return switch (metric) {
     RunContractMetric.distance ||
@@ -398,7 +602,7 @@ String _valueOverTarget(RunContractMetric metric, double value, double target) {
   };
 }
 
-String _stateLabel(RunContractUiState state) => switch (state) {
+String runContractStateLabel(RunContractUiState state) => switch (state) {
   RunContractUiState.scheduled => 'SẮP BẮT ĐẦU',
   RunContractUiState.newContract => 'MỚI CHỐT',
   RunContractUiState.onTrack => 'ĐANG CHẠY',
@@ -411,7 +615,7 @@ String _stateLabel(RunContractUiState state) => switch (state) {
   RunContractUiState.cancelled => 'ĐÃ HỦY',
 };
 
-Color _stateColor(BuildContext context, RunContractUiState state) =>
+Color runContractStateColor(BuildContext context, RunContractUiState state) =>
     switch (state) {
       RunContractUiState.atRisk ||
       RunContractUiState.broken => Theme.of(context).colorScheme.error,

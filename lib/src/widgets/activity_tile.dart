@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
+import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 class ActivityTile extends StatelessWidget {
   const ActivityTile({
@@ -44,7 +47,7 @@ class ActivityTile extends StatelessWidget {
                       ? '/activity/${activity.id}'
                       : '/club/$ownerUid/activity/${activity.id}',
                 ),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: palette.radius(8),
                 child: Stack(
                   children: [
                     Positioned.fill(
@@ -108,11 +111,13 @@ class ActivityTile extends StatelessWidget {
                                 children: [
                                   Text(
                                     formatDistance(activity.distanceMeters),
-                                    style: TextStyle(
-                                      color: palette.accent,
-                                      fontSize: 21,
-                                      fontWeight: FontWeight.w900,
-                                      height: 1,
+                                    style: palette.heading(
+                                      TextStyle(
+                                        color: palette.accent,
+                                        fontSize: 21,
+                                        fontWeight: FontWeight.w900,
+                                        height: 1,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -179,12 +184,12 @@ class _StravaOverlapFlag extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     return InkWell(
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: context.runNowPalette.radius(999),
       onTap: () => context.push('/activity/$activityId'),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: palette.tint,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: context.runNowPalette.radius(999),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -194,7 +199,7 @@ class _StravaOverlapFlag extends StatelessWidget {
               Icon(Icons.link_rounded, size: 14, color: palette.accentDeep),
               const SizedBox(width: 6),
               Text(
-                'TRÙNG · ƯU TIÊN STRAVA',
+                'TRÙNG · TÍNH THEO BUỔI KHÁC',
                 style: TextStyle(
                   color: palette.accentDeep,
                   fontSize: 9.5,
@@ -222,9 +227,9 @@ class _MemberStamp extends StatelessWidget {
     final palette = context.runNowPalette;
     return Row(
       children: [
-        CircleAvatar(
+        RunNowAvatar(
           radius: 13,
-          backgroundColor: palette.secondary.withValues(alpha: 0.16),
+          backgroundColor: palette.wash(palette.secondary, 0.16),
           backgroundImage: avatarUrl == null
               ? null
               : cachedAvatarImage(context, avatarUrl!, 26),
@@ -298,7 +303,7 @@ class _TimelineRail extends StatelessWidget {
             height: 12,
             decoration: BoxDecoration(
               color: palette.accent,
-              shape: BoxShape.circle,
+              shape: context.runNowPalette.round,
               boxShadow: [
                 BoxShadow(
                   color: palette.accent.withValues(alpha: 0.32),
@@ -312,8 +317,8 @@ class _TimelineRail extends StatelessWidget {
             child: Container(
               width: 2,
               decoration: BoxDecoration(
-                color: palette.accent.withValues(alpha: 0.24),
-                borderRadius: BorderRadius.circular(99),
+                color: palette.wash(palette.accent, 0.24),
+                borderRadius: context.runNowPalette.radius(99),
               ),
             ),
           ),
@@ -329,19 +334,23 @@ class _TimelineRail extends StatelessWidget {
 /// thức chỉ có khối "Powered by Strava"/"Compatible with Strava", mà brand
 /// guideline lại cấm cắt lấy một phần logo. Nên phía Strava dùng chữ đặt
 /// trong màu cam thương hiệu `#FC5200`, đúng cỡ nhỏ hơn tên hoạt động như
-/// guideline yêu cầu. Phía 3i thì dùng thẳng app icon.
-class _SourceBadge extends StatelessWidget {
+/// guideline yêu cầu. Garmin cũng ghi bằng chữ, màu trung tính theo theme vì
+/// brand guideline của Garmin chỉ đòi ghi tên "Garmin". Phía 3i thì dùng thẳng
+/// app icon. Strava đang tắt thì buổi Strava cũ ghi "NHẬP", màu trung tính,
+/// để không ai tưởng 3i còn nối Strava.
+class _SourceBadge extends ConsumerWidget {
   const _SourceBadge({required this.source});
 
   final ActivitySource source;
 
   @override
-  Widget build(BuildContext context) {
-    if (source == ActivitySource.strava) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final stravaOn = ref.watch(stravaEnabledProvider).value ?? false;
+    if (source == ActivitySource.strava && stravaOn) {
       return DecoratedBox(
         decoration: BoxDecoration(
-          color: RunNowBrandColors.strava.withValues(alpha: 0.14),
-          borderRadius: BorderRadius.circular(999),
+          color: context.runNowPalette.wash(RunNowBrandColors.strava, 0.14),
+          borderRadius: context.runNowPalette.radius(999),
         ),
         child: const Padding(
           padding: EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -357,8 +366,29 @@ class _SourceBadge extends StatelessWidget {
         ),
       );
     }
+    if (source == ActivitySource.garmin || source == ActivitySource.strava) {
+      final color = Theme.of(context).colorScheme.onSurface;
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: context.runNowPalette.wash(color, 0.1),
+          borderRadius: context.runNowPalette.radius(999),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          child: Text(
+            source == ActivitySource.garmin ? 'GARMIN' : 'NHẬP',
+            style: TextStyle(
+              color: color,
+              fontSize: 8,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.9,
+            ),
+          ),
+        ),
+      );
+    }
     return ClipRRect(
-      borderRadius: BorderRadius.circular(5),
+      borderRadius: context.runNowPalette.radius(5),
       child: Image.asset(
         'assets/brand/3i-mark.png',
         width: 16,
@@ -379,8 +409,8 @@ class _KindTag extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: visual.color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(999),
+        color: context.runNowPalette.wash(visual.color, 0.16),
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),

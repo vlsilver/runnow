@@ -148,7 +148,8 @@ void main() {
       ..start(DateTime.utc(2026, 6, 1, 6));
 
     session.addLocation(_sample(0, latitude: 10, longitude: 106));
-    session.addLocation(_sample(1, latitude: 10, longitude: 107));
+    // Qua ngưỡng giãn mẫu để điểm đi tới bước kiểm tốc độ.
+    session.addLocation(_sample(60, latitude: 10, longitude: 107));
     final debug = session.snapshot().toDebugMap();
 
     expect(debug['pointLogs'], isA<List<dynamic>>());

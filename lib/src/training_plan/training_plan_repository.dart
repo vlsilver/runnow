@@ -103,26 +103,27 @@ final coachDraftProvider = StreamProvider<TrainingPlan?>((ref) {
 
 /// Lịch sử hỏi đáp với coach cho một giáo án cụ thể (cũ → mới). Mỗi thành viên
 /// có kênh RIÊNG theo từng giáo án: users/{uid}/coachChats/{planId}/messages.
-final coachChatProvider =
-    StreamProvider.family<List<CoachChatMessage>, String>((ref, planId) {
-  ref.watch(firebaseUserProvider);
-  final uid = FirebaseAuth.instance.currentUser?.uid;
-  if (uid == null) return Stream.value(const []);
-  return FirebaseFirestore.instance
-      .collection('users')
-      .doc(uid)
-      .collection('coachChats')
-      .doc(planId)
-      .collection('messages')
-      .orderBy('createdAt')
-      .limitToLast(100)
-      .snapshots()
-      .map(
-        (snap) => snap.docs
-            .map((d) => CoachChatMessage.fromMap(d.id, d.data()))
-            .toList(),
-      );
-});
+final coachChatProvider = StreamProvider.family<List<CoachChatMessage>, String>(
+  (ref, planId) {
+    ref.watch(firebaseUserProvider);
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return Stream.value(const []);
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('coachChats')
+        .doc(planId)
+        .collection('messages')
+        .orderBy('createdAt')
+        .limitToLast(100)
+        .snapshots()
+        .map(
+          (snap) => snap.docs
+              .map((d) => CoachChatMessage.fromMap(d.id, d.data()))
+              .toList(),
+        );
+  },
+);
 
 /// Một lượt trong hội thoại với coach.
 class CoachChatMessage {
@@ -216,6 +217,15 @@ class CoachController {
     });
   }
 
+  /// Chủ giáo án kết thúc giáo án: rời "Kèo đang chạy" của mọi người, lịch và
+  /// tiến độ từng người giữ nguyên. Luật Firestore cho owner sửa (branch A).
+  Future<void> end(String planId) async {
+    await _db.collection('coachPlans').doc(planId).update({
+      'endedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
   /// Xoá giáo án mình sở hữu (coachPlans/{uid}). Chỉ owner mới gọi được (luật
   /// Firestore chặn người khác).
   Future<void> delete() async {
@@ -238,3 +248,18 @@ class CoachController {
     });
   }
 }
+
+/// Giáo án lên feed Kèo (trang chủ và màn Tất cả kèo): giáo án của mình, kể cả
+/// riêng tư, đứng trước; rồi giáo án công khai của người khác, mới tạo trước.
+final feedCoachPlansProvider = Provider<List<TrainingPlan>>((ref) {
+  final owned = ref.watch(coachPlanProvider).value;
+  final public =
+      ref.watch(publicCoachPlansProvider).value ?? const <TrainingPlan>[];
+  return [
+    ?owned,
+    ...(public.where((plan) => plan.id != owned?.id).toList()..sort(
+      (a, b) =>
+          (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)),
+    )),
+  ];
+});

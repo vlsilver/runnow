@@ -44,8 +44,11 @@ class HealthSyncController extends ChangeNotifier {
 
   // Loại dữ liệu Health cần ĐỌC: buổi tập (km chạy), số bước, quãng đường. Getter
   // theo platform để iOS/Android không lệch type; dùng chung connect()/_reauthorize().
-  List<HealthDataType> get _readTypes =>
-      [HealthDataType.WORKOUT, HealthDataType.STEPS, _distanceType];
+  List<HealthDataType> get _readTypes => [
+    HealthDataType.WORKOUT,
+    HealthDataType.STEPS,
+    _distanceType,
+  ];
   List<HealthDataAccess> get _readAccess =>
       List<HealthDataAccess>.filled(_readTypes.length, HealthDataAccess.READ);
 
@@ -139,9 +142,7 @@ class HealthSyncController extends ChangeNotifier {
         }
       }
     } catch (e) {
-      _error = _isAuthError(e)
-          ? _authHint
-          : 'Không kết nối được Sức khoẻ: $e';
+      _error = _isAuthError(e) ? _authHint : 'Không kết nối được Sức khoẻ: $e';
     } finally {
       _busy = false;
       notifyListeners();

@@ -8,6 +8,24 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>3i Run</string>
+	<!-- Mở file .gpx, .tcx, .fit từ Files, Garmin, Strava để xem lại 3D (run_file_replay_sheet.dart). -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>GPX, TCX, FIT</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.topografix.gpx</string>
+				<string>com.garmin.tcx</string>
+				<string>com.garmin.fit</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -34,6 +52,8 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>com.googleusercontent.apps.267607013114-3694vlec3np6l826qnlgja6ijaludugk</string>
+				<!-- Client iOS của project staging (run-with-me-3758a), cho bản build staging. -->
+				<string>com.googleusercontent.apps.517092416685-6vprkivhmcjt1cr68tofpvnjaiqkci4o</string>
 			</array>
 		</dict>
 	</array>
@@ -45,8 +65,14 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>3i Run cần micro khi bạn bật nói chuyện với người chạy cùng phòng.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>3i Run cần camera để chụp ảnh và neo ảnh vào hành trình chạy của bạn.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>3i Run lưu ảnh thẻ, recap và ảnh bạn chọn chia sẻ vào thư viện Ảnh.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>3i Run cần quyền vị trí nền khi bạn khoá màn hình hoặc dùng app khác trong lúc đang chạy.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
@@ -82,6 +108,7 @@
 	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>audio</string>
 		<string>location</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
@@ -100,6 +127,72 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.xml</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>GPS Exchange Format</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.topografix.gpx</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>gpx</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/gpx+xml</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.xml</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Training Center XML</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.garmin.tcx</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>tcx</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.garmin.tcx+xml</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Garmin FIT</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.garmin.fit</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>fit</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.ant.fit</string>
+				</array>
+			</dict>
+		</dict>
 	</array>
 </dict>
 </plist>

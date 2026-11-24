@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/activity_eligibility.dart';
 import 'package:myrun/src/dashboard_analytics.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
-import 'package:myrun/src/screens/journal_screen.dart' show StepTimelineRow;
+import 'package:myrun/src/screens/journal_screen.dart'
+    show JournalTabPicker, StepTimelineRow, journalEmptyMessage;
 import 'package:myrun/src/screens/step_day_detail_screen.dart';
 import 'package:myrun/src/screens/journey_hub_screen.dart';
 import 'package:myrun/src/theme.dart';
@@ -14,11 +16,13 @@ import 'package:myrun/src/web_layout.dart';
 import 'package:myrun/src/widgets/activity_records_card.dart';
 import 'package:myrun/src/widgets/activity_tile.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
+import 'package:myrun/src/widgets/run_now_empty.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 import 'package:myrun/src/widgets/discipline_card.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/personal_power_card.dart';
 import 'package:myrun/src/widgets/training_volume_chart.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 
 class MemberProfileScreen extends ConsumerWidget {
   const MemberProfileScreen({required this.uid, super.key});
@@ -32,7 +36,7 @@ class MemberProfileScreen extends ConsumerWidget {
         .maybeWhen(data: (user) => user?.uid, orElse: () => null);
     if (currentUid == uid) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) context.go('/profile');
+        if (context.mounted) context.pushReplacement('/journey');
       });
       return const Scaffold(body: SizedBox.shrink());
     }
@@ -73,7 +77,7 @@ class MemberJournalScreen extends ConsumerWidget {
         .maybeWhen(data: (user) => user?.uid, orElse: () => null);
     if (currentUid == uid) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) context.go('/profile/journal');
+        if (context.mounted) context.pushReplacement('/journal');
       });
       return const Scaffold(body: SizedBox.shrink());
     }
@@ -83,65 +87,55 @@ class MemberJournalScreen extends ConsumerWidget {
     final memberStepDays =
         ref.watch(memberStepDaysProvider(uid)).asData?.value ??
         const <StepDay>[];
-    return Scaffold(
-      appBar: AppBar(title: const Text('Nhật ký')),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 860),
-          child: profileState.when(
-            data: (member) {
-              if (member == null) {
-                return const Center(child: Text('Không tìm thấy thành viên.'));
-              }
-              if (!member.isPublic) return _PrivateMember(member: member);
-              return activitiesState.when(
-                data: (activities) {
-                  if (activities.isEmpty && memberStepDays.isEmpty) {
-                    return const Center(
-                      child: Text('Thành viên này chưa có hoạt động public.'),
-                    );
-                  }
-                  // Trộn buổi chạy + thẻ bước thành 1 timeline giảm dần — GIỐNG
-                  // nhật ký của mình, chỉ đổi nguồn sang member đang xem.
-                  final rows =
-                      <_MemberJournalRow>[
-                        for (final a in activities) _MemberJournalRow.activity(a),
-                        for (final d in memberStepDays) _MemberJournalRow.step(d),
-                      ]..sort((x, y) => y.sortAt.compareTo(x.sortAt));
-                  return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(0, 12, 0, 110),
-                    itemCount: rows.length,
-                    itemBuilder: (context, index) {
-                      final act = rows[index].activity;
-                      return RepaintBoundary(
-                        child: act != null
-                            ? ActivityTile(activity: act, ownerUid: uid)
-                            // Member: mở chi tiết theo giờ ĐÃ LƯU (controller null
-                            // → không đọc live Health máy này; ngày chưa lưu thì
-                            // biểu đồ rỗng). recentDays = các thẻ bước đang xem.
-                            : StepTimelineRow(
-                                day: rows[index].step!,
-                                onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => StepDayDetailScreen(
-                                      day: rows[index].step!,
-                                      recentDays: memberStepDays,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                      );
-                    },
+    return DefaultTabController(
+      length: JournalTab.values.length,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Nhật ký'),
+          actions: const [
+            Padding(
+              padding: EdgeInsets.only(right: 12),
+              child: Center(child: JournalTabPicker()),
+            ),
+          ],
+        ),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 860),
+            child: profileState.when(
+              data: (member) {
+                if (member == null) {
+                  return const Center(
+                    child: Text('Không tìm thấy thành viên.'),
                   );
-                },
-                error: (error, stack) =>
-                    Center(child: Text('Không thể tải nhật ký: $error')),
-                loading: () => const RunNowLoading(label: 'Đang tải nhật ký'),
-              );
-            },
-            error: (error, stack) =>
-                Center(child: Text('Không thể tải hồ sơ: $error')),
-            loading: () => const RunNowLoading(label: 'Đang tải nhật ký'),
+                }
+                if (!member.isPublic) return _PrivateMember(member: member);
+                return activitiesState.when(
+                  data: (activities) => TabBarView(
+                    children: [
+                      for (final tab in JournalTab.values)
+                        _MemberJournalList(
+                          key: PageStorageKey(tab),
+                          uid: uid,
+                          tab: tab,
+                          rows: memberJournalRows(
+                            tab: tab,
+                            activities: activities,
+                            stepDays: memberStepDays,
+                          ),
+                          stepDays: memberStepDays,
+                        ),
+                    ],
+                  ),
+                  error: (error, stack) =>
+                      Center(child: Text('Không thể tải nhật ký: $error')),
+                  loading: () => const RunNowLoading(label: 'Đang tải nhật ký'),
+                );
+              },
+              error: (error, stack) =>
+                  Center(child: Text('Không thể tải hồ sơ: $error')),
+              loading: () => const RunNowLoading(label: 'Đang tải nhật ký'),
+            ),
           ),
         ),
       ),
@@ -149,10 +143,70 @@ class MemberJournalScreen extends ConsumerWidget {
   }
 }
 
+/// Timeline giảm dần của một tab trong nhật ký thành viên, chia môn giống
+/// nhật ký của mình: buổi thuộc tab đó, thẻ bước chỉ ở tab Đi bộ.
+List<MemberJournalRow> memberJournalRows({
+  required JournalTab tab,
+  required List<ActivitySummary> activities,
+  required List<StepDay> stepDays,
+}) => <MemberJournalRow>[
+  for (final a in activities)
+    if (journalTabOf(a.kind) == tab) MemberJournalRow.activity(a),
+  if (tab == JournalTab.walk)
+    for (final d in stepDays) MemberJournalRow.step(d),
+]..sort((x, y) => y.sortAt.compareTo(x.sortAt));
+
+class _MemberJournalList extends StatelessWidget {
+  const _MemberJournalList({
+    required this.uid,
+    required this.tab,
+    required this.rows,
+    required this.stepDays,
+    super.key,
+  });
+
+  final String uid;
+  final JournalTab tab;
+  final List<MemberJournalRow> rows;
+  final List<StepDay> stepDays;
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty) {
+      return Center(child: RunNowEmpty(message: journalEmptyMessage(tab)));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(0, 12, 0, 110),
+      itemCount: rows.length,
+      itemBuilder: (context, index) {
+        final act = rows[index].activity;
+        return RepaintBoundary(
+          child: act != null
+              ? ActivityTile(activity: act, ownerUid: uid)
+              // Member: mở chi tiết theo giờ ĐÃ LƯU (controller null
+              // → không đọc live Health máy này; ngày chưa lưu thì
+              // biểu đồ rỗng). recentDays = các thẻ bước đang xem.
+              : StepTimelineRow(
+                  day: rows[index].step!,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => StepDayDetailScreen(
+                        day: rows[index].step!,
+                        recentDays: stepDays,
+                      ),
+                    ),
+                  ),
+                ),
+        );
+      },
+    );
+  }
+}
+
 /// 1 dòng trong nhật ký member: hoặc buổi CHẠY, hoặc thẻ BƯỚC của 1 ngày.
-class _MemberJournalRow {
-  _MemberJournalRow.activity(this.activity) : step = null;
-  _MemberJournalRow.step(this.step) : activity = null;
+class MemberJournalRow {
+  MemberJournalRow.activity(this.activity) : step = null;
+  MemberJournalRow.step(this.step) : activity = null;
   final ActivitySummary? activity;
   final StepDay? step;
 
@@ -400,18 +454,20 @@ class _MemberHeader extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          CircleAvatar(
+          RunNowAvatar(
             radius: 30,
-            backgroundColor: palette.secondary.withValues(alpha: 0.18),
+            backgroundColor: palette.wash(palette.secondary, 0.18),
             backgroundImage: avatarUrl == null
                 ? null
                 : cachedAvatarImage(context, avatarUrl, 60),
             child: avatarUrl == null
                 ? Text(
                     member.displayName.characters.first.toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
+                    style: palette.heading(
+                      const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   )
                 : null,
@@ -615,14 +671,14 @@ class _SevenDayMiniBar extends StatelessWidget {
               heightFactor: ratio.clamp(0.06, 1.0),
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: context.runNowPalette.radius(999),
                   color: active
                       ? palette.accent
                       : onSurface.withValues(alpha: 0.08),
                   boxShadow: active
                       ? [
                           BoxShadow(
-                            color: palette.accent.withValues(alpha: 0.28),
+                            color: palette.wash(palette.accent, 0.28),
                             blurRadius: 12,
                             offset: Offset(0, 6),
                           ),
@@ -697,10 +753,12 @@ class _MonthMetric extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           value,
-          style: TextStyle(
-            color: onSurface,
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
+          style: context.runNowPalette.heading(
+            TextStyle(
+              color: onSurface,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+            ),
           ),
         ),
       ],

@@ -3,8 +3,9 @@ import 'package:myrun/src/games/telegram_link_controller.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
 
-/// Trạng thái liên kết Telegram kèm nút liên kết hoặc huỷ. Lỗi của nút đưa
-/// cho [onError] để màn hình báo.
+/// Nút liên kết Telegram cho người chưa liên kết. Đã liên kết hay đang đọc
+/// trạng thái thì không vẽ gì, huỷ liên kết nằm ở Cài đặt. Lỗi của nút đưa cho
+/// [onError] để màn hình báo.
 class TelegramLinkSection extends StatelessWidget {
   const TelegramLinkSection({
     super.key,
@@ -28,42 +29,16 @@ class TelegramLinkSection extends StatelessWidget {
     final palette = context.runNowPalette;
     final status = controller.status;
     final busy = controller.busy;
+    if (status?.linked == true ||
+        (status == null && controller.error == null)) {
+      return const SizedBox.shrink();
+    }
     final Widget body;
     if (status == null) {
-      body = controller.error == null
-          ? Text(
-              'Đang kiểm tra Telegram…',
-              style: TextStyle(color: palette.textMuted),
-            )
-          : Row(
-              children: [
-                const Expanded(
-                  child: Text('Chưa đọc được trạng thái Telegram.'),
-                ),
-                TextButton(
-                  onPressed: controller.load,
-                  child: const Text('Thử lại'),
-                ),
-              ],
-            );
-    } else if (status.linked) {
-      final name = status.tgUsername != null
-          ? '@${status.tgUsername}'
-          : status.displayName ?? 'Telegram';
       body = Row(
         children: [
-          Icon(Icons.check_circle_rounded, color: palette.accent, size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Đã liên kết $name.',
-              style: TextStyle(fontWeight: FontWeight.w700, color: palette.ink),
-            ),
-          ),
-          TextButton(
-            onPressed: busy ? null : () => _guard(controller.unlink),
-            child: const Text('Không phải bạn? Huỷ'),
-          ),
+          const Expanded(child: Text('Chưa đọc được trạng thái Telegram.')),
+          TextButton(onPressed: controller.load, child: const Text('Thử lại')),
         ],
       );
     } else {
@@ -86,6 +61,9 @@ class TelegramLinkSection extends StatelessWidget {
         ],
       );
     }
-    return GlassPanel(padding: const EdgeInsets.all(16), child: body);
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: GlassPanel(padding: const EdgeInsets.all(16), child: body),
+    );
   }
 }

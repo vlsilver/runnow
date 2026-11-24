@@ -4,9 +4,18 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/games/game_providers.dart';
 import 'package:myrun/src/providers.dart';
+import 'package:myrun/src/rooms/run_room_actions.dart'
+    show askRoomPushPermission;
+import 'package:myrun/src/rooms/run_room_create_sheet.dart'
+    show runRoomMaxRunners, showCreateRunRoomSheet;
+import 'package:myrun/src/rooms/run_room_models.dart';
+import 'package:myrun/src/run_contracts/contract_gift.dart';
+import 'package:myrun/src/run_contracts/contract_gift_editor.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
+import 'package:myrun/src/run_contracts/run_contract_meetup.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/run_contracts/run_contract_period.dart';
+import 'package:myrun/src/run_contracts/widgets/create_menu_tiles.dart';
 import 'package:myrun/src/run_contracts/widgets/run_contract_card.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
@@ -31,6 +40,15 @@ class _RunContractCreateScreenState
   String? _error;
   RunContractPreview? _preview;
 
+  /// Quà treo kèm kèo; chỉ dùng khi [_giftAllowed].
+  ContractGiftDraft? _gift;
+
+  bool get _giftAllowed =>
+      contractGiftAllowed(_draft.visibility, _draft.metric);
+
+  ContractGiftDraft? get _giftToSave =>
+      _giftAllowed && (_gift?.items.isNotEmpty ?? false) ? _gift : null;
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +70,10 @@ class _RunContractCreateScreenState
   }
 
   String _defaultTitle(RunContractDraft draft) {
+    if (draft.meetAt case final meetAt?) {
+      return 'Hẹn chạy ${_quickTargetLabel(draft.metric, draft.targetValue)} '
+          '${DateFormat('HH:mm dd/MM').format(meetAt)}';
+    }
     final period = switch (draft.period) {
       RunContractPeriodType.weekly => 'tuần này',
       RunContractPeriodType.today => 'hôm nay',
@@ -75,34 +97,36 @@ class _RunContractCreateScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chốt kèo'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(14),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: Row(
-              children: [
-                for (var i = 0; i < 3; i++) ...[
-                  if (i > 0) const SizedBox(width: 6),
-                  Expanded(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: i <= _step
-                            ? Theme.of(context).colorScheme.primary
-                            : Theme.of(
-                                context,
-                              ).colorScheme.onSurface.withValues(alpha: 0.14),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
+        title: Text(_step == 0 ? 'Tạo mới' : 'Chốt kèo'),
+        // Chưa chọn kèo thì chưa có bước nào để đếm.
+        bottom: _step == 0
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(14),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: Row(
+                    children: [
+                      for (var i = 0; i < 3; i++) ...[
+                        if (i > 0) const SizedBox(width: 6),
+                        Expanded(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: i <= _step
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context).colorScheme.onSurface
+                                        .withValues(alpha: 0.14),
+                              borderRadius: context.runNowPalette.radius(999),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                ],
-              ],
-            ),
-          ),
-        ),
+                ),
+              ),
       ),
       body: Center(
         child: ConstrainedBox(
@@ -120,99 +144,132 @@ class _RunContractCreateScreenState
     );
   }
 
-  Widget _templates() => ListView(
-    key: const ValueKey('templates'),
-    padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-    children: [
-      Text(
-        'Bạn muốn tạo gì?',
-        style: Theme.of(context).textTheme.headlineSmall,
-      ),
-      const SizedBox(height: 14),
-      if (ref.watch(gameListProvider).value?.canCreate == true)
-        _TemplateTile(
-          icon: Icons.nightlight_round,
-          title: 'Ván Ma Sói',
-          subtitle: 'Chỉ admin thấy. Mở ván cho cả PSC đăng ký.',
-          onTap: () => context.push('/games/new'),
-        ),
-      _TemplateTile(
-        icon: Icons.auto_awesome_rounded,
-        title: 'Giáo án AI Coach',
-        subtitle: 'AI dựng lịch tập theo mục tiêu của bạn. '
-            'Tập một mình hoặc rủ cả nhóm theo chung.',
-        accent: true,
-        onTap: _createCoach,
-      ),
-      const SizedBox(height: 10),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-        child: Text(
-          'HOẶC CHỐT MỘT KÈO',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.2,
-            color: context.runNowPalette.textMuted,
+  Widget _templates() {
+    final palette = context.runNowPalette;
+    final canCreateGame = ref.watch(gameListProvider).value?.canCreate == true;
+    Widget pair(Widget left, Widget right) => Row(
+      children: [
+        Expanded(child: left),
+        const SizedBox(width: 10),
+        Expanded(child: right),
+      ],
+    );
+    return ListView(
+      key: const ValueKey('templates'),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
+      children: [
+        if (canCreateGame) ...[
+          CreatePosterTile(
+            kind: CreatePosterKind.wolf,
+            title: 'Ma Sói',
+            height: 132,
+            onTap: () => context.push('/games/new'),
+          ),
+          const SizedBox(height: 10),
+        ],
+        pair(
+          CreatePosterTile(
+            kind: CreatePosterKind.live,
+            title: 'Live hẹn giờ',
+            onTap: () => showCreateRunRoomSheet(context, scheduled: true),
+          ),
+          CreatePosterTile(
+            kind: CreatePosterKind.coach,
+            title: 'Giáo án AI',
+            onTap: _createCoach,
           ),
         ),
-      ),
-      _TemplateTile(
-        icon: Icons.route_rounded,
-        title: '10km tuần này',
-        subtitle: 'Tính từ Thứ Hai 00:00',
-        onTap: () => _select(RunContractDraft.weekly10k()),
-      ),
-      _TemplateTile(
-        icon: Icons.repeat_rounded,
-        title: '3 buổi tuần này',
-        subtitle: 'Mỗi buổi Run hợp lệ trên 1 km tính là một buổi',
-        onTap: () => _select(
-          RunContractDraft.weekly10k().copyWith(
-            template: RunContractTemplate.weekly3Runs,
-            metric: RunContractMetric.activityCount,
-            targetValue: 3,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 20, 4, 10),
+          child: Text(
+            'KÈO NHANH · CHẠM LÀ CHỐT',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+              color: palette.textMuted,
+            ),
           ),
         ),
-      ),
-      _TemplateTile(
-        icon: Icons.straighten_rounded,
-        title: 'Chạy dài 5km tuần này',
-        subtitle: 'Một buổi chạy đủ xa là được cứu',
-        onTap: () => _select(
-          RunContractDraft.weekly10k().copyWith(
-            template: RunContractTemplate.custom,
-            metric: RunContractMetric.longestRun,
-            targetValue: 5,
+        pair(
+          CreateBibTile(
+            value: '10',
+            unit: 'KM',
+            caption: 'TUẦN NÀY',
+            onTap: () => _select(RunContractDraft.weekly10k()),
+          ),
+          CreateBibTile(
+            value: '3',
+            unit: 'BUỔI',
+            caption: 'TUẦN NÀY',
+            onTap: () => _select(
+              RunContractDraft.weekly10k().copyWith(
+                template: RunContractTemplate.weekly3Runs,
+                metric: RunContractMetric.activityCount,
+                targetValue: 3,
+              ),
+            ),
           ),
         ),
-      ),
-      _TemplateTile(
-        icon: Icons.today_rounded,
-        title: '2km hôm nay',
-        subtitle: 'Deadline 23:59 hôm nay (giờ máy)',
-        onTap: _selectToday,
-      ),
-      _TemplateTile(
-        icon: Icons.tune_rounded,
-        title: 'Tự tạo',
-        subtitle: 'Km, số buổi, ngày active hoặc chạy dài nhất',
-        onTap: _showCustom,
-      ),
-      _TemplateTile(
-        icon: Icons.edit_location_alt_rounded,
-        title: 'Theo tuyến',
-        subtitle: 'Vẽ tuyến tham khảo, chạy đúng tuyến để được cứu',
-        onTap: () => context.push('/contracts/new/route'),
-      ),
-      _TemplateTile(
-        icon: Icons.explore_rounded,
-        title: 'Hành trình',
-        subtitle: 'Tích luỹ km chinh phục cung đường dài — có hoặc không hạn',
-        onTap: () => context.push('/contracts/new/journey'),
-      ),
-    ],
-  );
+        const SizedBox(height: 10),
+        pair(
+          CreateBibTile(
+            value: '5',
+            unit: 'KM',
+            caption: 'MỘT BUỔI DÀI',
+            onTap: () => _select(
+              RunContractDraft.weekly10k().copyWith(
+                template: RunContractTemplate.custom,
+                metric: RunContractMetric.longestRun,
+                targetValue: 5,
+              ),
+            ),
+          ),
+          CreateBibTile(
+            value: '2',
+            unit: 'KM',
+            caption: 'HÔM NAY',
+            warm: true,
+            onTap: _selectToday,
+          ),
+        ),
+        const SizedBox(height: 18),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: CreateRoundAction(
+                icon: Icons.groups_rounded,
+                label: 'Hẹn chạy',
+                onTap: _showMeetup,
+              ),
+            ),
+            Expanded(
+              child: CreateRoundAction(
+                icon: Icons.edit_location_alt_rounded,
+                label: 'Theo tuyến',
+                onTap: () => context.push('/contracts/new/route'),
+              ),
+            ),
+            Expanded(
+              child: CreateRoundAction(
+                icon: Icons.explore_rounded,
+                label: 'Hành trình',
+                onTap: () => context.push('/contracts/new/journey'),
+              ),
+            ),
+            Expanded(
+              child: CreateRoundAction(
+                icon: Icons.tune_rounded,
+                label: 'Tự tạo',
+                onTap: _showCustom,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 
   Widget _visibility() => ListView(
     key: const ValueKey('visibility'),
@@ -238,30 +295,41 @@ class _RunContractCreateScreenState
         style: Theme.of(context).textTheme.headlineSmall,
       ),
       const SizedBox(height: 12),
-      RadioGroup<RunContractVisibility>(
-        groupValue: _draft.visibility,
-        onChanged: (value) {
-          if (value != null) {
-            setState(() => _draft = _draft.copyWith(visibility: value));
-          }
-        },
-        child: Column(
-          children: [
-            RadioListTile<RunContractVisibility>(
-              value: RunContractVisibility.club,
-              title: const Text('Public trong Club'),
-              subtitle: const Text(
-                'Thành viên thấy mục tiêu, tiến độ và trạng thái. Không chia sẻ live location.',
+      if (_draft.meetAt != null)
+        Text(
+          'Kèo hẹn luôn public trong Club để mọi người đăng ký. Phòng chạy '
+          'cũng mở công khai, ai vào phòng đều thấy vị trí của nhau lúc chạy.',
+          style: TextStyle(color: context.runNowPalette.textMuted, height: 1.4),
+        )
+      else
+        RadioGroup<RunContractVisibility>(
+          groupValue: _draft.visibility,
+          onChanged: (value) {
+            if (value != null) {
+              setState(() => _draft = _draft.copyWith(visibility: value));
+            }
+          },
+          child: Column(
+            children: [
+              RadioListTile<RunContractVisibility>(
+                value: RunContractVisibility.club,
+                title: const Text('Public trong Club'),
+                subtitle: const Text(
+                  'Thành viên thấy mục tiêu, tiến độ và trạng thái. Không chia sẻ live location.',
+                ),
               ),
-            ),
-            RadioListTile<RunContractVisibility>(
-              value: RunContractVisibility.private,
-              title: const Text('Chỉ mình tôi'),
-              subtitle: const Text('Kèo không xuất hiện trong Club.'),
-            ),
-          ],
+              RadioListTile<RunContractVisibility>(
+                value: RunContractVisibility.private,
+                title: const Text('Chỉ mình tôi'),
+                subtitle: const Text('Kèo không xuất hiện trong Club.'),
+              ),
+            ],
+          ),
         ),
-      ),
+      if (_giftAllowed) ...[
+        const SizedBox(height: 22),
+        _GiftRow(gift: _giftToSave, onTap: _editGift),
+      ],
       const SizedBox(height: 20),
       Row(
         children: [
@@ -300,6 +368,16 @@ class _RunContractCreateScreenState
               if (_titleController.text.trim().isNotEmpty)
                 _ConfirmRow('Tên kèo', _titleController.text.trim()),
               _ConfirmRow('Mục tiêu', _targetLabel()),
+              if (_draft.meetAt case final meetAt?) ...[
+                _ConfirmRow(
+                  'Giờ hẹn',
+                  DateFormat('HH:mm · dd/MM').format(meetAt),
+                ),
+                const _ConfirmRow(
+                  'Phòng chạy',
+                  'Mở phòng live công khai đúng giờ hẹn',
+                ),
+              ],
               _ConfirmRow(
                 'Tính từ',
                 DateFormat('dd/MM · HH:mm').format(period.startAt),
@@ -316,12 +394,18 @@ class _RunContractCreateScreenState
                     ? 'Public trong Club'
                     : 'Chỉ mình tôi',
               ),
+              if (_giftToSave case final gift?)
+                _ConfirmRow(
+                  'Quà',
+                  '${gift.summary}\n'
+                      '${gift.items.map((it) => '${it.name} ×${it.slots}').join(', ')}',
+                ),
               _ConfirmRow(
                 'Nguồn',
                 _draft.metric == RunContractMetric.activityCount ||
                         _draft.metric == RunContractMetric.activeDays
-                    ? 'Strava/3i Run > 1 km · không tính manual'
-                    : 'Strava/3i Run · không tính manual',
+                    ? '3i Run, Garmin, Health > 1 km · không tính manual'
+                    : '3i Run, Garmin, Health · không tính manual',
               ),
               if (_preview?.hardTarget == true)
                 const _ConfirmRow(
@@ -380,6 +464,165 @@ class _RunContractCreateScreenState
         period: period,
       ),
     );
+  }
+
+  /// Kèo hẹn chạy: chọn ngày giờ hẹn và số km tối thiểu. Phòng chạy live mở
+  /// đúng giờ hẹn lúc chốt kèo.
+  Future<void> _showMeetup() async {
+    final today = _today();
+    var meetAt = _defaultMeetAt(DateTime.now());
+    var km = 3.0;
+    final draft = await showModalBottomSheet<RunContractDraft>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final palette = context.runNowPalette;
+          final past = !meetAt.isAfter(DateTime.now());
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              18,
+              10,
+              18,
+              MediaQuery.viewInsetsOf(context).bottom + 18,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: palette.border,
+                      borderRadius: context.runNowPalette.radius(3),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Hẹn chạy cùng',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Ai đăng ký mà hôm đó không chạy đủ sẽ bị 3i réo tên '
+                  'trên group.',
+                  style: TextStyle(color: palette.textMuted, height: 1.4),
+                ),
+                const SizedBox(height: 18),
+                const _SheetLabel('Ngày giờ hẹn'),
+                const SizedBox(height: 8),
+                _DateTimeTile(
+                  label: 'Ngày',
+                  value: meetAt,
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: meetAt,
+                      firstDate: today,
+                      // Phòng chạy chỉ hẹn trước được tối đa 7 ngày.
+                      lastDate: today.add(const Duration(days: 6)),
+                    );
+                    if (picked == null) return;
+                    setSheetState(
+                      () => meetAt = DateTime(
+                        picked.year,
+                        picked.month,
+                        picked.day,
+                        meetAt.hour,
+                        meetAt.minute,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                _DateTimeTile(
+                  label: 'Giờ',
+                  icon: Icons.schedule_rounded,
+                  value: meetAt,
+                  format: DateFormat('HH:mm').format,
+                  onTap: () async {
+                    final picked = await showTimePicker(
+                      context: context,
+                      initialTime: TimeOfDay.fromDateTime(meetAt),
+                    );
+                    if (picked == null) return;
+                    setSheetState(
+                      () => meetAt = DateTime(
+                        meetAt.year,
+                        meetAt.month,
+                        meetAt.day,
+                        picked.hour,
+                        picked.minute,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                const _SheetLabel('Chạy ít nhất'),
+                const SizedBox(height: 8),
+                _GoalStepper(
+                  value: km,
+                  unit: 'km',
+                  onChanged: (value) => setSheetState(() => km = value),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final quick in const [1.0, 3.0, 5.0, 10.0])
+                      _QuickTargetChip(
+                        label: _quickTargetLabel(
+                          RunContractMetric.distance,
+                          quick,
+                        ),
+                        selected: km == quick,
+                        onTap: () => setSheetState(() => km = quick),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _GoalSummary(
+                  text:
+                      'Trong ngày ${DateFormat('dd/MM').format(meetAt)}, '
+                      'mỗi người đăng ký chạy đủ '
+                      '${_quickTargetLabel(RunContractMetric.distance, km)}. '
+                      'Chạy chung trong phòng hay chạy riêng đều được tính.',
+                ),
+                if (past) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Giờ hẹn đã qua, chọn giờ khác nhé.',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: past
+                        ? null
+                        : () => Navigator.pop(
+                            context,
+                            RunContractDraft.meetup(meetAt: meetAt, km: km),
+                          ),
+                    child: const Text('Tiếp tục'),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    if (draft != null) _select(draft);
   }
 
   /// Tạo giáo án AI Coach: mở hub coach của chính mình (/coach/{uid}) — ở đó
@@ -441,7 +684,7 @@ class _RunContractCreateScreenState
                     height: 5,
                     decoration: BoxDecoration(
                       color: palette.border,
-                      borderRadius: BorderRadius.circular(3),
+                      borderRadius: context.runNowPalette.radius(3),
                     ),
                   ),
                 ),
@@ -691,6 +934,11 @@ class _RunContractCreateScreenState
     }
   }
 
+  Future<void> _editGift() async {
+    final gift = await showContractGiftEditor(context, initial: _gift);
+    if (gift != null && mounted) setState(() => _gift = gift);
+  }
+
   Future<void> _create() async {
     setState(() {
       _working = true;
@@ -699,11 +947,45 @@ class _RunContractCreateScreenState
     try {
       final title = _titleController.text.trim();
       final draft = title.isEmpty ? _draft : _draft.copyWith(title: title);
-      final id = await ref.read(runContractControllerProvider).create(draft);
+      final api = ref.read(runNowApiClientProvider);
+      final id = await createContractWithMeetupRoom(
+        draft,
+        create: ref.read(runContractControllerProvider).create,
+        openRoom: (startsAt) => api.createRunRoom(
+          title: title.isEmpty ? _defaultTitle(draft) : title,
+          privacy: RunRoomPrivacy.public.value,
+          maxRunners: runRoomMaxRunners,
+          startsAt: startsAt,
+        ),
+        closeRoom: api.endRunRoom,
+      );
+      if (draft.meetAt != null) askRoomPushPermission(ref);
       ref
           .read(runContractAnalyticsProvider)
           .log('contract_created', draft: _draft)
           .ignore();
+      // Treo quà trước khi báo group để tin báo có dòng quà. Lỗi thì kèo vẫn
+      // tạo xong; chủ kèo treo lại ở màn chi tiết.
+      if (_giftToSave case final gift?) {
+        try {
+          await saveContractGifts(
+            api,
+            contractId: id,
+            creatorUid: ref.read(firebaseUserProvider).value?.uid ?? '',
+            draft: gift,
+          );
+        } catch (error) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Chưa treo được quà: $error. Vào kèo để treo lại.',
+                ),
+              ),
+            );
+          }
+        }
+      }
       // Kèo công khai → 3i bot báo group rủ tham gia (fire-and-forget).
       if (draft.visibility == RunContractVisibility.club) {
         ref
@@ -730,131 +1012,17 @@ class _RunContractCreateScreenState
   };
 }
 
-class _TemplateTile extends StatelessWidget {
-  const _TemplateTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-    this.accent = false,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-  final bool accent; // nổi bật ô đặc biệt (giáo án AI)
-
-  @override
-  Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    final primary = Theme.of(context).colorScheme.primary;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: GlassPanel(
-        borderRadius: 20,
-        border: accent
-            ? Border.all(color: primary.withValues(alpha: 0.55), width: 1.5)
-            : null,
-        gradient: accent
-            ? LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  primary.withValues(alpha: 0.12),
-                  primary.withValues(alpha: 0.03),
-                ],
-              )
-            : null,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: primary.withValues(alpha: accent ? 0.18 : 0.14),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(icon, color: primary, size: 24),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              title,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 16,
-                                color: onSurface,
-                              ),
-                            ),
-                          ),
-                          if (accent) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: primary.withValues(alpha: 0.16),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                'MỚI',
-                                style: TextStyle(
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 0.5,
-                                  color: primary,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: onSurface.withValues(alpha: 0.62),
-                          fontSize: 13,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: onSurface.withValues(alpha: 0.4),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 String _metricUnit(RunContractMetric metric) => switch (metric) {
   RunContractMetric.distance || RunContractMetric.longestRun => 'km',
   RunContractMetric.activityCount => 'buổi',
   RunContractMetric.activeDays => 'ngày',
   RunContractMetric.routeCompletion => 'lần',
 };
+
+/// Giờ hẹn gợi ý: 18:00 hôm nay nếu còn kịp rủ, không thì 05:30 sáng mai.
+DateTime _defaultMeetAt(DateTime now) => now.hour < 16
+    ? DateTime(now.year, now.month, now.day, 18)
+    : DateTime(now.year, now.month, now.day + 1, 5, 30);
 
 double _defaultTargetFor(RunContractMetric metric) => switch (metric) {
   RunContractMetric.distance => 10,
@@ -899,11 +1067,17 @@ class _DateTimeTile extends StatelessWidget {
     required this.label,
     required this.value,
     required this.onTap,
+    this.icon = Icons.event_rounded,
+    this.format,
   });
 
   final String label;
   final DateTime? value;
   final VoidCallback onTap;
+  final IconData icon;
+
+  /// Mặc định hiện thứ và ngày.
+  final String Function(DateTime value)? format;
 
   @override
   Widget build(BuildContext context) {
@@ -911,19 +1085,19 @@ class _DateTimeTile extends StatelessWidget {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return Material(
       color: palette.tint,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: palette.radius(14),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: palette.radius(14),
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: palette.radius(14),
             border: Border.all(color: palette.border),
           ),
           child: Row(
             children: [
-              Icon(Icons.event_rounded, size: 18, color: palette.accentDeep),
+              Icon(icon, size: 18, color: palette.accentDeep),
               const SizedBox(width: 12),
               Text(
                 label,
@@ -934,9 +1108,12 @@ class _DateTimeTile extends StatelessWidget {
               ),
               const Spacer(),
               Text(
-                value == null
-                    ? 'Chọn'
-                    : DateFormat('EEE, dd/MM').format(value!),
+                switch (value) {
+                  null => 'Chọn',
+                  final value => (format ?? DateFormat('EEE, dd/MM').format)(
+                    value,
+                  ),
+                },
                 style: TextStyle(fontWeight: FontWeight.w800, color: onSurface),
               ),
               const SizedBox(width: 4),
@@ -975,7 +1152,7 @@ class _GoalStepper extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: palette.tint,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: palette.radius(16),
         border: Border.all(color: palette.border),
       ),
       child: Row(
@@ -989,12 +1166,14 @@ class _GoalStepper extends StatelessWidget {
               children: [
                 Text(
                   display,
-                  style: TextStyle(
-                    fontSize: 34,
-                    height: 0.95,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -1,
-                    color: onSurface,
+                  style: palette.heading(
+                    TextStyle(
+                      fontSize: 34,
+                      height: 0.95,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -1,
+                      color: onSurface,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -1028,11 +1207,11 @@ class _StepBtn extends StatelessWidget {
     return Material(
       color: palette.glassStart,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: palette.radius(13),
         side: BorderSide(color: palette.border),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: palette.radius(13),
         onTap: onTap,
         child: SizedBox(
           width: 46,
@@ -1059,7 +1238,7 @@ class _GoalSummary extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: palette.tint,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: palette.radius(14),
         border: Border.all(color: palette.accent.withValues(alpha: 0.35)),
       ),
       child: Row(
@@ -1100,7 +1279,7 @@ class _QuickTargetChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         decoration: BoxDecoration(
           color: selected ? palette.accent : palette.glassStart,
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: palette.radius(11),
           border: Border.all(color: selected ? palette.accent : palette.border),
         ),
         child: Text(
@@ -1112,6 +1291,72 @@ class _QuickTargetChip extends StatelessWidget {
                 ? palette.glassStart
                 : Theme.of(context).colorScheme.onSurface,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Hàng Quà ở bước 2: chưa có quà thì mời treo, có rồi thì tóm tắt và Sửa.
+class _GiftRow extends StatelessWidget {
+  const _GiftRow({required this.gift, required this.onTap});
+
+  final ContractGiftDraft? gift;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.runNowPalette;
+    final gift = this.gift;
+    return GlassPanel(
+      borderRadius: 0,
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+      child: InkWell(
+        onTap: onTap,
+        child: Row(
+          children: [
+            Icon(Icons.card_giftcard, color: palette.accentDeep),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    gift == null ? 'Treo quà' : gift.summary,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  if (gift == null)
+                    Text(
+                      'Không bắt buộc',
+                      style: TextStyle(color: palette.textMuted, fontSize: 12),
+                    )
+                  else ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final it in gift.items)
+                          Chip(
+                            visualDensity: VisualDensity.compact,
+                            avatar: ContractGiftPhotoThumb(
+                              icon: it.icon,
+                              photo: it.photos.firstOrNull,
+                              size: 22,
+                            ),
+                            label: Text('${it.name} ×${it.slots}'),
+                          ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: onTap,
+              child: Text(gift == null ? 'Thêm' : 'Sửa'),
+            ),
+          ],
         ),
       ),
     );

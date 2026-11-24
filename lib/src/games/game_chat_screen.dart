@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:myrun/src/config.dart';
 import 'package:myrun/src/games/game_chat_controller.dart';
+import 'package:myrun/src/games/game_chat_seen.dart';
 import 'package:myrun/src/games/game_chat_terms.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/runnow_api_client.dart';
@@ -37,6 +40,9 @@ class _GameChatScreenState extends ConsumerState<GameChatScreen>
 
   OverlayEntry? _cover;
 
+  /// Seq lớn nhất đã ghi là đã đọc trong lần mở này.
+  int _seenSeq = 0;
+
   @override
   void initState() {
     super.initState();
@@ -44,13 +50,25 @@ class _GameChatScreenState extends ConsumerState<GameChatScreen>
       api: ref.read(runNowApiClientProvider),
       gameId: widget.gameId,
       chatKey: widget.chatKey,
-    );
+    )..addListener(_markSeen);
     WidgetsBinding.instance.addObserver(this);
     ref.read(gameChatTermsProvider).accepted().then((accepted) {
       if (!mounted) return;
       setState(() => _termsAccepted = accepted);
       if (accepted) _controller.setActive(true);
     });
+  }
+
+  void _markSeen() {
+    final newest = _controller.newestSeq;
+    final uid = ref.read(firebaseUserProvider).value?.uid;
+    if (uid == null || newest <= _seenSeq) return;
+    _seenSeq = newest;
+    unawaited(
+      ref
+          .read(gameChatSeenProvider)
+          .markSeen(uid, widget.gameId, widget.chatKey, newest),
+    );
   }
 
   Future<void> _acceptTerms() async {
@@ -240,7 +258,7 @@ class _GameChatScreenState extends ConsumerState<GameChatScreen>
                           return _MessageRow(
                             message: m,
                             mine: mine,
-                            onLongPress: m.system || mine
+                            onLongPress: m.system || m.bot || mine
                                 ? null
                                 : () => _onLongPress(m),
                           );
@@ -253,6 +271,7 @@ class _GameChatScreenState extends ConsumerState<GameChatScreen>
                         controller: _input,
                         sending: _sending,
                         onSend: _send,
+                        hint: _controller.hint ?? 'Nhắn cho phe…',
                       )
                     : const _Banner(text: 'Bạn chỉ xem được chat này.'),
             ],
@@ -314,18 +333,33 @@ class _MessageRow extends StatelessWidget {
               color: mine
                   ? palette.accent.withValues(alpha: 0.38)
                   : palette.tint,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: palette.radius(14),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (!mine)
-                  Text(
-                    message.name,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: palette.ink,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (message.bot) ...[
+                        Icon(
+                          Icons.smart_toy_outlined,
+                          size: 14,
+                          color: palette.accent,
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Flexible(
+                        child: Text(
+                          message.name,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: palette.ink,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 // Text thường chứ không SelectableText: nhấn giữ là để báo cáo.
                 Text(message.text),
@@ -356,10 +390,12 @@ class _TermsGate extends StatelessWidget {
       children: [
         Text(
           'Quy tắc chat',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-            color: palette.ink,
+          style: palette.heading(
+            TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: palette.ink,
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -393,11 +429,13 @@ class _Composer extends StatelessWidget {
     required this.controller,
     required this.sending,
     required this.onSend,
+    required this.hint,
   });
 
   final TextEditingController controller;
   final bool sending;
   final VoidCallback onSend;
+  final String hint;
 
   @override
   Widget build(BuildContext context) {
@@ -415,10 +453,7 @@ class _Composer extends StatelessWidget {
                 maxLength: 1000,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => onSend(),
-                decoration: const InputDecoration(
-                  hintText: 'Nhắn cho phe…',
-                  counterText: '',
-                ),
+                decoration: InputDecoration(hintText: hint, counterText: ''),
               ),
             ),
             IconButton(

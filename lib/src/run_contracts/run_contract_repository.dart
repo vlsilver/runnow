@@ -44,6 +44,7 @@ abstract interface class RunContractRepository {
   /// polyline nặng. Trả `null` nếu kèo không có tuyến / chưa tách (kèo cũ vẫn
   /// giữ points inline trong chính doc kèo).
   Future<RunContractRoute?> fetchContractRoute(String contractId);
+
   /// [fromCache] = true đọc thẳng cache đĩa Firestore (vẽ tức thì, né cold-start
   /// query đầu); mặc định serverAndCache để lấy dữ liệu tươi.
   Future<RunContractPage> fetchClubContractsPage({
@@ -185,9 +186,11 @@ class FirestoreRunContractRepository implements RunContractRepository {
     int limit, {
     bool fromCache = false,
   }) async {
-    final snapshot = await query.limit(limit).get(
-      GetOptions(source: fromCache ? Source.cache : Source.serverAndCache),
-    );
+    final snapshot = await query
+        .limit(limit)
+        .get(
+          GetOptions(source: fromCache ? Source.cache : Source.serverAndCache),
+        );
     return RunContractPage(
       contracts: _contractsFromDocuments(snapshot.docs),
       nextCursor: snapshot.docs.isEmpty ? null : snapshot.docs.last,
@@ -276,12 +279,15 @@ class FirestoreRunContractRepository implements RunContractRepository {
       'updatedAt': FieldValue.serverTimestamp(),
       // routeCompletion → nhúng bản NHẸ (points nằm ở runContractRoutes).
       // Journey / trường hợp khác → giữ route inline như cũ.
-      if (route != null) 'route': splitRoute ? route.toLightMap() : route.toMap(),
+      if (route != null)
+        'route': splitRoute ? route.toLightMap() : route.toMap(),
       'unlimitedRepeat': draft.unlimitedRepeat,
       // Kèo hành trình: cung tự vẽ (đã ghi ở 'route') + chế độ + cờ không-hạn.
       if (draft.isJourney) 'mode': draft.mode.value,
       if (draft.journeyRouteId != null) 'journeyRouteId': draft.journeyRouteId,
       if (draft.openEnded) 'openEnded': true,
+      if (draft.meetAt case final meetAt?) 'meetAt': Timestamp.fromDate(meetAt),
+      'roomId': ?draft.roomId,
     });
     return contractRef.id;
   }
@@ -675,6 +681,7 @@ class FirestoreRunContractRepository implements RunContractRepository {
         'cancelledAt',
         'createdAt',
         'updatedAt',
+        'meetAt',
       ])
         if (data[field] is Timestamp)
           field: (data[field] as Timestamp).toDate(),

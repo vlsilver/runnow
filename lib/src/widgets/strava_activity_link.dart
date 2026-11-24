@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/theme_tokens.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class StravaActivityLink extends StatelessWidget {
+/// Link về buổi gốc trên Strava. Ẩn khi Strava đang tắt.
+class StravaActivityLink extends ConsumerWidget {
   const StravaActivityLink({required this.activityId, super.key});
   final String activityId;
 
   @override
-  Widget build(BuildContext context) {
-    if (!RegExp(r'^\d+$').hasMatch(activityId)) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabled = ref.watch(stravaEnabledProvider).value ?? false;
+    if (!enabled || !RegExp(r'^\d+$').hasMatch(activityId)) {
       return const SizedBox.shrink();
     }
     return TextButton(

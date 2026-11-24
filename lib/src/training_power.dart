@@ -5,15 +5,6 @@ import 'package:myrun/src/widgets/power_radar_card.dart';
 
 enum PersonalPowerRange { currentWeek, rollingSevenDays, currentMonth }
 
-enum JourneyPowerScope { week, month, year, total }
-
-String journeyPowerScopeLabel(JourneyPowerScope scope) => switch (scope) {
-  JourneyPowerScope.week => 'Tuần',
-  JourneyPowerScope.month => 'Tháng',
-  JourneyPowerScope.year => 'Năm',
-  JourneyPowerScope.total => 'Total',
-};
-
 /// Gộp nhiều `LeaderboardStats` (mỗi cái ứng 1 tháng periodStats) theo đúng
 /// quy tắc backend đã định nghĩa: các số cộng dồn được thì sum, riêng
 /// longest/fastest thì MAX/MIN vì cộng dồn không có ý nghĩa.
@@ -50,47 +41,6 @@ LeaderboardStats combineLeaderboardStats(Iterable<LeaderboardStats> items) {
     fastestPaceSecondsPerKm: fastestPace,
     elevationGainMeters: elevation,
   );
-}
-
-/// Điểm "Sức mạnh" 0-100 cho 1 trong 4 mốc Tuần/Tháng/Năm/Total.
-/// Tuần/Tháng so trực tiếp với mục tiêu của chính mốc đó (giống
-/// [personalPowerMetricsFromStats]). Năm/Total không có mục tiêu "cả
-/// năm/cả đời" hợp lý để so, nên quy về "trung bình mỗi tháng có hoạt
-/// động" ([activeMonths] = số tháng có periodStats trong khoảng đó) rồi so
-/// với đúng mục tiêu tháng — điểm vẫn phản ánh phong độ thay vì bị pha
-/// loãng theo số tháng đã chạy.
-int journeyPowerScore(
-  LeaderboardStats stats,
-  JourneyPowerScope scope, {
-  int activeMonths = 1,
-}) {
-  final isMonthly = scope != JourneyPowerScope.week;
-  final divisor = switch (scope) {
-    JourneyPowerScope.week || JourneyPowerScope.month => 1,
-    JourneyPowerScope.year ||
-    JourneyPowerScope.total => activeMonths <= 0 ? 1 : activeMonths,
-  };
-  final volumeTargetKm = isMonthly ? 40.0 : 15.0;
-  final loadTargetSeconds = isMonthly ? 12 * 3600 : 3 * 3600;
-  final dayTarget = isMonthly ? 30 : 7;
-
-  final avgDistance = stats.distanceMeters / divisor;
-  final avgMovingTime = stats.movingTimeSeconds / divisor;
-  final avgActivityCount = stats.activityCount / divisor;
-  final avgActiveDays = stats.activeDays / divisor;
-  final avgDistancePerRun = avgActivityCount <= 0
-      ? 0.0
-      : avgDistance / avgActivityCount;
-
-  final scores = [
-    powerScoreRatio(avgDistance / 1000, volumeTargetKm),
-    (avgActiveDays / dayTarget).clamp(0.0, 1.0).toDouble(),
-    powerScoreRatio(avgMovingTime, loadTargetSeconds.toDouble()),
-    powerScoreRatio(avgDistancePerRun / 1000, 5),
-    powerSpeedScore(stats.fastestPaceSecondsPerKm),
-  ];
-  final total = scores.fold<double>(0, (sum, item) => sum + item);
-  return (total / scores.length * 100).round();
 }
 
 List<PowerRadarMetric> personalPowerMetricsForRange(

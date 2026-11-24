@@ -23,6 +23,7 @@ class GameChatController extends ChangeNotifier {
 
   final _messages = <int, GameChatMessage>{};
   String? _label;
+  String? _hint;
   bool _canSend = false;
   bool _loaded = false;
   Object? _error;
@@ -38,6 +39,9 @@ class GameChatController extends ChangeNotifier {
 
   /// Tên chat backend gửi; null khi chưa tải xong lần đầu.
   String? get label => _label;
+
+  /// Chữ mờ trong ô nhập backend gửi.
+  String? get hint => _hint;
   bool get canSend => _canSend;
   bool get loaded => _loaded;
 
@@ -45,6 +49,10 @@ class GameChatController extends ChangeNotifier {
   Object? get error => _error;
   bool get hasOlder => _hasOlder;
   bool get loadingOlder => _loadingOlder;
+
+  /// Seq lớn nhất đã tải, 0 là chưa có tin.
+  int get newestSeq =>
+      _messages.keys.fold(0, (newest, seq) => seq > newest ? seq : newest);
 
   /// Tin mới trước, bỏ tin của người đã chặn.
   List<GameChatMessage> get messages =>
@@ -118,6 +126,7 @@ class GameChatController extends ChangeNotifier {
 
   void _apply(GameChat page) {
     _label = page.label;
+    _hint = page.hint;
     _canSend = page.canSend;
     for (final m in page.messages) {
       _messages[m.seq] = m;

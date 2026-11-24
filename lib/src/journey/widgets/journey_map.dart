@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
+import 'package:myrun/src/widgets/map_vector.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:myrun/src/journey/journey_models.dart';
 import 'package:myrun/src/journey/widgets/completion_stamp.dart';
@@ -8,10 +9,6 @@ import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/route_map.dart'
     show routeBounds, routePointAtDistance;
 
-const _lightTileTemplate =
-    'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-const _darkTileTemplate =
-    'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const _distanceCalculator = Distance();
 
 /// Zoom dùng khi người dùng bấm quay về vị trí hiện tại.
@@ -86,7 +83,6 @@ class _JourneyMapState extends State<JourneyMap> {
   Widget build(BuildContext context) {
     final palette = context.runNowPalette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tileTemplate = isDark ? _darkTileTemplate : _lightTileTemplate;
     final route = widget.progress.route;
     final points = route.points;
     final coveredPoints = _coveredPolyline(
@@ -137,12 +133,7 @@ class _JourneyMapState extends State<JourneyMap> {
               ),
             ),
             children: [
-              TileLayer(
-                key: ValueKey(tileTemplate),
-                urlTemplate: tileTemplate,
-                userAgentPackageName: 'com.threei.run',
-                retinaMode: RetinaMode.isHighDensity(context),
-              ),
+              mapBaseLayer(context, dark: isDark, around: points),
               const MapAttribution(),
               PolylineLayer(
                 polylines: [
@@ -262,9 +253,9 @@ class _JourneyMapState extends State<JourneyMap> {
               reached: reached,
               isEndpoint: isEndpoint,
               color: isStart
-                  ? RunNowSemanticColors.success
+                  ? context.runNowPalette.success
                   : isEnd
-                  ? RunNowSemanticColors.danger
+                  ? context.runNowPalette.danger
                   : palette.accent,
             ),
             if (label) ...[
@@ -329,7 +320,7 @@ class _MilestoneMarker extends StatelessWidget {
           height: 8,
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.35),
-            shape: BoxShape.circle,
+            shape: context.runNowPalette.round,
             border: Border.all(
               color: Colors.white.withValues(alpha: 0.5),
               width: 1,
@@ -346,7 +337,7 @@ class _MilestoneMarker extends StatelessWidget {
           height: 18,
           decoration: BoxDecoration(
             color: color,
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: context.runNowPalette.radius(6),
             border: Border.all(color: Colors.white, width: 1.5),
             boxShadow: [
               BoxShadow(color: color.withValues(alpha: 0.55), blurRadius: 6),
@@ -363,7 +354,7 @@ class _MilestoneMarker extends StatelessWidget {
         height: 12,
         decoration: BoxDecoration(
           color: color,
-          shape: BoxShape.circle,
+          shape: context.runNowPalette.round,
           border: Border.all(color: Colors.white, width: 1.5),
           boxShadow: [
             BoxShadow(color: color.withValues(alpha: 0.55), blurRadius: 5),
@@ -389,7 +380,7 @@ class _MilestoneLabel extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.42),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: context.runNowPalette.radius(999),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -431,7 +422,7 @@ class _MapControlButton extends StatelessWidget {
       label: tooltip,
       child: Material(
         color: Colors.transparent,
-        shape: const CircleBorder(),
+        shape: context.runNowPalette.roundBorder,
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
@@ -440,7 +431,7 @@ class _MapControlButton extends StatelessWidget {
             height: 38,
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.55),
-              shape: BoxShape.circle,
+              shape: context.runNowPalette.round,
               border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
             ),
             child: AnimatedRotation(
@@ -514,7 +505,7 @@ class _CurrentPositionMarkerState extends State<_CurrentPositionMarker>
                   height: 38,
                   decoration: BoxDecoration(
                     color: widget.color,
-                    shape: BoxShape.circle,
+                    shape: context.runNowPalette.round,
                   ),
                 ),
               ),
@@ -533,7 +524,7 @@ class _CurrentPositionMarkerState extends State<_CurrentPositionMarker>
                 height: 24,
                 decoration: BoxDecoration(
                   color: widget.color,
-                  shape: BoxShape.circle,
+                  shape: context.runNowPalette.round,
                   border: Border.all(color: Colors.white, width: 2),
                   boxShadow: [
                     BoxShadow(
@@ -584,7 +575,9 @@ class _ProgressRingButton extends StatelessWidget {
           : 'Xem thêm thông tin hành trình',
       child: Material(
         color: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        shape: RoundedRectangleBorder(
+          borderRadius: context.runNowPalette.radius(28),
+        ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
@@ -593,7 +586,7 @@ class _ProgressRingButton extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.55),
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: context.runNowPalette.radius(28),
               border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
             ),
             child: complete
