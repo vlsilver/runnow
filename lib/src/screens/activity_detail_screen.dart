@@ -331,6 +331,9 @@ class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
             cheerMoments: cheerMoments,
             height: height,
             underRoute: _territoryDetailLayer,
+            mapAction: const TerritoryMapToggle(
+              place: TerritoryMapPlace.detail,
+            ),
           ),
           activity: showSyncBadge ? detail.summary : null,
         ),

@@ -14,6 +14,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/screens/activity_detail_screen.dart';
 import 'package:myrun/src/territory/territory_grid.dart';
+import 'package:myrun/src/territory/territory_map_overlay.dart';
 import 'package:myrun/src/territory/territory_models.dart';
 import 'package:myrun/src/territory/territory_repository.dart';
 import 'package:myrun/src/territory/territory_result_sheet.dart';
@@ -364,6 +365,11 @@ void main() {
     final layer = tester.widget<PolygonLayer>(find.byType(PolygonLayer));
     // Chỉ ô tuyến đi qua, ô 208100 nằm ngoài tuyến.
     expect(layer.polygons, hasLength(1));
+
+    // Nút trên bản đồ tắt lớp ô của chi tiết buổi.
+    await tester.tap(find.byType(TerritoryMapToggle));
+    await tester.pump();
+    expect(find.byType(PolygonLayer), findsNothing);
   });
 
   testWidgets('màn chi tiết buổi không có tuyến thì không có link', (

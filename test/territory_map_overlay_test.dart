@@ -202,6 +202,50 @@ void main() {
     });
   });
 
+  Future<TerritoryMapPrefs> pumpToggle(
+    WidgetTester tester, {
+    bool enabled = true,
+  }) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    final prefs = TerritoryMapPrefs(loadFromStorage: false);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          territoryEnabledProvider.overrideWith((ref) => Stream.value(enabled)),
+          territoryMapPrefsProvider.overrideWith((ref) => prefs),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: TerritoryMapToggle(place: TerritoryMapPlace.live),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    return prefs;
+  }
+
+  testWidgets('nút trên bản đồ đổi đúng công tắc của chỗ đó', (tester) async {
+    final prefs = await pumpToggle(tester);
+    expect(find.byIcon(Icons.grid_view_rounded), findsOneWidget);
+    await tester.tap(find.byType(TerritoryMapToggle));
+    await tester.pump();
+    expect(prefs.shows(TerritoryMapPlace.live), isFalse);
+    expect(prefs.shows(TerritoryMapPlace.detail), isTrue);
+    expect(find.byIcon(Icons.grid_off_rounded), findsOneWidget);
+    await tester.tap(find.byType(TerritoryMapToggle));
+    await tester.pump();
+    expect(prefs.shows(TerritoryMapPlace.live), isTrue);
+  });
+
+  testWidgets('lãnh địa chưa mở thì không có nút trên bản đồ', (tester) async {
+    await pumpToggle(tester, enabled: false);
+    expect(find.byIcon(Icons.grid_view_rounded), findsNothing);
+    expect(find.byIcon(Icons.grid_off_rounded), findsNothing);
+  });
+
   testWidgets('bảng Cài đặt bật tắt từng chỗ', (tester) async {
     FlutterSecureStorage.setMockInitialValues({});
     final prefs = TerritoryMapPrefs(loadFromStorage: false);

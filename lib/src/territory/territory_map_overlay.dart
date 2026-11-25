@@ -257,3 +257,83 @@ Future<void> showTerritoryMapPrefsSheet(BuildContext context) =>
         ),
       ),
     );
+
+/// Nút bật tắt lớp ô ngay trên bản đồ của [place]; cùng công tắc với Cài đặt.
+/// Lãnh địa chưa mở thì không hiện. [floating] là kiểu nút sáng nổi của màn
+/// chạy; mặc định là ô tối như nút phóng to ở bản đồ chi tiết buổi.
+class TerritoryMapToggle extends ConsumerWidget {
+  const TerritoryMapToggle({
+    required this.place,
+    this.floating = false,
+    super.key,
+  });
+
+  final TerritoryMapPlace place;
+  final bool floating;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!(ref.watch(territoryEnabledProvider).value ?? false)) {
+      return const SizedBox.shrink();
+    }
+    final prefs = ref.watch(territoryMapPrefsProvider);
+    final on = prefs.shows(place);
+    final palette = context.runNowPalette;
+    final icon = on ? Icons.grid_view_rounded : Icons.grid_off_rounded;
+    void toggle() => prefs.setShows(place, !on);
+    final Widget button;
+    if (floating) {
+      final scheme = Theme.of(context).colorScheme;
+      button = Material(
+        color: scheme.surface.withValues(alpha: 0.92),
+        elevation: 3,
+        shadowColor: Colors.black.withValues(alpha: 0.3),
+        shape: palette.roundBorder,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: toggle,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Icon(
+              icon,
+              size: 20,
+              color: on
+                  ? palette.accent
+                  : scheme.onSurface.withValues(alpha: 0.75),
+            ),
+          ),
+        ),
+      );
+    } else {
+      button = Material(
+        color: Colors.transparent,
+        shape: palette.roundBorder,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: toggle,
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.55),
+              shape: palette.round,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            ),
+            child: Icon(icon, color: Colors.white, size: 18),
+          ),
+        ),
+      );
+    }
+    return Semantics(
+      button: true,
+      toggled: on,
+      label: 'Ô lãnh địa',
+      // Một nút một câu đọc; bỏ phần đọc riêng của Tooltip và InkWell.
+      excludeSemantics: true,
+      child: Tooltip(
+        message: on ? 'Ẩn ô lãnh địa' : 'Hiện ô lãnh địa',
+        child: button,
+      ),
+    );
+  }
+}

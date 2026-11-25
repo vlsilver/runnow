@@ -93,6 +93,7 @@ class RouteMap extends StatelessWidget {
     this.height = 330,
     this.follow = false,
     this.underRoute,
+    this.mapAction,
     super.key,
   });
 
@@ -113,6 +114,7 @@ class RouteMap extends StatelessWidget {
     this.liveRoutePhotos = const [],
     this.follow = false,
     this.underRoute,
+    this.mapAction,
     super.key,
   }) : encodedPolyline = null,
        routePoints = points;
@@ -166,6 +168,11 @@ class RouteMap extends StatelessWidget {
   /// Lớp vẽ dưới đường chạy, cả khi phóng to toàn màn.
   final RouteUnderlayBuilder? underRoute;
 
+  /// Một nút thêm trên bản đồ (vd. bật tắt ô lãnh địa): góc trên trái khi bản
+  /// đồ nằm trong màn, dưới nút ℹ️ khi bám vị trí (màn chạy). Không có khi
+  /// phóng to toàn màn.
+  final Widget? mapAction;
+
   @override
   Widget build(BuildContext context) {
     final points = _mapPoints();
@@ -194,8 +201,11 @@ class RouteMap extends StatelessWidget {
                 follow: follow,
                 daylight: _daylight,
                 underRoute: underRoute,
+                followAction: follow ? mapAction : null,
               ),
             ),
+            if (!follow && mapAction != null)
+              Positioned(top: 10, left: 10, child: mapAction!),
             // Map tracking (follow) đã tràn viền toàn màn → không cần nút
             // phóng-to-toàn-màn (gây rối ở góc trên).
             if (!follow)
@@ -544,6 +554,7 @@ class _FlutterRouteMap extends StatefulWidget {
     this.follow = false,
     this.daylight,
     this.underRoute,
+    this.followAction,
   });
 
   final List<LatLng> points;
@@ -554,6 +565,9 @@ class _FlutterRouteMap extends StatefulWidget {
   final List<LiveTrackingSession> liveRunners;
   final bool follow;
   final RouteUnderlayBuilder? underRoute;
+
+  /// Nút thêm khi bám vị trí, xếp dưới nút ℹ️ và trên nút định vị lại.
+  final Widget? followAction;
 
   /// Buổi trong ngày lúc chạy; có thì nền map theo giờ chạy.
   final ReplayDaylight? daylight;
@@ -796,10 +810,22 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
       ],
     );
     if (!widget.follow) return map;
+    final action = widget.followAction;
     // Follow: nút định vị hiện khi user đã xem thủ công → bấm để bám lại.
     return Stack(
       children: [
         Positioned.fill(child: map),
+        if (action != null)
+          Positioned(
+            top: 0,
+            right: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 54, right: 12),
+                child: action,
+              ),
+            ),
+          ),
         if (_manual)
           Positioned(
             top: 0,
@@ -808,7 +834,10 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
               // Xếp DƯỚI nút ℹ️ (cũng SafeArea) theo offset, không dùng số tuyệt
               // đối — để không đè nhau trên máy có notch/Dynamic Island.
               child: Padding(
-                padding: const EdgeInsets.only(top: 54, right: 12),
+                padding: EdgeInsets.only(
+                  top: action == null ? 54 : 100,
+                  right: 12,
+                ),
                 child: _MapCircleButton(
                   icon: Icons.my_location,
                   onTap: () {

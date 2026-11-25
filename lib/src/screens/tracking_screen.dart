@@ -27,6 +27,7 @@ import 'package:myrun/src/rooms/run_room_run_panel.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/runnow_api_client.dart';
 import 'package:myrun/src/territory/territory_map_overlay.dart';
+import 'package:myrun/src/territory/territory_repository.dart';
 import 'package:myrun/src/territory/territory_widgets.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/tracking_draft_store.dart';
@@ -385,6 +386,18 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                       follow: true,
                       height: c.maxHeight,
                       underRoute: _territoryLiveLayer,
+                      // Chỉ đặt nút khi lãnh địa mở, để nút định vị không
+                      // chừa chỗ trống; chạy trong phòng thì panel phòng che
+                      // góc này nên bỏ (vẫn tắt được trong Cài đặt).
+                      mapAction:
+                          roomId == null &&
+                              (ref.watch(territoryEnabledProvider).value ??
+                                  false)
+                          ? const TerritoryMapToggle(
+                              place: TerritoryMapPlace.live,
+                              floating: true,
+                            )
+                          : null,
                     ),
                   )
                 : Align(
