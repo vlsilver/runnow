@@ -50,6 +50,30 @@ List<_PhotoCluster> _clusterPhotos(List<ActivityPhoto> photos) {
   return clusters;
 }
 
+/// Lớp vẽ dưới đường chạy (vd. ô lãnh địa), dựng từ các điểm của tuyến. Đặt
+/// trong `FlutterMap.children` nên phải là một layer của flutter_map.
+typedef RouteUnderlayBuilder = Widget Function(List<LatLng> points);
+
+/// Đặt [builder] cho mọi bản đồ tuyến đứng yên (StillRouteMap) bên dưới, cho
+/// chỗ không truyền tham số xuống được, như các mặt thẻ chạy trên màn khoe.
+/// [builder] null là không vẽ gì; giữ scope trong cây để bật tắt không dựng
+/// lại cả cây con.
+class RouteUnderlayScope extends InheritedWidget {
+  const RouteUnderlayScope({
+    required this.builder,
+    required super.child,
+    super.key,
+  });
+
+  final RouteUnderlayBuilder? builder;
+
+  static RouteUnderlayBuilder? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<RouteUnderlayScope>()?.builder;
+
+  @override
+  bool updateShouldNotify(RouteUnderlayScope old) => old.builder != builder;
+}
+
 class RouteMap extends StatelessWidget {
   const RouteMap({
     required this.encodedPolyline,
@@ -68,6 +92,7 @@ class RouteMap extends StatelessWidget {
     this.liveRoutePhotos = const [],
     this.height = 330,
     this.follow = false,
+    this.underRoute,
     super.key,
   });
 
@@ -87,6 +112,7 @@ class RouteMap extends StatelessWidget {
     this.liveRunnersStream,
     this.liveRoutePhotos = const [],
     this.follow = false,
+    this.underRoute,
     super.key,
   }) : encodedPolyline = null,
        routePoints = points;
@@ -137,6 +163,9 @@ class RouteMap extends StatelessWidget {
   /// cũ, không đổi.
   final List<LiveRoutePhoto> liveRoutePhotos;
 
+  /// Lớp vẽ dưới đường chạy, cả khi phóng to toàn màn.
+  final RouteUnderlayBuilder? underRoute;
+
   @override
   Widget build(BuildContext context) {
     final points = _mapPoints();
@@ -164,6 +193,7 @@ class RouteMap extends StatelessWidget {
                 liveRunners: liveRunners,
                 follow: follow,
                 daylight: _daylight,
+                underRoute: underRoute,
               ),
             ),
             // Map tracking (follow) đã tràn viền toàn màn → không cần nút
@@ -253,6 +283,7 @@ class RouteMap extends StatelessWidget {
           liveRunners: liveRunners,
           liveRunnersStream: liveRunnersStream,
           daylight: _daylight,
+          underRoute: underRoute,
         ),
       ),
     );
@@ -416,8 +447,10 @@ class _FullscreenRouteMap extends StatefulWidget {
     required this.liveRunners,
     required this.liveRunnersStream,
     this.daylight,
+    this.underRoute,
   });
 
+  final RouteUnderlayBuilder? underRoute;
   final List<LatLng> points;
   final List<ActivityPhoto> photos;
   final ValueChanged<ActivityPhoto>? onPhotoTap;
@@ -448,6 +481,7 @@ class _FullscreenRouteMapState extends State<_FullscreenRouteMap> {
                     totalDistanceMeters: widget.totalDistanceMeters,
                     liveRunners: widget.liveRunners,
                     daylight: widget.daylight,
+                    underRoute: widget.underRoute,
                   )
                 : StreamBuilder<List<LiveTrackingSession>>(
                     stream: widget.liveRunnersStream,
@@ -469,6 +503,7 @@ class _FullscreenRouteMapState extends State<_FullscreenRouteMap> {
                         totalDistanceMeters: widget.totalDistanceMeters,
                         liveRunners: sessions,
                         daylight: widget.daylight,
+                        underRoute: widget.underRoute,
                       );
                     },
                   ),
@@ -508,6 +543,7 @@ class _FlutterRouteMap extends StatefulWidget {
     required this.liveRunners,
     this.follow = false,
     this.daylight,
+    this.underRoute,
   });
 
   final List<LatLng> points;
@@ -517,6 +553,7 @@ class _FlutterRouteMap extends StatefulWidget {
   final double? totalDistanceMeters;
   final List<LiveTrackingSession> liveRunners;
   final bool follow;
+  final RouteUnderlayBuilder? underRoute;
 
   /// Buổi trong ngày lúc chạy; có thì nền map theo giờ chạy.
   final ReplayDaylight? daylight;
@@ -675,6 +712,8 @@ class _FlutterRouteMapState extends State<_FlutterRouteMap> {
           around: points,
           daylight: widget.daylight,
         ),
+        // Dưới nút ghi công: lớp polygon nhận chạm nên đặt trên sẽ nuốt nút.
+        if (widget.underRoute case final underRoute?) underRoute(points),
         MapAttribution(top: widget.follow),
         PolylineLayer(
           polylines: [

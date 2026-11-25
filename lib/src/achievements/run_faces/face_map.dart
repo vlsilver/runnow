@@ -4,7 +4,8 @@ import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:myrun/src/achievements/run_faces/run_face_kit.dart';
 import 'package:myrun/src/widgets/map_tiles.dart';
 import 'package:myrun/src/widgets/map_vector.dart';
-import 'package:myrun/src/widgets/route_map.dart' show routeBounds;
+import 'package:myrun/src/widgets/route_map.dart'
+    show RouteUnderlayScope, routeBounds;
 import '../../theme_tokens.dart';
 
 /// Ghi công in thẳng lên thẻ vì ảnh khoe không bấm được.
@@ -48,6 +49,7 @@ class StillRouteMap extends StatelessWidget {
     final tiles = mapBaseLayer(context, dark: dark, around: points);
     final filter = tileFilter;
     final route = this.route;
+    final underRoute = RouteUnderlayScope.maybeOf(context);
     return IgnorePointer(
       child: FlutterMap(
         options: MapOptions(
@@ -66,6 +68,7 @@ class StillRouteMap extends StatelessWidget {
             tiles
           else
             ColorFiltered(colorFilter: filter, child: tiles),
+          ?underRoute?.call(points),
           if (route != null)
             PolylineLayer(
               polylines: [

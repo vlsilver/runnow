@@ -21,6 +21,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
 import 'package:myrun/src/screens/route_replay_screen.dart';
+import 'package:myrun/src/territory/territory_map_overlay.dart';
 import 'package:myrun/src/territory/territory_grid.dart';
 import 'package:myrun/src/territory/territory_widgets.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
@@ -276,6 +277,11 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
       showActivityPhotoViewer(context, photo);
 }
 
+/// Lớp ô lãnh địa dưới đường chạy ở chi tiết buổi. Hàm top-level để header
+/// dựng lại không tạo builder mới.
+Widget _territoryDetailLayer(List<LatLng> points) =>
+    TerritoryRouteLayer(points: points, place: TerritoryMapPlace.detail);
+
 class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
   const _ActivityRouteHeaderDelegate({
     required this.detail,
@@ -324,6 +330,7 @@ class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
             streams: detail.streams,
             cheerMoments: cheerMoments,
             height: height,
+            underRoute: _territoryDetailLayer,
           ),
           activity: showSyncBadge ? detail.summary : null,
         ),

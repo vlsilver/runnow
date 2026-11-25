@@ -14,6 +14,8 @@ import 'package:myrun/src/screens/avatar_crop_screen.dart';
 import 'package:myrun/src/share.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/theme_controller.dart';
+import 'package:myrun/src/territory/territory_map_overlay.dart';
+import 'package:myrun/src/territory/territory_repository.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -221,6 +223,17 @@ class SettingsScreen extends ConsumerWidget {
                     },
                     onTap: () => showShareFormatSheet(context),
                   ),
+                  if (ref.watch(territoryEnabledProvider).value ?? false)
+                    _SettingsRow(
+                      icon: Icons.grid_view_rounded,
+                      title: 'Ô lãnh địa trên bản đồ',
+                      value: switch (ref.watch(territoryMapPrefsProvider)) {
+                        final prefs =>
+                          '${TerritoryMapPlace.values.where(prefs.shows).length}'
+                              '/${TerritoryMapPlace.values.length}',
+                      },
+                      onTap: () => showTerritoryMapPrefsSheet(context),
+                    ),
                 ],
               ),
               const SizedBox(height: 18),

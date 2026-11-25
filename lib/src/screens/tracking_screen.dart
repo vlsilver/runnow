@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -25,6 +26,7 @@ import 'package:myrun/src/rooms/run_room_repository.dart';
 import 'package:myrun/src/rooms/run_room_run_panel.dart';
 import 'package:myrun/src/run_contracts/run_contract_progress.dart';
 import 'package:myrun/src/runnow_api_client.dart';
+import 'package:myrun/src/territory/territory_map_overlay.dart';
 import 'package:myrun/src/territory/territory_widgets.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/tracking_draft_store.dart';
@@ -33,6 +35,10 @@ import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/route_map.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:myrun/src/widgets/run_now_switch.dart';
+
+/// Lớp ô lãnh địa dưới đường đang chạy.
+Widget _territoryLiveLayer(List<LatLng> points) =>
+    TerritoryRouteLayer(points: points, place: TerritoryMapPlace.live);
 
 class TrackingScreen extends ConsumerStatefulWidget {
   const TrackingScreen({
@@ -378,6 +384,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                       points: mapPoints,
                       follow: true,
                       height: c.maxHeight,
+                      underRoute: _territoryLiveLayer,
                     ),
                   )
                 : Align(

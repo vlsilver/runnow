@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -351,6 +353,22 @@ void main() {
           .fallbackCell,
       '208149_115402',
     );
+  });
+
+  testWidgets('màn chi tiết buổi vẽ ô lãnh địa tuyến đi qua dưới đường chạy', (
+    tester,
+  ) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    await firestore.collection('territoryChunks').doc('6504_3606').set({
+      'cells': {
+        '208149_115402': {'u': 'binh', 'm': 600, 'm2': 0},
+        '208100_115402': {'u': 'binh', 'm': 600, 'm2': 0},
+      },
+    });
+    await pumpDetail(tester, polyline: 'olj_Coy`eS');
+    final layer = tester.widget<PolygonLayer>(find.byType(PolygonLayer));
+    // Chỉ ô tuyến đi qua, ô 208100 nằm ngoài tuyến.
+    expect(layer.polygons, hasLength(1));
   });
 
   testWidgets('màn chi tiết buổi không có tuyến thì không có link', (

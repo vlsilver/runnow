@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -8,6 +9,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
+import 'package:latlong2/latlong.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/run_card_models.dart';
 import 'package:myrun/src/achievements/run_card_skin.dart';
@@ -19,6 +21,9 @@ import 'package:myrun/src/games/game_card_viewer.dart';
 import 'package:myrun/src/games/game_night_theme.dart';
 import 'package:myrun/src/games/game_role_card.dart';
 import 'package:myrun/src/share.dart';
+import 'package:myrun/src/territory/territory_map_overlay.dart';
+import 'package:myrun/src/territory/territory_repository.dart';
+import 'package:myrun/src/widgets/route_map.dart' show RouteUnderlayScope;
 import 'package:myrun/src/theme.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -117,13 +122,15 @@ String cardShareKey(
   required RunCardSkin skin,
   ShareFormat format = ShareFormat.story,
   RunCardStyle? style,
+  bool territory = false,
 }) {
   // FNV-1a 32 bit: ổn định giữa các lần mở app, khác String.hashCode.
   var hash = 0x811c9dc5;
   for (final unit in '${subject.printed}|$_shareVersion'.codeUnits) {
     hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
   }
-  final key = '${hash.toRadixString(16)}.${skin.id}.${format.name}';
+  final base = '${hash.toRadixString(16)}.${skin.id}.${format.name}';
+  final key = territory ? '$base.territory' : base;
   return style == null || style == RunCardStyle.current
       ? key
       : '$key.${style.shareKey}';
@@ -391,6 +398,14 @@ Future<void> showRunCardShare(
   runCard: card,
 );
 
+/// Lớp ô lãnh địa trên bản đồ mặt thẻ khi khoe. Hàm top-level để scope
+/// không báo đổi mỗi lần dựng.
+Widget _territoryShareLayer(List<LatLng> points) => TerritoryRouteLayer(
+  points: points,
+  place: TerritoryMapPlace.share,
+  decided: true,
+);
+
 class CardShareScreen extends ConsumerStatefulWidget {
   const CardShareScreen({
     super.key,
@@ -431,8 +446,101 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
   /// Khổ của ba file, theo Cài đặt: Story 9:16 hay Feed 4:5.
   ShareFormat get _format => ref.read(shareFormatControllerProvider).format;
 
-  String get _key =>
-      cardShareKey(widget.subject, skin: _skin, format: _format, style: _style);
+  String get _key => cardShareKey(
+    widget.subject,
+    skin: _skin,
+    format: _format,
+    style: _style,
+    territory: _territory,
+  );
+
+  /// Tuyến của thẻ chạy; rỗng thì thẻ không có bản đồ để vẽ ô.
+  List<LatLng> get _route => widget.runCard?.snapshot.route ?? const [];
+
+  bool get _territoryAvailable =>
+      _route.isNotEmpty && (ref.read(territoryEnabledProvider).value ?? false);
+
+  /// Lần ghi đang hiện có vẽ ô không; chốt một lần mỗi lượt [_start] để khoá
+  /// cache và sân khấu cùng một giá trị.
+  bool _territory = false;
+
+  /// Giữ các chunk của tuyến sống suốt màn, để sân khấu có ô ngay khi chụp.
+  final _chunkSubs = <ProviderSubscription<Object?>>[];
+
+  /// Chốt có vẽ ô cho lần ghi: chờ cờ lãnh địa, rồi (chỉ khi cờ bật) chờ
+  /// công tắc trên máy; mỗi bước tối đa 2 giây. Lãnh địa tắt thì không chờ gì
+  /// thêm.
+  Future<bool> _territoryForRecording() async {
+    if (_route.isEmpty) return false;
+    const wait = Duration(seconds: 2);
+    try {
+      await ref.read(territoryEnabledProvider.future).timeout(wait);
+    } catch (error) {
+      debugPrint('Khoe thẻ: chưa đọc được cờ lãnh địa: $error');
+    }
+    if (!_territoryAvailable) return false;
+    final prefs = ref.read(territoryMapPrefsProvider);
+    try {
+      await prefs.loaded.timeout(wait);
+    } on TimeoutException {
+      debugPrint('Khoe thẻ: chưa đọc được công tắc ô lãnh địa');
+    }
+    return prefs.shows(TerritoryMapPlace.share);
+  }
+
+  /// Nghe các chunk tuyến đi qua và chờ lần đọc đầu, tối đa 3 giây. Trả false
+  /// khi có chunk chưa về: ảnh vẫn hiện nhưng không lưu cache, lần mở sau ghi
+  /// lại.
+  Future<bool> _routeCellsLoaded() async {
+    for (final sub in _chunkSubs) {
+      sub.close();
+    }
+    _chunkSubs.clear();
+    final waits = <Future<bool>>[];
+    for (final chunk in territoryRouteChunks(territoryRouteCells(_route))) {
+      // true khi đọc được, false khi lỗi.
+      final first = Completer<bool>();
+      _chunkSubs.add(
+        ref.listenManual<AsyncValue<Object?>>(territoryChunkProvider(chunk), (
+          _,
+          next,
+        ) {
+          if (!first.isCompleted && (next.hasValue || next.hasError)) {
+            first.complete(next.hasValue);
+          }
+        }, fireImmediately: true),
+      );
+      waits.add(first.future);
+    }
+    try {
+      final loaded = await Future.wait(
+        waits,
+      ).timeout(const Duration(seconds: 3));
+      if (loaded.every((ok) => ok)) return true;
+      debugPrint('Khoe thẻ: đọc ô lãnh địa lỗi, không lưu cache');
+      return false;
+    } on TimeoutException {
+      debugPrint('Khoe thẻ: ô lãnh địa chưa tải kịp, không lưu cache');
+      return false;
+    }
+  }
+
+  void _toggleTerritory() {
+    // Không chờ ghi máy: công tắc đổi ngay trong bộ nhớ, và _start ẩn nút
+    // ngay nên bấm đúp không ghi hai lượt.
+    ref
+        .read(territoryMapPrefsProvider)
+        .setShows(TerritoryMapPlace.share, !_territory);
+    _start();
+  }
+
+  @override
+  void dispose() {
+    for (final sub in _chunkSubs) {
+      sub.close();
+    }
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -467,6 +575,10 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
       _step = 0;
     });
     try {
+      // Khoá cache tính cả lớp ô: chốt có vẽ ô trước khi đọc khoá.
+      final territory = await _territoryForRecording();
+      if (!mounted) return;
+      setState(() => _territory = territory);
       if (fresh) {
         await store.clear(widget.subject.id);
       } else if (await store.load(widget.subject.id, _key) case final hit?) {
@@ -474,8 +586,10 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
         return;
       }
       if (!mounted) return;
+      final cellsLoaded = !territory || await _routeCellsLoaded();
+      if (!mounted) return;
       final files = await _record();
-      await store.save(widget.subject.id, _key, files);
+      if (cellsLoaded) await store.save(widget.subject.id, _key, files);
       if (mounted) setState(() => _files = files);
     } catch (error, stack) {
       debugPrint('Tạo ảnh khoe thẻ lỗi: $error\n$stack');
@@ -667,7 +781,12 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
   Widget build(BuildContext context) {
     final files = _files;
     final style = _style;
-    final screen = _screen(files);
+    // Cờ về muộn thì hiện nút bật tắt ô.
+    ref.watch(territoryEnabledProvider);
+    final screen = RouteUnderlayScope(
+      builder: _territory ? _territoryShareLayer : null,
+      child: _screen(files),
+    );
     return RunCardSkinScope(
       skin: _skin,
       child: style == null
@@ -736,6 +855,17 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
                 Row(
                   children: [
                     // Đang ghi thì ẩn: hai lượt ghi cùng chụp một sân khấu.
+                    if (files != null && _territoryAvailable) ...[
+                      IconButton.outlined(
+                        tooltip: 'Ô lãnh địa',
+                        isSelected: _territory,
+                        onPressed: _toggleTerritory,
+                        icon: const Icon(Icons.grid_off_rounded),
+                        selectedIcon: const Icon(Icons.grid_view_rounded),
+                        color: gameNightInk,
+                      ),
+                      const SizedBox(width: 10),
+                    ],
                     if (files != null && _style != null) ...[
                       RunCardStyleButton(
                         ring: gameNightInk,
