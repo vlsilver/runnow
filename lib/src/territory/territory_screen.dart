@@ -9,6 +9,8 @@ import 'package:myrun/src/territory/territory_grid.dart';
 import 'package:myrun/src/territory/territory_models.dart';
 import 'package:myrun/src/territory/territory_repository.dart';
 import 'package:myrun/src/territory/territory_share.dart';
+import 'package:myrun/src/territory/territory_sheets.dart';
+import 'package:myrun/src/territory/territory_stats_screen.dart';
 import 'package:myrun/src/territory/territory_widgets.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
@@ -21,8 +23,8 @@ const territoryDefaultCenter = LatLng(10.7769, 106.7009);
 const _defaultZoom = 14.0;
 const _chunkZoom = 15.0;
 
-/// Màn Lãnh địa: ô của mình và của mọi người trên bản đồ, lọc theo người,
-/// chạm ô xem chủ ô.
+/// Màn Lãnh địa: ô của mình (màu chính) và của mọi người (xanh) trên bản đồ,
+/// lọc theo người, chạm ô xem chủ ô, danh sách Mọi người, số liệu từng người.
 /// [chunk] (id "x_y" z13, từ push bị chiếm ô) mở đúng vùng đó; không có thì
 /// mở ở chunk mình giữ nhiều ô nhất.
 class TerritoryScreen extends ConsumerWidget {
@@ -80,7 +82,7 @@ class TerritoryScreen extends ConsumerWidget {
   }
 }
 
-/// Bản đồ ô. Chỉ nghe các chunk trong khung nhìn, tối đa
+/// Bản đồ ô, hàng lọc ở trên. Chỉ nghe các chunk trong khung nhìn, tối đa
 /// [territoryMaxChunks]; zoom xa hơn thì không tải ô. Lọc được: tất cả, của
 /// tôi, hay của một người chọn từ danh sách "Mọi người". Ô càng nhiều km càng
 /// đậm ([territoryCellAlpha]).
@@ -131,7 +133,7 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
       read: true,
     ).any((cell) => view.contains(_cellCenter(cell.tile)));
     if (onScreen) return;
-    List<TileXY> owned;
+    List<TerritoryCell> owned;
     try {
       owned = await ref.read(territoryRepositoryProvider).fetchOwnedCells(uid, [
         topChunk,
@@ -148,8 +150,8 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
     } else {
       _map.fitCamera(
         CameraFit.coordinates(
-          coordinates: [for (final tile in owned) ...cellCorners(tile)],
-          padding: const EdgeInsets.fromLTRB(32, 96, 32, 64),
+          coordinates: [for (final cell in owned) ...cellCorners(cell.tile)],
+          padding: const EdgeInsets.fromLTRB(32, 48, 32, 96),
           maxZoom: 17,
         ),
       );
@@ -160,15 +162,26 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
   static LatLng _cellCenter(TileXY tile) =>
       tileCorner(tile.x + 0.5, tile.y + 0.5, territoryCellZoom);
 
+  /// Mọi người → chọn một người → số liệu của họ → "Xem trên bản đồ" thì lọc.
   Future<void> _pickPerson() async {
     final picked = await showModalBottomSheet<TerritoryHolder>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (_) => const _HoldersSheet(),
+      builder: (_) => const TerritoryHoldersSheet(),
     );
     if (picked == null || !mounted) return;
-    _focusOn(picked.uid, topChunk: picked.owner.topChunk);
+    await _openStats(picked.uid);
+  }
+
+  /// Mở số liệu của [uid]; trở về bằng "Xem trên bản đồ" thì lọc theo người
+  /// đó.
+  Future<void> _openStats(String uid) async {
+    final owner = await Navigator.of(context).push<TerritoryOwner>(
+      MaterialPageRoute(builder: (_) => TerritoryStatsScreen(uid: uid)),
+    );
+    if (owner == null || !mounted) return;
+    await _focusOn(uid, topChunk: owner.topChunk);
   }
 
   /// Ô đang tải trong khung nhìn, đã lọc. [read] cho chỗ gọi ngoài build.
@@ -183,7 +196,7 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
         if (_focus == null || cell.ownerUid == _focus) cell,
   ];
 
-  void _openCell(LatLng point) {
+  Future<void> _openCell(LatLng point) async {
     final tile = tileAt(point, territoryCellZoom);
     final chunk = chunkOfCell(tile);
     if (!(_chunks?.contains(chunk) ?? false)) return;
@@ -193,11 +206,14 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
         .where((c) => _focus == null || c.ownerUid == _focus)
         .firstOrNull;
     if (cell == null) return;
-    showModalBottomSheet<void>(
+    final owner = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
-      builder: (_) => _CellSheet(cell: cell),
+      isScrollControlled: true,
+      builder: (_) => TerritoryCellSheet(cell: cell),
     );
+    if (owner == null || !mounted) return;
+    await _openStats(owner);
   }
 
   @override
@@ -206,69 +222,68 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final myUid = ref.watch(firebaseUserProvider).value?.uid;
     final cells = _visibleCells();
-    return Stack(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        FlutterMap(
-          mapController: _map,
-          options: MapOptions(
-            initialCenter: widget.center,
-            initialZoom: widget.zoom,
-            minZoom: 4,
-            maxZoom: 19,
-            backgroundColor: palette.tint,
-            onMapReady: () => _updateChunks(_map.camera),
-            onPositionChanged: (camera, hasGesture) {
-              if (hasGesture) _userMoved = true;
-              _updateChunks(camera);
-            },
-            onTap: (_, point) => _openCell(point),
-            interactionOptions: const InteractionOptions(
-              flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-            ),
-          ),
-          children: [
-            mapBaseLayer(context, dark: dark, around: [widget.center]),
-            PolygonLayer(
-              polygons: [
-                for (final cell in cells) _polygon(cell, myUid, palette.accent),
-              ],
-            ),
-            const MapAttribution(),
-          ],
+        _FilterBar(
+          focus: _focus,
+          myUid: myUid,
+          onAll: () => _focusOn(null),
+          onMine: (top) => _focusOn(myUid, topChunk: top),
+          onPeople: _pickPerson,
         ),
-        Positioned(
-          top: 8,
-          left: 0,
-          right: 0,
-          child: Column(
+        Expanded(
+          child: Stack(
             children: [
-              _FilterBar(
-                focus: _focus,
-                myUid: myUid,
-                onAll: () => _focusOn(null),
-                onMine: (top) => _focusOn(myUid, topChunk: top),
-                onPeople: _pickPerson,
+              FlutterMap(
+                mapController: _map,
+                options: MapOptions(
+                  initialCenter: widget.center,
+                  initialZoom: widget.zoom,
+                  minZoom: 4,
+                  maxZoom: 19,
+                  backgroundColor: palette.tint,
+                  onMapReady: () => _updateChunks(_map.camera),
+                  onPositionChanged: (camera, hasGesture) {
+                    if (hasGesture) _userMoved = true;
+                    _updateChunks(camera);
+                  },
+                  onTap: (_, point) => _openCell(point),
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                  ),
+                ),
+                children: [
+                  mapBaseLayer(context, dark: dark, around: [widget.center]),
+                  PolygonLayer(
+                    polygons: [
+                      for (final cell in cells)
+                        _polygon(cell, myUid, palette.accent),
+                    ],
+                  ),
+                  const MapAttribution(),
+                ],
               ),
-              const SizedBox(height: 8),
-              _Badge(tooFar: _chunks == null),
+              Positioned(
+                top: 12,
+                left: 0,
+                right: 0,
+                child: Center(child: _Badge(tooFar: _chunks == null)),
+              ),
+              const Positioned(left: 12, bottom: 12, child: _Legend()),
+              Positioned(
+                right: 12,
+                bottom: 44,
+                child: _RulesButton(
+                  onPressed: () => showModalBottomSheet<void>(
+                    context: context,
+                    showDragHandle: true,
+                    isScrollControlled: true,
+                    builder: (_) => const TerritoryRulesSheet(),
+                  ),
+                ),
+              ),
             ],
-          ),
-        ),
-        Positioned(
-          left: 12,
-          bottom: 12,
-          child: SafeArea(
-            child: _ShadeLegend(
-              // Đang lọc một người thì chú thích theo màu ô của người đó;
-              // xem tất cả thì màu trung tính, vì mỗi người một màu.
-              color: _focus == null
-                  ? Theme.of(context).colorScheme.onSurface
-                  : territoryOwnerColor(
-                      _focus!,
-                      myUid: myUid,
-                      mine: palette.accent,
-                    ),
-            ),
           ),
         ),
       ],
@@ -276,7 +291,7 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
   }
 
   Polygon _polygon(TerritoryCell cell, String? myUid, Color mine) {
-    final color = territoryOwnerColor(cell.ownerUid, myUid: myUid, mine: mine);
+    final color = territoryMapColor(cell.ownerUid, myUid: myUid, mine: mine);
     return Polygon(
       points: cellCorners(cell.tile),
       color: color.withValues(alpha: territoryCellAlpha(cell.meters)),
@@ -286,7 +301,8 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
   }
 }
 
-/// Hàng lọc trên bản đồ: Tất cả · Của tôi · người đang chọn · Mọi người.
+/// Hàng lọc dưới tiêu đề, không đè lên bản đồ: Tất cả · Của tôi · người đang
+/// chọn · Mọi người.
 class _FilterBar extends ConsumerWidget {
   const _FilterBar({
     required this.focus,
@@ -312,7 +328,7 @@ class _FilterBar extends ConsumerWidget {
               territoryDefaultName;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
       child: Row(
         spacing: 8,
         children: [
@@ -347,96 +363,71 @@ class _FilterBar extends ConsumerWidget {
   }
 }
 
-/// Danh sách người giữ ô, nhiều ô trước. Chạm một người thì đóng sheet và
-/// trả người đó về cho bản đồ lọc.
-class _HoldersSheet extends ConsumerWidget {
-  const _HoldersSheet();
+/// Chú thích: màu của tôi và người khác, độ đậm ít km → nhiều.
+class _Legend extends StatelessWidget {
+  const _Legend();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final myUid = ref.watch(firebaseUserProvider).value?.uid;
-    final names = ref.watch(territoryNamesProvider);
-    final theme = Theme.of(context);
-    final body = ref
-        .watch(territoryHoldersProvider)
-        .when(
-          data: (holders) => holders.isEmpty
-              ? const Center(child: Text('Chưa ai giữ ô'))
-              : ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: holders.length,
-                  itemBuilder: (context, i) {
-                    final holder = holders[i];
-                    final name =
-                        names[holder.uid]?.name ?? territoryDefaultName;
-                    return ListTile(
-                      leading: SizedBox(
-                        width: 28,
-                        child: Text(
-                          '${i + 1}',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.titleSmall,
-                        ),
-                      ),
-                      title: Text(
-                        holder.uid == myUid ? '$name (bạn)' : name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: Text(
-                        '${holder.owner.cellCount} ô',
-                        style: theme.textTheme.titleSmall,
-                      ),
-                      onTap: () => Navigator.of(context).pop(holder),
-                    );
-                  },
-                ),
-          error: (error, _) {
-            debugPrint('lãnh địa: tải người giữ ô lỗi: $error');
-            return const Center(child: Text('Chưa tải được'));
-          },
-          loading: () => const RunNowLoading(label: 'Đang tải'),
-        );
-    return SafeArea(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.6,
-          minHeight: 160,
-        ),
-        child: body,
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelSmall;
+    final ink = Theme.of(context).colorScheme.onSurface;
+    Widget swatch(Color color, double alpha) => Container(
+      width: 14,
+      height: 14,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: alpha),
+        border: Border.all(color: color, width: 0.8),
+      ),
+    );
+    return GlassPanel(
+      borderRadius: 12,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        spacing: 4,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 4,
+            children: [
+              swatch(context.runNowPalette.accent, 0.8),
+              Text('Tôi', style: style),
+              const SizedBox(width: 6),
+              swatch(territoryOthersColor(context.runNowPalette.accent), 0.8),
+              Text('Người khác', style: style),
+            ],
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 4,
+            children: [
+              Text('ít km', style: style),
+              for (final alpha in territoryShadeLevels)
+                swatch(ink, alpha * 0.7),
+              Text('nhiều', style: style),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
-/// Chú thích độ đậm: ít km → nhiều km.
-class _ShadeLegend extends StatelessWidget {
-  const _ShadeLegend({required this.color});
+class _RulesButton extends StatelessWidget {
+  const _RulesButton({required this.onPressed});
 
-  final Color color;
+  final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final style = Theme.of(context).textTheme.labelSmall;
     return GlassPanel(
       borderRadius: 12,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        spacing: 4,
-        children: [
-          Text('ít km', style: style),
-          for (final alpha in territoryShadeLevels)
-            Container(
-              width: 14,
-              height: 14,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: alpha),
-                border: Border.all(color: color, width: 0.8),
-              ),
-            ),
-          Text('nhiều', style: style),
-        ],
+      padding: EdgeInsets.zero,
+      child: TextButton.icon(
+        onPressed: onPressed,
+        icon: const Icon(Icons.help_outline_rounded, size: 18),
+        label: const Text('Là gì?'),
       ),
     );
   }
@@ -466,41 +457,7 @@ class _Badge extends ConsumerWidget {
   }
 }
 
-class _CellSheet extends ConsumerWidget {
-  const _CellSheet({required this.cell});
-
-  final TerritoryCell cell;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final name =
-        ref.watch(territoryNamesProvider)[cell.ownerUid]?.name ??
-        territoryDefaultName;
-    final theme = Theme.of(context);
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleMedium,
-              ),
-            ),
-            Text(territoryKm(cell.meters), style: theme.textTheme.titleMedium),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Khoe lãnh địa: đọc các ô của mình quanh chỗ giữ nhiều ô nhất rồi mở sheet
-/// thẻ.
-/// Chưa có ô nào thì không có nút.
+/// Khoe lãnh địa của mình. Chưa có ô nào thì không có nút.
 class _ShareButton extends ConsumerStatefulWidget {
   const _ShareButton();
 
@@ -511,42 +468,21 @@ class _ShareButton extends ConsumerStatefulWidget {
 class _ShareButtonState extends ConsumerState<_ShareButton> {
   var _loading = false;
 
-  Future<void> _share(String uid, TerritoryOwner owner, String name) async {
+  Future<void> _share(String uid, TerritoryOwner owner) async {
     setState(() => _loading = true);
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final cells = await ref
-          .read(territoryRepositoryProvider)
-          .fetchOwnedCells(uid, territoryShareChunks(owner));
-      if (!mounted) return;
-      await showTerritoryShare(
-        context,
-        name: name,
-        cellCount: owner.cellCount,
-        cells: cells,
-      );
-    } catch (error) {
-      debugPrint('khoe lãnh địa lỗi: $error');
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Chưa khoe được lãnh địa')),
-      );
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    await shareMyTerritory(context, ref, uid: uid, owner: owner);
+    if (mounted) setState(() => _loading = false);
   }
 
   @override
   Widget build(BuildContext context) {
     final uid = ref.watch(firebaseUserProvider).value?.uid;
     final owner = ref.watch(myTerritoryProvider).value;
-    final name =
-        ref.watch(userProfileProvider).value?.displayName ??
-        territoryDefaultName;
     if (uid == null || owner == null || owner.cellCount == 0) {
       return const SizedBox.shrink();
     }
     return IconButton(
-      onPressed: _loading ? null : () => _share(uid, owner, name),
+      onPressed: _loading ? null : () => _share(uid, owner),
       tooltip: 'Khoe lãnh địa',
       icon: const Icon(Icons.ios_share),
     );

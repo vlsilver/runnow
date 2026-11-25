@@ -15,16 +15,48 @@ String territoryLocation({String? chunk}) => Uri(
 String territoryKm(int meters) =>
     '${(meters / 1000).toStringAsFixed(1).replaceAll('.', ',')} km';
 
-/// Màu ô: của mình là màu chính của theme; người khác là một tông trung tính
-/// cố định theo uid, để mở lại màn vẫn ra cùng màu.
+/// Màu ô trên bản đồ: của mình là màu chính của theme, mọi người khác một màu
+/// chung ([territoryOthersColor]); muốn biết từng người thì lọc hay mở danh
+/// sách Mọi người.
+Color territoryMapColor(
+  String ownerUid, {
+  required String? myUid,
+  required Color mine,
+}) => ownerUid == myUid ? mine : territoryOthersColor(mine);
+
+/// Màu ô người khác: xanh, trừ khi màu chính của theme có sắc gần xanh (lệch
+/// dưới 45°, như theme Nước) thì dùng tím để hai màu vẫn tách nhau.
+Color territoryOthersColor(Color mine) {
+  final mineHue = HSVColor.fromColor(mine).hue;
+  final blueHue = HSVColor.fromColor(RunNowTerritoryTokens.others).hue;
+  final gap = (mineHue - blueHue).abs();
+  final diff = gap > 180 ? 360 - gap : gap;
+  return diff < 45
+      ? RunNowTerritoryTokens.othersAlt
+      : RunNowTerritoryTokens.others;
+}
+
+/// Màu riêng của một người cho avatar và thanh trong danh sách: của mình là màu
+/// chính, người khác một màu cố định theo uid để mở lại vẫn ra cùng màu.
 Color territoryOwnerColor(
   String ownerUid, {
   required String? myUid,
   required Color mine,
 }) {
   if (ownerUid == myUid) return mine;
-  const others = RunNowTerritoryTokens.otherOwners;
-  return others[_stableHash(ownerUid) % others.length];
+  const people = RunNowTerritoryTokens.people;
+  return people[_stableHash(ownerUid) % people.length];
+}
+
+/// "2,6 km²", "61 ha", "6,8 ha": từ 1 km² ghi km², dưới 10 ha giữ một số lẻ.
+String territoryArea(double m2) {
+  String one(double v) => v.toStringAsFixed(1).replaceAll('.', ',');
+  final ha = m2 / 10000;
+  if (ha >= 99.5) return '${one(ha / 100)} km²';
+  // Làm tròn trước rồi mới chọn cách viết, để 9,96 ha ra "10 ha" chứ không
+  // ra "10,0 ha".
+  if (ha >= 9.95) return '${ha.round()} ha';
+  return '${one(ha)} ha';
 }
 
 /// Ngưỡng mét cho bốn mức đậm của ô. Một lượt chạy xuyên ô dài khoảng

@@ -102,7 +102,10 @@ void main() {
   });
 
   test('câu kèm ảnh', () {
-    expect(territoryShareCaption('An', 12), 'An giữ 12 ô lãnh địa trên 3i');
+    expect(
+      territoryShareCaption('An', '2,6 km²'),
+      'An giữ 2,6 km² lãnh địa trên 3i',
+    );
   });
 
   testWidgets('thẻ lãnh địa không tràn ở mọi kiểu theme', (tester) async {
@@ -112,18 +115,22 @@ void main() {
         MaterialApp(
           key: ValueKey(style),
           theme: buildRunNowTheme(RunNowElement.fire, style: style),
-          home: const Material(
+          home: Material(
             child: Center(
               child: TerritoryPoster(
                 name: 'Nguyễn Văn Một Cái Tên Rất Dài Cho Thẻ',
+                area: '27,8 km²',
                 cellCount: 1234,
-                cells: [TileXY(1, 1), TileXY(40, 9)],
+                cells: const [TileXY(1, 1), TileXY(40, 9)],
+                date: DateTime(2026, 11, 5),
               ),
             ),
           ),
         ),
       );
       expect(find.text('1234 ô'), findsOneWidget);
+      expect(find.text('27,8 km²'), findsOneWidget);
+      expect(find.text('05.11.2026'), findsOneWidget);
       expect(tester.takeException(), isNull, reason: style.name);
     }
   });
@@ -214,10 +221,15 @@ void main() {
       const TileXY(208768, 123181),
     });
     expect(poster.cellCount, 3);
+    // 2 ô ở chunk y=3849 và 1 ô ở y=3700: 66 454,6 m², tính tay.
+    expect(poster.area, '6,6 ha');
     expect(poster.name, 'An');
+    // Chọn khổ ngay trong sheet.
+    expect(find.text('Story'), findsOneWidget);
+    expect(find.text('Feed'), findsOneWidget);
 
     await tester.runAsync(() async {
-      await tester.tap(find.text('Khoe lãnh địa'));
+      await tester.tap(find.text('Chia sẻ'));
       for (var i = 0; i < 40 && share.shared.isEmpty; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 50));
         await tester.pump();
@@ -226,7 +238,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final params = share.shared.single;
-    expect(params.text, 'An giữ 3 ô lãnh địa trên 3i');
+    expect(params.text, 'An giữ 6,6 ha lãnh địa trên 3i');
     expect(params.files!.single.mimeType, 'image/png');
   });
 }

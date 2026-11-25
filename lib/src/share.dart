@@ -398,6 +398,7 @@ Future<void> showShareCardSheet(
   required String caption,
   required String fileName,
   required String label,
+  bool formatPicker = false,
 }) => showModalBottomSheet<void>(
   context: context,
   isScrollControlled: true,
@@ -407,6 +408,7 @@ Future<void> showShareCardSheet(
     caption: caption,
     fileName: fileName,
     label: label,
+    formatPicker: formatPicker,
   ),
 );
 
@@ -416,12 +418,17 @@ class _ShareCardSheet extends StatefulWidget {
     required this.caption,
     required this.fileName,
     required this.label,
+    this.formatPicker = false,
   });
 
   final Widget card;
   final String caption;
   final String fileName;
   final String label;
+
+  /// Hiện hai ô chọn khổ (Story, Feed) ngay trên nút gửi. Khổ chọn ở đây là
+  /// khổ chung của máy, như chọn trong Cài đặt.
+  final bool formatPicker;
 
   @override
   State<_ShareCardSheet> createState() => _ShareCardSheetState();
@@ -468,16 +475,40 @@ class _ShareCardSheetState extends State<_ShareCardSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Bỏ phóng chữ để ảnh giống nhau trên mọi máy.
-            SizedBox(
-              height: 400,
-              child: FittedBox(
-                child: RepaintBoundary(
-                  key: _cardKey,
-                  child: MediaQuery.withNoTextScaling(child: widget.card),
+            // Bỏ phóng chữ để ảnh giống nhau trên mọi máy. Cao tối đa 400,
+            // co lại khi màn thấp để nút gửi không bị đẩy ra ngoài.
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 400),
+                child: FittedBox(
+                  child: RepaintBoundary(
+                    key: _cardKey,
+                    child: MediaQuery.withNoTextScaling(child: widget.card),
+                  ),
                 ),
               ),
             ),
+            if (widget.formatPicker) ...[
+              const SizedBox(height: 16),
+              Consumer(
+                builder: (context, ref, _) {
+                  final controller = ref.watch(shareFormatControllerProvider);
+                  return Row(
+                    spacing: 12,
+                    children: [
+                      for (final format in ShareFormat.values)
+                        Expanded(
+                          child: ShareFormatTile(
+                            format: format,
+                            selected: format == controller.format,
+                            onTap: () => controller.setFormat(format),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ],
             const SizedBox(height: 16),
             Builder(
               builder: (buttonContext) => FilledButton.icon(

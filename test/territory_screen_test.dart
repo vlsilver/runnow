@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart' show SetOptions;
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
 import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
@@ -11,8 +12,11 @@ import 'package:latlong2/latlong.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/territory/territory_grid.dart';
+import 'package:myrun/src/territory/territory_models.dart';
 import 'package:myrun/src/territory/territory_repository.dart';
 import 'package:myrun/src/territory/territory_screen.dart';
+import 'package:myrun/src/territory/territory_sheets.dart';
+import 'package:myrun/src/territory/territory_stats_screen.dart';
 import 'package:myrun/src/territory/territory_widgets.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
@@ -93,6 +97,16 @@ void main() {
   List<Polygon> polygons(WidgetTester tester) =>
       tester.widget<PolygonLayer>(find.byType(PolygonLayer)).polygons;
 
+  /// Mọi người → chạm [name] → màn số liệu → "Xem trên bản đồ".
+  Future<void> pickOnMap(WidgetTester tester, String name) async {
+    await tester.tap(find.text('Mọi người'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(name));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Xem trên bản đồ'));
+    await tester.pumpAndSettle();
+  }
+
   LatLng cellCenter(TileXY cell) =>
       tileCorner(cell.x + 0.5, cell.y + 0.5, territoryCellZoom);
 
@@ -109,7 +123,8 @@ void main() {
     expect(mine.points.first.latitude, closeTo(10.772603102, 1e-9));
     expect(mine.points.first.longitude, closeTo(106.696472168, 1e-9));
     final other = drawn.singleWhere((p) => p != mine);
-    expect(RunNowTerritoryTokens.otherOwners, contains(other.borderColor));
+    // Theme Nước có màu chính gần xanh nên ô người khác màu tím.
+    expect(other.borderColor, RunNowTerritoryTokens.othersAlt);
     // 1 + 2 ô theo byChunk.
     expect(find.text('Của tôi · 3 ô'), findsOneWidget);
   });
@@ -125,7 +140,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Bình'), findsOneWidget);
-    expect(find.text('0,4 km'), findsOneWidget);
+    expect(find.text('Giữ ô này · 30 ngày qua'), findsOneWidget);
+    // Bình 420 m, người bám sau 300 m (m2).
+    expect(find.text('Người bám sau'), findsOneWidget);
+    expect(find.text('0,3 km'), findsOneWidget);
+    expect(find.text('Chạy hơn 0,4 km trong ô này để chiếm'), findsOneWidget);
+
+    await tester.tap(find.text('Xem lãnh địa của Bình'));
+    await tester.pumpAndSettle();
+    expect(find.text('Lãnh địa của Bình'), findsOneWidget);
   });
 
   testWidgets('zoom quá xa thì không tải ô', (tester) async {
@@ -276,19 +299,20 @@ void main() {
       await tester.tap(find.text('Mọi người'));
       await tester.pumpAndSettle();
       // Bình 5 ô, rồi aa và An cùng 3 ô thì uid nhỏ trước; doc rỗng không lên.
-      final rows = tester
-          .widgetList<ListTile>(find.byType(ListTile))
-          .map(
-            (tile) => ((tile.title as Text).data, (tile.trailing as Text).data),
-          )
-          .toList();
-      expect(rows, [
-        ('Bình', '5 ô'),
-        ('3i member', '3 ô'),
-        ('3i member (bạn)', '3 ô'),
-      ]);
+      // Diện tích: ô ở chunk 3849 (vĩ độ ~10,77°) rộng ~22 555 m², tính tay.
+      double y(String text) => tester.getTopLeft(find.text(text)).dy;
+      expect(y('Bình'), lessThan(y('3i member')));
+      expect(y('3i member'), lessThan(y('3i member (bạn)')));
+      expect(find.text('11 ha'), findsOneWidget);
+      expect(find.text('6,8 ha'), findsNWidgets(2));
+      expect(find.text('25 ha · 3 người'), findsOneWidget);
+      expect(find.text('0 ô'), findsNothing);
 
       await tester.tap(find.text('Bình'));
+      await tester.pumpAndSettle();
+      expect(find.text('Lãnh địa của Bình'), findsOneWidget);
+      expect(find.text('Hạng 1 / 3 người giữ ô'), findsOneWidget);
+      await tester.tap(find.text('Xem trên bản đồ'));
       await tester.pumpAndSettle();
       final drawn = polygons(tester);
       expect(drawn, hasLength(1));
@@ -313,10 +337,7 @@ void main() {
     );
     expect(polygons(tester), isEmpty);
 
-    await tester.tap(find.text('Mọi người'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Bình'));
-    await tester.pumpAndSettle();
+    await pickOnMap(tester, 'Bình');
     expect(polygons(tester), hasLength(1));
   });
 
@@ -332,10 +353,7 @@ void main() {
           MapCamera.of(tester.element(find.byType(PolygonLayer)));
       expect(camera().zoom, 19);
 
-      await tester.tap(find.text('Mọi người'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Bình'));
-      await tester.pumpAndSettle();
+      await pickOnMap(tester, 'Bình');
       // Một ô thì fit tới mức zoom trần 17, và ô Bình nằm trong màn hình.
       expect(camera().zoom, 17);
       expect(camera().visibleBounds.contains(cellCenter(binhCell)), isTrue);
@@ -352,10 +370,7 @@ void main() {
     MapCamera camera() =>
         MapCamera.of(tester.element(find.byType(PolygonLayer)));
 
-    await tester.tap(find.text('Mọi người'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Bình'));
-    await tester.pumpAndSettle();
+    await pickOnMap(tester, 'Bình');
     expect(camera().zoom, 18);
     expect(camera().center, cellCenter(binhCell));
   });
@@ -367,10 +382,7 @@ void main() {
       tester,
       Scaffold(body: TerritoryMap(center: cellCenter(mineCell), zoom: 17)),
     );
-    await tester.tap(find.text('Mọi người'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Bình'));
-    await tester.pumpAndSettle();
+    await pickOnMap(tester, 'Bình');
 
     // Tâm bản đồ là ô của An, đang ẩn vì lọc Bình.
     await tester.tapAt(tester.getCenter(find.byType(FlutterMap)));
@@ -394,13 +406,12 @@ void main() {
         MapCamera.of(tester.element(find.byType(PolygonLayer)));
     final before = camera().center;
 
-    await tester.tap(find.text('Mọi người'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Bình'));
-    await tester.pumpAndSettle();
+    await pickOnMap(tester, 'Bình');
     await tester.tap(find.text('Tất cả'));
     await tester.pump();
-    repo.owned.complete([binhCell]);
+    repo.owned.complete(const [
+      TerritoryCell(tile: binhCell, ownerUid: 'binh', meters: 420),
+    ]);
     await tester.pumpAndSettle();
     expect(camera().center, before);
   });
@@ -419,14 +430,13 @@ void main() {
     MapCamera camera() =>
         MapCamera.of(tester.element(find.byType(PolygonLayer)));
 
-    await tester.tap(find.text('Mọi người'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Bình'));
-    await tester.pumpAndSettle();
+    await pickOnMap(tester, 'Bình');
     await tester.drag(find.byType(FlutterMap), const Offset(100, 0));
     await tester.pumpAndSettle();
     final dragged = camera().center;
-    repo.owned.complete([binhCell]);
+    repo.owned.complete(const [
+      TerritoryCell(tile: binhCell, ownerUid: 'binh', meters: 420),
+    ]);
     await tester.pumpAndSettle();
     expect(camera().center, dragged);
   });
@@ -446,18 +456,101 @@ void main() {
     }
     expect(repo.holderReads, 1);
   });
+
+  testWidgets('chạm ô của mình: không có câu để chiếm, không có bám sau', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      Scaffold(body: TerritoryMap(center: cellCenter(mineCell), zoom: 17)),
+    );
+    await tester.tapAt(tester.getCenter(find.byType(FlutterMap)));
+    await tester.pump(kDoubleTapTimeout);
+    await tester.pumpAndSettle();
+    expect(find.text('1,2 km'), findsOneWidget);
+    expect(find.textContaining('để chiếm'), findsNothing);
+    expect(find.text('Người bám sau'), findsNothing);
+    expect(find.text('Xem lãnh địa của bạn'), findsOneWidget);
+  });
+
+  testWidgets('Là gì? mở luật lãnh địa', (tester) async {
+    await pump(tester, const TerritoryScreen(chunk: '6523_3849'));
+    await tester.tap(find.text('Là gì?'));
+    await tester.pumpAndSettle();
+    expect(find.text('Lãnh địa là gì?'), findsOneWidget);
+    expect(find.text('Nhiều km nhất giữ ô'), findsOneWidget);
+  });
+
+  testWidgets(
+    'Thông số đọc ô ở mọi chunk và tính tổng km, ô chắc nhất, bám sát',
+    (tester) async {
+      await firestore.collection('territoryOwners').doc('chi').set({
+        'byChunk': {'6523_3849': 1, '6524_3849': 1},
+      });
+      await firestore.collection('territoryChunks').doc('6523_3849').set({
+        'cells': {
+          '208760_123181': {'u': 'chi', 'm': 1000, 'm2': 900},
+        },
+      }, SetOptions(merge: true));
+      await firestore.collection('territoryChunks').doc('6524_3849').set({
+        'cells': {
+          '208770_123181': {'u': 'chi', 'm': 2500},
+        },
+      });
+      await pump(tester, const TerritoryStatsScreen(uid: 'chi'));
+      await tester.pumpAndSettle();
+
+      // Hai ô ở hai chunk: 1000 + 2500 m; ô chắc nhất 2500 m; 900/1000 ≥ 80%.
+      expect(find.text('3,5 km'), findsOneWidget);
+      expect(find.text('2,5 km'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find
+              .ancestor(
+                of: find.text('ô bị bám sát'),
+                matching: find.byType(Column),
+              )
+              .first,
+          matching: find.text('1'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('chữ trên avatar của mình đọc được trên màu chính', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      Scaffold(body: TerritoryMap(center: cellCenter(mineCell), zoom: 17)),
+    );
+    await tester.tapAt(tester.getCenter(find.byType(FlutterMap)));
+    await tester.pump(kDoubleTapTimeout);
+    await tester.pumpAndSettle();
+    final context = tester.element(find.byType(TerritoryAvatar));
+    final initial = tester.widget<Text>(
+      find.descendant(
+        of: find.byType(TerritoryAvatar),
+        matching: find.byType(Text),
+      ),
+    );
+    expect(initial.style?.color, context.runNowPalette.onAccent);
+  });
 }
 
 /// Đọc ô chờ test cho xong, và đếm số lần đọc danh sách người giữ ô.
 class _SlowRepository extends TerritoryRepository {
   _SlowRepository(super.firestore);
 
-  final owned = Completer<List<TileXY>>();
+  final owned = Completer<List<TerritoryCell>>();
   var holderReads = 0;
 
   @override
-  Future<List<TileXY>> fetchOwnedCells(String uid, Iterable<TileXY> chunks) =>
-      owned.future;
+  Future<List<TerritoryCell>> fetchOwnedCells(
+    String uid,
+    Iterable<TileXY> chunks,
+  ) => owned.future;
 
   @override
   Future<List<TerritoryHolder>> fetchHolders() {

@@ -31,8 +31,9 @@ class TerritoryRepository {
       .snapshots()
       .map((doc) => doc.data()?['enabled'] == true);
 
-  /// Các ô [uid] đang giữ trong [chunks], đọc một lần cho thẻ khoe.
-  Future<List<TileXY>> fetchOwnedCells(
+  /// Các ô [uid] đang giữ trong [chunks], đọc một lần: thẻ khoe, số liệu
+  /// của một người, đưa bản đồ tới ô của người được chọn.
+  Future<List<TerritoryCell>> fetchOwnedCells(
     String uid,
     Iterable<TileXY> chunks,
   ) async {
@@ -43,7 +44,7 @@ class TerritoryRepository {
     return [
       for (final doc in docs)
         for (final cell in parseTerritoryCells(doc.data()))
-          if (cell.ownerUid == uid) cell.tile,
+          if (cell.ownerUid == uid) cell,
     ];
   }
 
@@ -118,6 +119,32 @@ final territoryHoldersProvider =
       ref.onDispose(timer.cancel);
       return holders;
     });
+
+/// Số ô từng chunk của [uid] bất kỳ, cho màn số liệu của một người.
+final territoryOwnerProvider = StreamProvider.autoDispose
+    .family<TerritoryOwner, String>(
+      (ref, uid) => ref.watch(territoryRepositoryProvider).watchOwner(uid),
+    );
+
+/// Mọi ô [uid] đang giữ, đọc theo các chunk trong `byChunk`. Chỉ đọc lại khi
+/// số ô theo chunk đổi: backend ghi lại doc owners (cả `updatedAt`) mỗi lần
+/// tính lại một chunk người đó chạm tới, kể cả khi số không đổi.
+final territoryOwnedCellsProvider = FutureProvider.autoDispose
+    .family<List<TerritoryCell>, String>((ref, uid) async {
+      final repository = ref.watch(territoryRepositoryProvider);
+      final key = await ref.watch(
+        territoryOwnerProvider(uid).selectAsync(_byChunkKey),
+      );
+      final chunks = [
+        for (final part in key.split(',')) ?TileXY.parse(part.split(':').first),
+      ];
+      return repository.fetchOwnedCells(uid, chunks);
+    });
+
+/// "x_y:n,…" theo thứ tự chunk: bằng nhau khi số ô theo chunk không đổi.
+String _byChunkKey(TerritoryOwner owner) => ([
+  for (final e in owner.byChunk.entries) '${e.key.id}:${e.value}',
+]..sort()).join(',');
 
 /// Kết quả lãnh địa của buổi [activityId] thuộc [uid].
 final activityTerritoryResultProvider = StreamProvider.autoDispose

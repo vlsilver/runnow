@@ -7,6 +7,7 @@ class TerritoryCell {
     required this.tile,
     required this.ownerUid,
     required this.meters,
+    this.secondMeters = 0,
   });
 
   /// Ô z18.
@@ -15,6 +16,13 @@ class TerritoryCell {
 
   /// Số mét chủ ô đã chạy trong ô, trong cửa sổ giữ ô (`m`).
   final int meters;
+
+  /// Số mét của người nhiều thứ hai trong ô (`m2`); 0 khi chỉ một người qua.
+  /// Backend không lưu người đó là ai.
+  final int secondMeters;
+
+  /// Người thứ hai có từ 80% km của chủ trở lên: ô dễ mất.
+  bool get contested => secondMeters > 0 && secondMeters * 5 >= meters * 4;
 }
 
 /// Đọc field `cells` của doc chunk. Doc không còn (chunk hết ô) cho danh sách
@@ -30,6 +38,7 @@ List<TerritoryCell> parseTerritoryCells(Map<String, dynamic>? chunk) {
             tile: tile,
             ownerUid: uid,
             meters: (value['m'] as num?)?.toInt() ?? 0,
+            secondMeters: (value['m2'] as num?)?.toInt() ?? 0,
           ),
   ];
 }
@@ -53,6 +62,13 @@ class TerritoryOwner {
 
   /// Tổng số ô đang giữ. Backend chỉ ghi số theo chunk, app tự cộng.
   int get cellCount => byChunk.values.fold(0, (sum, n) => sum + n);
+
+  /// Diện tích đang giữ (m²): số ô từng chunk nhân diện tích một ô ở vĩ độ
+  /// của chunk đó, vì ô nhỏ dần khi lên phía bắc.
+  double get areaM2 => byChunk.entries.fold(
+    0,
+    (sum, e) => sum + e.value * territoryCellAreaM2(e.key),
+  );
 
   /// Chunk giữ nhiều ô nhất, để mở màn Lãnh địa đúng chỗ hay chạy. Bằng nhau
   /// thì lấy id nhỏ hơn cho mỗi lần mở ra cùng một chỗ.
@@ -107,4 +123,27 @@ class TerritoryResult {
 
   /// Số ô buổi này có thêm: ô mới cộng ô chiếm được.
   int get total => taken.values.fold(gained, (sum, n) => sum + n);
+}
+
+/// Số liệu lãnh địa của một người, tính từ các ô người đó đang giữ.
+class TerritoryStats {
+  TerritoryStats(Iterable<TerritoryCell> cells)
+    : cellCount = cells.length,
+      meters = cells.fold(0, (sum, c) => sum + c.meters),
+      strongestMeters = cells.fold(
+        0,
+        (best, c) => c.meters > best ? c.meters : best,
+      ),
+      contested = cells.where((c) => c.contested).length;
+
+  final int cellCount;
+
+  /// Tổng km trong lãnh địa (mét), 30 ngày.
+  final int meters;
+
+  /// Km của ô chắc nhất (mét).
+  final int strongestMeters;
+
+  /// Số ô bị bám sát.
+  final int contested;
 }

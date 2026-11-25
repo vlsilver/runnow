@@ -157,17 +157,115 @@ void main() {
     expect(territoryKm(60), '0,1 km');
   });
 
-  test('màu ô: của mình là màu chính, người khác cố định theo uid', () {
+  test('màu trên bản đồ: của mình màu chính, mọi người khác một màu xanh', () {
+    const mine = Color(0xFF00FF00);
+    expect(territoryMapColor('an', myUid: 'an', mine: mine), mine);
+    expect(
+      territoryMapColor('binh', myUid: 'an', mine: mine),
+      const Color(0xFF2F6FDB),
+    );
+    expect(
+      territoryMapColor('chi', myUid: 'an', mine: mine),
+      const Color(0xFF2F6FDB),
+    );
+  });
+
+  test('màu người khác đổi sang tím khi màu chính gần xanh', () {
+    // Theme Nước #0E96A8 (sắc ~187°) gần xanh #2F6FDB (~219°).
+    expect(
+      territoryOthersColor(const Color(0xFF0E96A8)),
+      RunNowTerritoryTokens.othersAlt,
+    );
+    // Theme Lửa #E63B1F (sắc ~8°) xa xanh.
+    expect(
+      territoryOthersColor(const Color(0xFFE63B1F)),
+      RunNowTerritoryTokens.others,
+    );
+  });
+
+  test('màu riêng từng người: cố định theo uid, của mình là màu chính', () {
     const mine = Color(0xFF00FF00);
     expect(territoryOwnerColor('an', myUid: 'an', mine: mine), mine);
     final binh = territoryOwnerColor('binh', myUid: 'an', mine: mine);
-    expect(RunNowTerritoryTokens.otherOwners, contains(binh));
+    expect(RunNowTerritoryTokens.people, contains(binh));
     expect(territoryOwnerColor('binh', myUid: 'an', mine: mine), binh);
     final colors = {
       for (final uid in ['u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'u7', 'u8'])
         territoryOwnerColor(uid, myUid: 'an', mine: mine),
     };
     expect(colors.length, greaterThan(1));
+  });
+
+  test('diện tích một ô theo vĩ độ chunk', () {
+    // Tính tay: cạnh = 40 075 016,686 / 2^18 × cos(vĩ độ tâm chunk).
+    // Chunk y=3849 (TP.HCM, 10,7686°): 22 554,6 m². y=3700 (17,1198°):
+    // 21 345,3 m².
+    expect(
+      territoryCellAreaM2(const TileXY(6523, 3849)),
+      closeTo(22554.6, 0.5),
+    );
+    expect(
+      territoryCellAreaM2(const TileXY(6600, 3700)),
+      closeTo(21345.3, 0.5),
+    );
+  });
+
+  test('diện tích đang giữ cộng theo từng chunk', () {
+    final owner = TerritoryOwner.fromMap({
+      'byChunk': {'6523_3849': 2, '6600_3700': 1},
+    });
+    // 2 × 22 554,6 + 21 345,3.
+    expect(owner.areaM2, closeTo(66454.6, 1));
+  });
+
+  test('viết diện tích: km² từ 1 km², ha dưới đó', () {
+    expect(territoryArea(2600000), '2,6 km²');
+    expect(territoryArea(1000000), '1,0 km²');
+    expect(territoryArea(999999), '1,0 km²');
+    expect(territoryArea(99600), '10 ha');
+    expect(territoryArea(99400), '9,9 ha');
+    expect(territoryArea(609000), '61 ha');
+    expect(territoryArea(100000), '10 ha');
+    expect(territoryArea(66454.6), '6,6 ha');
+    expect(territoryArea(0), '0,0 ha');
+  });
+
+  test('số liệu một người: tổng km, ô chắc nhất, ô bị bám sát', () {
+    const cells = [
+      TerritoryCell(
+        tile: TileXY(1, 1),
+        ownerUid: 'an',
+        meters: 1000,
+        secondMeters: 800,
+      ),
+      TerritoryCell(
+        tile: TileXY(1, 2),
+        ownerUid: 'an',
+        meters: 1000,
+        secondMeters: 799,
+      ),
+      TerritoryCell(tile: TileXY(1, 3), ownerUid: 'an', meters: 2500),
+    ];
+    final stats = TerritoryStats(cells);
+    expect(stats.cellCount, 3);
+    expect(stats.meters, 4500);
+    expect(stats.strongestMeters, 2500);
+    // Ngưỡng 80%: 800/1000 là bám sát, 799 thì chưa, không có người thứ hai
+    // thì không.
+    expect(stats.contested, 1);
+  });
+
+  test('đọc m2 của ô', () {
+    final cells = parseTerritoryCells({
+      'cells': {
+        '1_1': {'u': 'an', 'm': 900, 'm2': 300},
+        '1_2': {'u': 'an', 'm': 900},
+      },
+    });
+    expect(
+      {for (final c in cells) c.tile.id: c.secondMeters},
+      {'1_1': 300, '1_2': 0},
+    );
   });
 
   test('route màn Lãnh địa', () {

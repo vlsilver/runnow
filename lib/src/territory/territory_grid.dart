@@ -105,3 +105,15 @@ List<TileXY>? chunksInView(
       for (var x = northWest.x; x <= southEast.x; x++) TileXY(x, y),
   ];
 }
+
+/// Chu vi xích đạo trong Web Mercator (EPSG:3857), mét.
+const _earthCircumference = 40075016.686;
+
+/// Diện tích một ô z18 (m²) ở vĩ độ của [chunk]. Ô vuông trên Mercator, cạnh
+/// bằng chu vi xích đạo chia 2^18 nhân cos(vĩ độ): khoảng 150 m ở TP.HCM.
+/// Lấy vĩ độ tâm chunk; trong một chunk (khoảng 5 km) sai lệch dưới 0,2%.
+double territoryCellAreaM2(TileXY chunk) {
+  final lat = chunkCenter(chunk).latitude * math.pi / 180;
+  final side = _earthCircumference / (1 << territoryCellZoom) * math.cos(lat);
+  return side * side;
+}

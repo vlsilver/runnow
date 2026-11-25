@@ -2,26 +2,81 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../providers.dart';
 import '../share.dart';
 import '../theme.dart';
 import 'territory_grid.dart';
 import 'territory_models.dart';
+import 'territory_repository.dart';
+import 'territory_widgets.dart';
 
 /// Câu gửi kèm ảnh lãnh địa.
-String territoryShareCaption(String name, int cellCount) =>
-    '$name giữ $cellCount ô lãnh địa trên 3i';
+String territoryShareCaption(String name, String area) =>
+    '$name giữ $area lãnh địa trên 3i';
 
-/// Mở sheet xem trước thẻ lãnh địa rồi mới khoe. Web không gửi được file nên
-/// chỉ gửi chữ, như các thẻ khác.
+/// Đang mở thẻ khoe: bấm lần nữa (nút ở thanh trên hay ở màn Thông số) không
+/// đọc lại và không chồng thêm sheet.
+var _sharing = false;
+
+/// Khoe lãnh địa của mình: đọc các ô quanh chỗ giữ nhiều ô nhất rồi mở sheet
+/// thẻ. Lỗi thì báo một câu ngắn, lỗi gốc vào log.
+Future<void> shareMyTerritory(
+  BuildContext context,
+  WidgetRef ref, {
+  required String uid,
+  required TerritoryOwner owner,
+}) async {
+  if (_sharing) return;
+  _sharing = true;
+  try {
+    await _shareMyTerritory(context, ref, uid: uid, owner: owner);
+  } finally {
+    _sharing = false;
+  }
+}
+
+Future<void> _shareMyTerritory(
+  BuildContext context,
+  WidgetRef ref, {
+  required String uid,
+  required TerritoryOwner owner,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final name =
+      ref.read(userProfileProvider).value?.displayName ?? territoryDefaultName;
+  try {
+    final cells = await ref
+        .read(territoryRepositoryProvider)
+        .fetchOwnedCells(uid, territoryShareChunks(owner));
+    if (!context.mounted) return;
+    await showTerritoryShare(
+      context,
+      name: name,
+      owner: owner,
+      cells: [for (final c in cells) c.tile],
+    );
+  } catch (error) {
+    debugPrint('khoe lãnh địa lỗi: $error');
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Chưa khoe được lãnh địa')),
+    );
+  }
+}
+
+/// Mở sheet xem trước thẻ lãnh địa, chọn khổ, rồi mới khoe. Web không gửi được
+/// file nên chỉ gửi chữ, như các thẻ khác.
 Future<void> showTerritoryShare(
   BuildContext context, {
   required String name,
-  required int cellCount,
+  required TerritoryOwner owner,
   required List<TileXY> cells,
+  DateTime? date,
 }) async {
-  final caption = territoryShareCaption(name, cellCount);
+  final area = territoryArea(owner.areaM2);
+  final caption = territoryShareCaption(name, area);
   if (kIsWeb) {
     await SharePlus.instance.share(ShareParams(text: caption));
     return;
@@ -30,8 +85,15 @@ Future<void> showTerritoryShare(
     context,
     caption: caption,
     fileName: '3i-lanh-dia.png',
-    label: 'Khoe lãnh địa',
-    card: TerritoryPoster(name: name, cellCount: cellCount, cells: cells),
+    label: 'Chia sẻ',
+    formatPicker: true,
+    card: TerritoryPoster(
+      name: name,
+      area: area,
+      cellCount: owner.cellCount,
+      cells: cells,
+      date: date ?? DateTime.now(),
+    ),
   );
 }
 
@@ -87,19 +149,26 @@ List<Rect> territoryArtRects(
   ];
 }
 
-/// Thẻ dọc 3:4 khoe lãnh địa: các ô của mình trên nền tối, số ô và tên. Không
-/// vẽ tile bản đồ, chỉ hình các ô.
+/// Thẻ dọc 3:4 khoe lãnh địa: các ô của mình trên nền tối, diện tích, số ô,
+/// tên và ngày. Không vẽ tile bản đồ, chỉ hình các ô, để người ngoài khó đoán
+/// chỗ mình hay chạy.
 class TerritoryPoster extends StatelessWidget {
   const TerritoryPoster({
     required this.name,
+    required this.area,
     required this.cellCount,
     required this.cells,
+    required this.date,
     super.key,
   });
 
   final String name;
+
+  /// "2,6 km²", từ [territoryArea].
+  final String area;
   final int cellCount;
   final List<TileXY> cells;
+  final DateTime date;
 
   static const size = Size(360, 480);
   static const _background = RunNowTerritoryTokens.posterBackground;
@@ -121,14 +190,28 @@ class TerritoryPoster extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'LÃNH ĐỊA',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.4,
-                  color: _muted,
-                ),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      '3I RUN · LÃNH ĐỊA',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.4,
+                        color: _muted,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    _date(date),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      letterSpacing: 1.2,
+                      color: _muted,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               Expanded(
@@ -139,7 +222,7 @@ class TerritoryPoster extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                '$cellCount ô',
+                area,
                 style: palette.heading(
                   TextStyle(
                     color: palette.accent,
@@ -149,7 +232,12 @@ class TerritoryPoster extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
+              Text(
+                '$cellCount ô',
+                style: const TextStyle(color: _ink, fontSize: 15),
+              ),
+              const SizedBox(height: 10),
               Text(
                 name,
                 maxLines: 1,
@@ -167,6 +255,10 @@ class TerritoryPoster extends StatelessWidget {
     );
   }
 }
+
+/// "25.11.2026".
+String _date(DateTime d) =>
+    '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
 
 class _CellsPainter extends CustomPainter {
   _CellsPainter(this.cells, this.color);
