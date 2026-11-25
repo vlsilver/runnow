@@ -207,19 +207,7 @@ class _TerritoryRouteLayerState extends ConsumerState<TerritoryRouteLayer> {
       final cells = ref.watch(territoryChunkProvider(chunk)).value;
       for (final cell in cells ?? const <TerritoryCell>[]) {
         if (!_cells.contains(cell.tile)) continue;
-        final color = territoryMapColor(
-          cell.ownerUid,
-          myUid: myUid,
-          mine: mine,
-        );
-        polygons.add(
-          Polygon(
-            points: cellCorners(cell.tile),
-            color: color.withValues(alpha: territoryCellAlpha(cell.meters)),
-            borderColor: color,
-            borderStrokeWidth: cell.ownerUid == myUid ? 1.4 : 0.8,
-          ),
-        );
+        polygons.add(territoryCellPolygon(cell, myUid: myUid, mine: mine));
       }
     }
     if (polygons.isEmpty) return const SizedBox.shrink();

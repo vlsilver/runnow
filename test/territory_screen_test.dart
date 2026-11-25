@@ -12,6 +12,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/territory/territory_grid.dart';
+import 'package:myrun/src/territory/territory_home_section.dart';
 import 'package:myrun/src/territory/territory_models.dart';
 import 'package:myrun/src/territory/territory_repository.dart';
 import 'package:myrun/src/territory/territory_screen.dart';
@@ -93,6 +94,12 @@ void main() {
       await tester.pump();
     }
   }
+
+  Widget homeSection() => Scaffold(
+    body: SingleChildScrollView(
+      child: TerritoryHomeSection(header: (onMore) => const Text('Lãnh địa')),
+    ),
+  );
 
   List<Polygon> polygons(WidgetTester tester) =>
       tester.widget<PolygonLayer>(find.byType(PolygonLayer)).polygons;
@@ -201,12 +208,9 @@ void main() {
     await pump(tester, const TerritoryScreen(), enabled: false);
     expect(find.byType(FlutterMap), findsNothing);
 
-    await pump(
-      tester,
-      const Scaffold(body: TerritoryHomeRow()),
-      enabled: false,
-    );
+    await pump(tester, homeSection(), enabled: false);
     expect(find.textContaining('Lãnh địa'), findsNothing);
+    expect(find.byType(FlutterMap), findsNothing);
   });
 
   testWidgets('hồ sơ private thì nhắc chỉ hồ sơ công khai mới có ô', (
@@ -256,9 +260,64 @@ void main() {
     expect(find.textContaining('permission-denied'), findsNothing);
   });
 
-  testWidgets('cờ bật thì Trang chủ có dòng Lãnh địa · N ô', (tester) async {
-    await pump(tester, const Scaffold(body: TerritoryHomeRow()));
-    expect(find.text('Lãnh địa · 3 ô'), findsOneWidget);
+  testWidgets('Trang chủ có mục Lãnh địa: bản đồ nhỏ và top 3 có mình', (
+    tester,
+  ) async {
+    await pump(tester, homeSection());
+    expect(find.text('Lãnh địa'), findsOneWidget);
+    expect(find.byType(FlutterMap), findsOneWidget);
+    // Bình 5 ô, aa 3 ô, An 3 ô (bằng ô thì theo uid): An đứng hạng 3.
+    expect(find.text('Bình'), findsOneWidget);
+    expect(find.text('3i member (bạn)'), findsOneWidget);
+    // Hạng 3 nằm trong dòng của mình (cạnh chữ cái đầu "3" của avatar).
+    final myRow = find
+        .ancestor(of: find.text('3i member (bạn)'), matching: find.byType(Row))
+        .first;
+    expect(
+      find.descendant(of: myRow, matching: find.text('3')),
+      findsNWidgets(2),
+    );
+  });
+
+  testWidgets('Trang chủ: số ô của mình đổi thì BXH đọc lại', (tester) async {
+    await pump(tester, homeSection());
+    expect(find.text('20 ô'), findsNothing);
+    // Backend ghi ô của buổi vừa chạy: doc owner của mình đổi.
+    await firestore.collection('territoryOwners').doc('an').set({
+      'byChunk': {'6523_3849': 20},
+    });
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+    }
+    expect(find.text('20 ô'), findsOneWidget);
+    expect(find.textContaining('(bạn)'), findsOneWidget);
+  });
+
+  testWidgets('Trang chủ: mình ngoài top 3 thì thêm dòng của mình', (
+    tester,
+  ) async {
+    for (final uid in ['c1', 'c2']) {
+      await firestore.collection('territoryOwners').doc(uid).set({
+        'byChunk': {'6523_3849': 10},
+      });
+    }
+    await pump(tester, homeSection());
+    // c1, c2 (10 ô), Bình (5), rồi An hạng 5 (aa đứng trước An).
+    expect(find.text('Bình'), findsOneWidget);
+    expect(find.text('3i member (bạn)'), findsOneWidget);
+    expect(find.text('5'), findsOneWidget);
+    expect(find.text('4'), findsNothing);
+  });
+
+  testWidgets('Trang chủ: chưa giữ ô vẫn có mục, kèm lời mời chạy', (
+    tester,
+  ) async {
+    await pump(tester, homeSection(), uid: 'moi');
+    expect(find.text('Lãnh địa'), findsOneWidget);
+    expect(
+      find.text('Bạn chưa giữ ô nào. Chạy qua ô là có ô.'),
+      findsOneWidget,
+    );
   });
 
   test('độ đậm theo km: bốn mức, ngưỡng 300, 750, 1500 m', () {

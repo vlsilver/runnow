@@ -142,6 +142,7 @@ Ghi `result` chỉ khi chưa có. Firestore không có precondition kiểu "fiel
 
 - **Chạm ô:** chủ ô, km giữ ô, thanh so với người bám sau (`m2`, không có tên vì backend không lưu), câu "Chạy hơn X km trong ô này để chiếm".
 - **Mọi người:** hạng theo số ô, diện tích và số ô từng người. Chạm một người mở **Thông số**: bản đồ nhỏ, hạng, diện tích, số ô, km trong lãnh địa (tổng `m`), ô chắc nhất, ô bị bám sát (`m2` ≥ 80% `m`). "Xem trên bản đồ" lọc bản đồ theo người đó.
+- **Trang chủ:** mục "Lãnh địa" cùng kiểu các mục khác, ngay dưới BXH tuần. Bản đồ nhỏ đứng yên các ô quanh chunk mình giữ nhiều ô nhất (chưa có ô thì chunk của người đứng đầu), rồi BXH lãnh địa: top 3 và dòng của mình nếu ngoài top 3, chưa có ô thì lời mời chạy. Chạm tiêu đề hay bản đồ mở màn Lãnh địa, chạm một người mở Thông số. Chỉ ẩn khi lãnh địa tắt. Đọc chung danh sách người giữ ô với sheet Mọi người (mọi doc `territoryOwners`). Trang chủ không đóng nên danh sách đọc lại khi số ô của mình đổi, khi kéo tải lại, mở lại app hay lưu buổi. Bản đồ nhỏ nghe doc chunk của vùng đó suốt phiên (tới khoảng 70 KB một doc khi chunk đầy ô, gửi lại mỗi lần backend ghi chunk). Khi số người giữ ô lên cỡ nghìn thì cần doc BXH tổng hợp ở backend, và bản đồ nhỏ nên đọc một lần thay vì nghe.
 - **Diện tích** = số ô từng chunk × diện tích một ô ở vĩ độ chunk (cạnh ≈ 150 m ở TP.HCM, ≈ 2,26 ha).
 - **Thẻ khoe:** diện tích, số ô, tên, ngày; chỉ hình ô, không nền bản đồ; chọn khổ Story / Feed.
 

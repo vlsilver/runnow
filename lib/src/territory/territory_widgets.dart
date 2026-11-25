@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/territory/territory_grid.dart';
@@ -131,53 +132,20 @@ int _stableHash(String text) {
   return hash;
 }
 
-/// Dòng "Lãnh địa · N ô" ở Trang chủ, chạm mở màn Lãnh địa. Không hiện gì khi
-/// cờ tắt hay chưa đăng nhập.
-class TerritoryHomeRow extends ConsumerWidget {
-  const TerritoryHomeRow({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (!(ref.watch(territoryEnabledProvider).value ?? false)) {
-      return const SizedBox.shrink();
-    }
-    final owner = ref.watch(myTerritoryProvider);
-    if (owner.hasValue && owner.value == null) return const SizedBox.shrink();
-    final palette = context.runNowPalette;
-    final count = owner.value?.cellCount;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Material(
-        color: palette.tint,
-        shape: palette.roundBorder,
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () => context.push(territoryLocation()),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 10, 12),
-            child: Row(
-              children: [
-                Icon(Icons.grid_view_rounded, size: 20, color: palette.accent),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    count == null ? 'Lãnh địa' : 'Lãnh địa · $count ô',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withValues(alpha: 0.45),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+/// Một ô trên bản đồ: màu theo chủ (của mình là [mine]), đậm theo km, viền
+/// ô của mình dày hơn. Màn Lãnh địa, lớp ô dưới tuyến và Trang chủ dùng chung.
+Polygon territoryCellPolygon(
+  TerritoryCell cell, {
+  required String? myUid,
+  required Color mine,
+}) {
+  final color = territoryMapColor(cell.ownerUid, myUid: myUid, mine: mine);
+  return Polygon(
+    points: cellCorners(cell.tile),
+    color: color.withValues(alpha: territoryCellAlpha(cell.meters)),
+    borderColor: color,
+    borderStrokeWidth: cell.ownerUid == myUid ? 1.4 : 0.8,
+  );
 }
 
 /// Người bị chiếm ô trong buổi, mất nhiều ô nhất trước; bằng nhau thì theo

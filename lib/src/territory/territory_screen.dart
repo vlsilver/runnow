@@ -321,7 +321,11 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
                   PolygonLayer(
                     polygons: [
                       for (final cell in cells)
-                        _polygon(cell, myUid, palette.accent),
+                        territoryCellPolygon(
+                          cell,
+                          myUid: myUid,
+                          mine: palette.accent,
+                        ),
                       // Ô vừa mất: viền nét đứt màu của mình trên ô người chiếm.
                       for (final cell in lost)
                         Polygon(
@@ -370,16 +374,6 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
           ),
         ),
       ],
-    );
-  }
-
-  Polygon _polygon(TerritoryCell cell, String? myUid, Color mine) {
-    final color = territoryMapColor(cell.ownerUid, myUid: myUid, mine: mine);
-    return Polygon(
-      points: cellCorners(cell.tile),
-      color: color.withValues(alpha: territoryCellAlpha(cell.meters)),
-      borderColor: color,
-      borderStrokeWidth: cell.ownerUid == myUid ? 1.4 : 0.8,
     );
   }
 }

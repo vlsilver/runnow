@@ -114,6 +114,8 @@ final territoryHoldersProvider =
           .watch(territoryRepositoryProvider)
           .fetchHolders();
       // Chỉ giữ khi đọc được: lỗi thì đóng sheet là thôi thử lại, mở lại đọc mới.
+      // Giữ 5 phút sau khi không ai nghe; Trang chủ nghe suốt nên tự đọc lại
+      // khi số ô của mình đổi và khi kéo tải lại, mở lại app, lưu buổi.
       final link = ref.keepAlive();
       final timer = Timer(const Duration(minutes: 5), link.close);
       ref.onDispose(timer.cancel);

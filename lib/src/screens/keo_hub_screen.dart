@@ -8,7 +8,8 @@ import 'package:myrun/src/achievements/club_card_widgets.dart';
 import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/club_ranking.dart';
 import 'package:myrun/src/rank/rank_reward_widgets.dart';
-import 'package:myrun/src/territory/territory_widgets.dart';
+import 'package:myrun/src/territory/territory_home_section.dart';
+import 'package:myrun/src/territory/territory_repository.dart';
 import 'package:myrun/src/club_runs.dart';
 import 'package:myrun/src/formatters.dart';
 import 'package:myrun/src/games/game_models.dart';
@@ -99,6 +100,7 @@ class _KeoHubScreenState extends ConsumerState<KeoHubScreen> {
     ref.invalidate(hubClubContractsProvider);
     ref.invalidate(gameListProvider);
     ref.invalidate(hubClubRunsProvider);
+    ref.invalidate(territoryHoldersProvider);
   }
 
   @override
@@ -168,7 +170,10 @@ class _KeoHubScreenState extends ConsumerState<KeoHubScreen> {
                   const _LiveSection(),
                   const _KeoSection(),
                   const _RankSection(),
-                  const TerritoryHomeRow(),
+                  TerritoryHomeSection(
+                    header: (onMore) =>
+                        HubSectionHeader(title: 'Lãnh địa', onMore: onMore),
+                  ),
                   _CardsSection(key: _cardsKey, motion: _cardsMotion),
                   const _RunsSection(),
                 ],
