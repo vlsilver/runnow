@@ -69,7 +69,7 @@ class TerritoryHomeSection extends ConsumerWidget {
             if (holders.isEmpty)
               const Padding(
                 padding: EdgeInsets.all(16),
-                child: Text('Chưa ai giữ ô. Chạy qua ô là có ô.'),
+                child: Text('Chưa ai giữ ô, chạy qua ô để có ô.'),
               )
             else ...[
               for (var i = 0; i < holders.length && i < _homeTop; i++)
@@ -79,7 +79,7 @@ class TerritoryHomeSection extends ConsumerWidget {
               if (myRank < 0)
                 const Padding(
                   padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
-                  child: Text('Bạn chưa giữ ô nào. Chạy qua ô là có ô.'),
+                  child: Text('Bạn chưa giữ ô nào, chạy qua ô để có ô.'),
                 ),
             ],
           ],

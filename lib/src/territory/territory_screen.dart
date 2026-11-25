@@ -406,7 +406,7 @@ class _FilterBar extends ConsumerWidget {
     // người đó; "Mọi người" mở danh sách nên là nút, không phải một lựa chọn.
     final items = <String?, String>{
       null: 'Tất cả',
-      ?myUid: 'Của tôi',
+      ?myUid: 'Của bạn',
       ?other: otherName ?? territoryDefaultName,
     };
     return Padding(
@@ -427,7 +427,7 @@ class _FilterBar extends ConsumerWidget {
             ),
           ),
           IconButton(
-            tooltip: 'Mọi người',
+            tooltip: 'Người giữ ô',
             onPressed: onPeople,
             icon: const Icon(Icons.groups_rounded),
           ),
@@ -466,7 +466,7 @@ class _Legend extends StatelessWidget {
             spacing: 4,
             children: [
               swatch(context.runNowPalette.accent, 0.8),
-              Text('Tôi', style: style),
+              Text('Bạn', style: style),
               const SizedBox(width: 6),
               swatch(territoryOthersColor(context.runNowPalette.accent), 0.8),
               Text('Người khác', style: style),
@@ -476,10 +476,10 @@ class _Legend extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             spacing: 4,
             children: [
-              Text('ít km', style: style),
+              Text('Ít km', style: style),
               for (final alpha in territoryShadeLevels)
                 swatch(ink, alpha * 0.7),
-              Text('nhiều', style: style),
+              Text('Nhiều km', style: style),
             ],
           ),
         ],
@@ -501,7 +501,7 @@ class _RulesButton extends StatelessWidget {
       child: TextButton.icon(
         onPressed: onPressed,
         icon: const Icon(Icons.help_outline_rounded, size: 18),
-        label: const Text('Là gì?'),
+        label: const Text('Luật chơi'),
       ),
     );
   }
@@ -586,7 +586,7 @@ class _Badge extends ConsumerWidget {
       borderRadius: 18,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       child: Text(
-        tooFar ? 'Phóng to để xem ô' : 'Hồ sơ công khai mới có ô',
+        tooFar ? 'Phóng to để xem ô' : 'Bạn cần công khai hồ sơ để được tính ô.',
         style: Theme.of(context).textTheme.titleSmall,
       ),
     );

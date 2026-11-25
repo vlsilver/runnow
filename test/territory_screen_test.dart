@@ -108,11 +108,11 @@ void main() {
 
   /// Mọi người → chạm [name] → màn số liệu → "Xem trên bản đồ".
   Future<void> pickOnMap(WidgetTester tester, String name) async {
-    await tester.tap(find.byTooltip('Mọi người'));
+    await tester.tap(find.byTooltip('Người giữ ô'));
     await tester.pumpAndSettle();
     await tester.tap(find.text(name));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Xem trên bản đồ'));
+    await tester.tap(find.text('Xem bản đồ'));
     await tester.pumpAndSettle();
   }
 
@@ -135,7 +135,7 @@ void main() {
     // Theme Nước có màu chính gần xanh nên ô người khác màu tím.
     expect(other.borderColor, RunNowTerritoryTokens.othersAlt);
     // 1 + 2 ô theo byChunk.
-    expect(find.text('Của tôi'), findsOneWidget);
+    expect(find.text('Của bạn'), findsOneWidget);
   });
 
   testWidgets('mở theo ô thì canh giữa ô đó, ô sai lưới thì về chunk', (
@@ -169,7 +169,7 @@ void main() {
     expect(find.text('Bình'), findsOneWidget);
     expect(find.text('Giữ ô này trong 30 ngày qua'), findsOneWidget);
     // Bình 420 m, người bám sau 300 m (m2).
-    expect(find.text('Người bám sau'), findsOneWidget);
+    expect(find.text('Hạng nhì'), findsOneWidget);
     expect(find.text('0,3 km'), findsOneWidget);
     expect(find.text('Chạy hơn 0,4 km trong ô này để chiếm'), findsOneWidget);
 
@@ -200,7 +200,7 @@ void main() {
     await pump(tester, const TerritoryScreen(), uid: 'moi');
     final map = tester.widget<FlutterMap>(find.byType(FlutterMap));
     expect(map.options.initialCenter, territoryDefaultCenter);
-    expect(find.text('Của tôi'), findsOneWidget);
+    expect(find.text('Của bạn'), findsOneWidget);
   });
 
   testWidgets('cờ tắt thì không có bản đồ và không có dòng ở Trang chủ', (
@@ -226,7 +226,7 @@ void main() {
         visibility: ProfileVisibility.private,
       ),
     );
-    expect(find.text('Hồ sơ công khai mới có ô'), findsOneWidget);
+    expect(find.text('Bạn cần công khai hồ sơ để được tính ô.'), findsOneWidget);
   });
 
   testWidgets('hồ sơ công khai thì nhãn là số ô', (tester) async {
@@ -239,8 +239,8 @@ void main() {
         visibility: ProfileVisibility.public,
       ),
     );
-    expect(find.text('Hồ sơ công khai mới có ô'), findsNothing);
-    expect(find.text('Của tôi'), findsOneWidget);
+    expect(find.text('Bạn cần công khai hồ sơ để được tính ô.'), findsNothing);
+    expect(find.text('Của bạn'), findsOneWidget);
   });
 
   testWidgets('cờ chưa về thì đang tải, không báo chưa mở', (tester) async {
@@ -326,7 +326,7 @@ void main() {
     await pump(tester, homeSection(), uid: 'moi');
     expect(find.text('Lãnh địa'), findsOneWidget);
     expect(
-      find.text('Bạn chưa giữ ô nào. Chạy qua ô là có ô.'),
+      find.text('Bạn chưa giữ ô nào, chạy qua ô để có ô.'),
       findsOneWidget,
     );
   });
@@ -484,7 +484,7 @@ void main() {
         .runNowPalette
         .accent;
 
-    await tester.tap(find.text('Của tôi'));
+    await tester.tap(find.text('Của bạn'));
     await tester.pump();
     expect(polygons(tester).map((p) => p.borderColor), [accent]);
 
@@ -502,7 +502,7 @@ void main() {
           .runNowPalette
           .accent;
 
-      await tester.tap(find.byTooltip('Mọi người'));
+      await tester.tap(find.byTooltip('Người giữ ô'));
       await tester.pumpAndSettle();
       // Bình 5 ô, rồi aa và An cùng 3 ô thì uid nhỏ trước; doc rỗng không lên.
       // Diện tích: ô ở chunk 3849 (vĩ độ ~10,77°) rộng ~22 555 m², tính tay.
@@ -517,8 +517,8 @@ void main() {
       await tester.tap(find.text('Bình'));
       await tester.pumpAndSettle();
       expect(find.text('Lãnh địa của Bình'), findsOneWidget);
-      expect(find.text('Hạng 1 / 3 người giữ ô'), findsOneWidget);
-      await tester.tap(find.text('Xem trên bản đồ'));
+      expect(find.text('Hạng 1 trong 3 người giữ ô'), findsOneWidget);
+      await tester.tap(find.text('Xem bản đồ'));
       await tester.pumpAndSettle();
       final drawn = polygons(tester);
       expect(drawn, hasLength(1));
@@ -661,7 +661,7 @@ void main() {
       repository: repo,
     );
     for (var i = 0; i < 2; i++) {
-      await tester.tap(find.byTooltip('Mọi người'));
+      await tester.tap(find.byTooltip('Người giữ ô'));
       await tester.pumpAndSettle();
       await tester.tapAt(const Offset(10, 10)); // đóng sheet
       await tester.pumpAndSettle();
@@ -681,16 +681,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('1,2 km'), findsOneWidget);
     expect(find.textContaining('để chiếm'), findsNothing);
-    expect(find.text('Người bám sau'), findsNothing);
+    expect(find.text('Hạng nhì'), findsNothing);
     expect(find.byType(OutlinedButton), findsNothing);
   });
 
-  testWidgets('Là gì? mở luật lãnh địa', (tester) async {
+  testWidgets('Luật chơi mở luật lãnh địa', (tester) async {
     await pump(tester, const TerritoryScreen(chunk: '6523_3849'));
-    await tester.tap(find.text('Là gì?'));
+    await tester.tap(find.text('Luật chơi'));
     await tester.pumpAndSettle();
-    expect(find.text('Lãnh địa là gì?'), findsOneWidget);
-    expect(find.text('Nhiều km nhất giữ ô'), findsOneWidget);
+    expect(find.text('Luật lãnh địa'), findsOneWidget);
+    expect(find.text('Ai chạy nhiều km nhất thì giữ ô'), findsOneWidget);
   });
 
   testWidgets(
@@ -719,7 +719,7 @@ void main() {
         find.descendant(
           of: find
               .ancestor(
-                of: find.text('ô bị bám sát'),
+                of: find.text('Bị bám sát'),
                 matching: find.byType(Column),
               )
               .first,

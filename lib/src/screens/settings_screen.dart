@@ -226,7 +226,7 @@ class SettingsScreen extends ConsumerWidget {
                   if (ref.watch(territoryEnabledProvider).value ?? false)
                     _SettingsRow(
                       icon: Icons.grid_view_rounded,
-                      title: 'Ô lãnh địa trên bản đồ',
+                      title: 'Ô lãnh địa',
                       value: switch (ref.watch(territoryMapPrefsProvider)) {
                         final prefs =>
                           '${TerritoryMapPlace.values.where(prefs.shows).length}'

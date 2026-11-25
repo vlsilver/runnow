@@ -47,26 +47,26 @@ class TerritoryRulesSheet extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           spacing: 16,
           children: [
-            Text('Lãnh địa là gì?', style: theme.textTheme.headlineSmall),
+            Text('Luật lãnh địa', style: theme.textTheme.headlineSmall),
             rule(
               Icons.grid_view_rounded,
-              'Chạy qua ô là có ô',
-              'Mỗi ô khoảng 150 m. Bỏ 200 m đầu và cuối buổi.',
+              'Chạy qua ô để có ô',
+              'Mỗi ô khoảng 150 m, không tính 200 m đầu và cuối buổi chạy.',
             ),
             rule(
               Icons.bar_chart_rounded,
-              'Nhiều km nhất giữ ô',
-              'Tính km trong ô 30 ngày gần nhất.',
+              'Ai chạy nhiều km nhất thì giữ ô',
+              'Tính km chạy trong ô trong 30 ngày gần nhất.',
             ),
             rule(
               Icons.layers_rounded,
               'Ô càng đậm càng khó chiếm',
-              'Muốn chiếm, chạy trong ô nhiều km hơn chủ ô.',
+              'Để chiếm ô, bạn cần chạy nhiều km hơn chủ ô trong ô đó.',
             ),
             rule(
               Icons.visibility_outlined,
-              'Chỉ hồ sơ công khai',
-              'Bản đồ ô cho thấy chỗ bạn hay chạy.',
+              'Hồ sơ phải công khai',
+              'Bản đồ cho thấy nơi bạn hay chạy.',
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(),
@@ -146,7 +146,7 @@ class TerritoryCellSheet extends ConsumerWidget {
                     color: mapColor,
                   ),
                   _MetersBar(
-                    label: 'Người bám sau',
+                    label: 'Hạng nhì',
                     meters: cell.secondMeters,
                     max: cell.meters,
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
@@ -307,7 +307,7 @@ class TerritoryHoldersSheet extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          'Mọi người',
+                          'Người giữ ô',
                           style: theme.textTheme.headlineSmall,
                         ),
                       ),

@@ -111,7 +111,7 @@ class _Body extends ConsumerWidget {
                           ),
                           if (rank != null && rank >= 0)
                             Text(
-                              'Hạng ${rank + 1} / ${holders!.length} người '
+                              'Hạng ${rank + 1} trong ${holders!.length} người '
                               'giữ ô',
                               style: theme.textTheme.bodySmall,
                             ),
@@ -127,7 +127,7 @@ class _Body extends ConsumerWidget {
                             color: palette.accent,
                           ),
                         ),
-                        Text('diện tích giữ', style: theme.textTheme.bodySmall),
+                        Text('Diện tích', style: theme.textTheme.bodySmall),
                       ],
                     ),
                   ],
@@ -141,15 +141,15 @@ class _Body extends ConsumerWidget {
                   crossAxisSpacing: 8,
                   childAspectRatio: 2.2,
                   children: [
-                    _Stat(value: '${owner.cellCount}', label: 'ô đang giữ'),
-                    _Stat(value: km(stats?.meters), label: 'km trong lãnh địa'),
+                    _Stat(value: '${owner.cellCount}', label: 'Ô đang giữ'),
+                    _Stat(value: km(stats?.meters), label: 'Km lãnh địa'),
                     _Stat(
                       value: km(stats?.strongestMeters),
-                      label: 'ô chắc nhất',
+                      label: 'Ô nhiều km nhất',
                     ),
                     _Stat(
                       value: number(stats?.contested),
-                      label: 'ô bị bám sát',
+                      label: 'Bị bám sát',
                       color: (stats?.contested ?? 0) > 0
                           ? palette.accent
                           : null,
@@ -182,7 +182,7 @@ class _Body extends ConsumerWidget {
                     onPressed: owner.cellCount == 0
                         ? null
                         : () => Navigator.of(context).pop(owner),
-                    child: const Text('Xem trên bản đồ'),
+                    child: const Text('Xem bản đồ'),
                   ),
                 ),
               ],

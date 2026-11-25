@@ -225,7 +225,7 @@ void main() {
     expect(find.text('chiếm 2 ô của Bình'), findsOneWidget);
     expect(opened, isEmpty);
 
-    await tester.tap(find.text('Xem trên bản đồ'));
+    await tester.tap(find.text('Xem bản đồ'));
     await tester.pumpAndSettle();
     expect(opened, ['/lanh-dia?chunk=6523_3849&cell=208767_123181']);
   });

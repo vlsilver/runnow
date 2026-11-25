@@ -117,7 +117,7 @@ class TerritoryResultSheet extends ConsumerWidget {
                   ),
                 );
               },
-              child: const Text('Xem trên bản đồ'),
+              child: const Text('Xem bản đồ'),
             ),
           ],
         ),

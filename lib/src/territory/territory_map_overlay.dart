@@ -231,7 +231,7 @@ Future<void> showTerritoryMapPrefsSheet(BuildContext context) =>
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                   child: Text(
-                    'Ô lãnh địa trên bản đồ',
+                    'Ô lãnh địa',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
@@ -322,7 +322,7 @@ class TerritoryMapToggle extends ConsumerWidget {
       // Một nút một câu đọc; bỏ phần đọc riêng của Tooltip và InkWell.
       excludeSemantics: true,
       child: Tooltip(
-        message: on ? 'Ẩn ô lãnh địa' : 'Hiện ô lãnh địa',
+        message: on ? 'Ẩn ô' : 'Hiện ô',
         child: button,
       ),
     );
