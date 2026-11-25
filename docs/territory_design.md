@@ -16,7 +16,7 @@ Quà BXH (app 1.18.0+37) đã ra. Map vector tự host (Protomaps qua `mapBaseLa
 ### Đích đến
 
 - Lưu buổi chạy xong, trong vài giây người chạy thấy "+N ô" ở màn kết thúc và màn chi tiết buổi.
-- Mở màn Lãnh địa thì thấy ô của mình và của người khác trên bản đồ.
+- Mở màn Lãnh địa thì thấy ô của mình và của mọi người trên bản đồ, lọc được theo từng người, ô càng nhiều km càng đậm.
 - Bị chiếm ô thì nhận một push, chạm vào mở đúng vùng đó.
 - Khoe được một thẻ ảnh lãnh địa.
 - Đổi luật (số ngày giữ ô, môn tính, ngưỡng chống gian) chỉ cần sửa backend, không bắt update app.
@@ -136,6 +136,17 @@ Kết quả tính một lần, so với **các buổi đã về lúc xử lý**,
 
 Ghi `result` chỉ khi chưa có. Firestore không có precondition kiểu "field chưa có", nên đây là kiểm trong code; queue một luồng làm việc kiểm này đủ. `counted` đổi từ false sang true thì xoá `result`, để lần sync đó tính lại.
 
+### Màn Lãnh địa
+
+**Màn Lãnh địa là chỗ xem lãnh địa của mình và của mọi người.** Trên bản đồ có hàng lọc Tất cả · Của tôi · Mọi người. Mọi người mở danh sách người đang giữ ô, nhiều ô trước, bằng nhau thì theo `uid` để thứ tự không nhảy. Chọn một người thì bản đồ chỉ vẽ ô của người đó. Màn hình không có ô nào của họ thì bản đồ fit vào các ô họ giữ ở chunk nhiều ô nhất; đang thấy ô của họ thì giữ chỗ xem. Người dùng đổi lọc hay tự kéo bản đồ trong lúc chờ đọc ô thì bản đồ không bị kéo đi.
+
+**Ô đậm theo `m`**, tức số mét chủ ô chạy trong ô trong cửa sổ giữ ô. Có bốn mức, ngưỡng 300, 750 và 1500 m, tương đương khoảng 2, 5 và 10 lượt qua ô (mỗi lượt khoảng 150 m). Đây cũng là số dùng để xét ai giữ ô, nên ô càng đậm thì người khác càng phải chạy nhiều mới chiếm được. Chạm ô thì thấy tên chủ và km.
+
+| Được | Mất |
+|---|---|
+| Không đổi backend, không tính lại dữ liệu: `m` đã có trong chunk | Một buổi chạy vòng nhiều lần trong một ô cũng làm ô đậm, chứ không đếm số buổi |
+| Danh sách Mọi người đọc thẳng `territoryOwners`, rules đã cho đọc | Mỗi lần tải đọc mọi doc owners, kể cả doc rỗng (lọc ở app). App giữ danh sách 5 phút sau lần đọc thành công |
+
 ### Phương án đã cân nhắc và loại
 
 | Phương án | Lý do loại |
@@ -145,6 +156,7 @@ Ghi `result` chỉ khi chưa có. Firestore không có precondition kiểu "fiel
 | Mỗi ô một doc | App phải nghe hàng nghìn doc; tốn lượt đọc gấp vài trăm lần chunk |
 | Áp tăng dần làm đường chính, tính lại khi cần | Hai đường giữ cùng một luật và lệch nhau ở mép cửa sổ. Kết quả dựa vào phần chênh nên sai khi task chạy lại giữa chừng |
 | Suy kết quả của buổi từ chunk đã lưu | Hai buổi mới của cùng một người trong một lần tính lại thì bị đếm đôi hoặc mất |
+| Độ đậm theo số buổi qua ô | Backend phải ghi thêm field cho mỗi ô và tính lại mọi chunk. Km đã nói đúng điều người xem cần: ô này khó chiếm tới đâu |
 | Task song song, chống xen kẽ bằng cờ `pendingChunks` và field trên tombstone | Cờ mất ở nhiều đường: ghi đè, xoá lẫn của task khác, `deleteActivity` đọc buổi ngoài transaction, `fetchAndUpsert` xoá tombstone. Hàng đợi một luồng gọn hơn và rẻ ở quy mô này |
 
 ## 3. Kiến trúc và thay đổi
@@ -217,7 +229,7 @@ flowchart LR
 | `migrations/territory-backfill` (mới) | Chạy `Sync` cho mọi user, không hẹn push | Nhỏ |
 | `firestore.rules` | `territoryChunks`, `territoryOwners`, `config/territory`: đọc khi đăng nhập, app không ghi. App lấy cờ bật từ `config/territory.enabled`, không dùng Remote Config riêng, để ra mắt chỉ bật một chỗ và bản web cũng theo được. `territoryPushes`: không ai đọc từ app | Nhỏ |
 | `firestore.indexes.json` | Index collection group `activities`: `territory.counted` ==, `territory.chunks` array-contains, `territory.endedAt` range. Field override tắt index tự động cho `territoryChunks.cells` và `territory.cells` (collection group `activities`). TTL cho `territoryPushes.expireAt` | Nhỏ |
-| `lib/src/territory/` (mới) | Repository nghe chunk theo khung nhìn, màn Lãnh địa, lớp ô trên `mapBaseLayer` | Lớn |
+| `lib/src/territory/` (mới) | Repository nghe chunk theo khung nhìn, màn Lãnh địa, lớp ô trên `mapBaseLayer` đậm theo `m`, hàng lọc, danh sách người giữ ô đọc từ `territoryOwners` | Lớn |
 | Màn kết thúc buổi, chi tiết buổi, Trang chủ | Dòng "+N ô" và "Lãnh địa N ô" | Vừa |
 | `lib/src/push.dart` `pushLocation` | `kind == 'territory_taken'` mở `/lanh-dia?chunk=…` | Nhỏ |
 | Thẻ khoe (`card_share`) | Thẻ lãnh địa | Vừa |
@@ -242,7 +254,7 @@ Buổi 5 km thường có khoảng 35 ô, mỗi mục khoảng 20 byte, nên `ce
 
 **`territoryChunks/{x_y}`** (z13), chỉ backend ghi: `cells` là map `x_y` → `{u, m, m2}`. Trong đó `u` là chủ ô, `m` là km trong ô của chủ (mét), `m2` là km của người thứ hai. Thêm `updatedAt`.
 
-**`territoryOwners/{uid}`**, chỉ backend ghi: `byChunk` (map chunk → số ô người này giữ trong chunk) và `updatedAt`. Mỗi lần tính lại chunk ghi đè mục `byChunk.{chunk}` của từng người có ô trước hoặc sau lần tính, về 0 thì xoá mục. Ghi đè chứ không cộng dồn, nên chạy lại không lệch số. App cộng các mục để ra tổng. Tên và avatar đọc từ `leaderboardEntries`. Lần tính lại chạy sau khi owners đã bị xoá có thể tạo lại một doc rỗng chỉ có `updatedAt`, không có dữ liệu cá nhân; việc hằng ngày xoá nó.
+**`territoryOwners/{uid}`**, chỉ backend ghi: `byChunk` (map chunk → số ô người này giữ trong chunk) và `updatedAt`. Mỗi lần tính lại chunk ghi đè mục `byChunk.{chunk}` của từng người có ô trước hoặc sau lần tính, về 0 thì xoá mục. Ghi đè chứ không cộng dồn, nên chạy lại không lệch số. App cộng các mục để ra tổng; danh sách Mọi người đọc cả collection và bỏ doc rỗng. Tên và avatar đọc từ `leaderboardEntries`. Lần tính lại chạy sau khi owners đã bị xoá có thể tạo lại một doc rỗng chỉ có `updatedAt`, không có dữ liệu cá nhân; việc hằng ngày xoá nó.
 
 **`territoryResults/{uid}_{activityId}`**, chỉ backend ghi, người đăng nhập đọc: bản nhỏ của `territory.result` (`gained`, `taken`, `chunk` là chunk đầu của buổi để mở bản đồ đúng vùng). App nghe doc này thay vì nghe doc buổi tới 800 KB. Backend ghi nó trước dấu `territory.result`; xoá tài khoản xoá theo `uid`.
 
@@ -360,6 +372,7 @@ Người đọc chunk lấy được `uid` chủ ô. Họ vốn đã đọc đư
 - Một chunk vẫn tối đa 1024 ô, khoảng 70 KB.
 - Sync: 170 lần/ngày, mỗi lần vài giây, queue bận dưới 1%.
 - Mỗi sync đọc khoảng nghìn doc (có projection), cỡ 170 nghìn lượt đọc mỗi ngày.
+- Danh sách Mọi người: mỗi lần tải đọc khoảng 1700 doc owners. Giữ 5 phút giảm số lần, nhưng tới mức này thì làm việc 2 ở mục 6.3.
 - Việc hằng ngày: khoảng 1700 sync cộng vài nghìn chunk, chạy nối tiếp. Ước một tới vài giờ (chưa đo). Tới mức đó thì chia việc hằng ngày ra khỏi queue một luồng.
 
 **Tương thích ngược.**
@@ -429,6 +442,7 @@ Không bảo đảm:
 | # | Việc | Mức chặn | Người chốt |
 |---|---|---|---|
 | 1 | Người chạy vòng một chỗ giữ chắc ô nhưng chỉ có 1 ô. Bản đầu chấp nhận; nếu cần thì thêm chỉ số "km trong lãnh địa" ở đợt sau | Không chặn | User |
+| 2 | Danh sách Mọi người đọc cả `territoryOwners`. Khi số người giữ ô lên vài trăm: backend ghi thêm `cellCount` ở gốc doc mỗi lần ghi `byChunk`, app query `orderBy('cellCount', desc).limit(50)` kèm index. Hiện 11 người giữ ô | Không chặn | User |
 
 ### 6.4 Lộ trình
 
@@ -439,7 +453,7 @@ Mỗi PR chạy và test được riêng. Ra mắt theo bốn bước ở mục 
 | 1 | BE1 | Lưới ô; lấy ô từ tuyến (lọc, cắt đầu cuối, nội suy); `owner`; kết quả theo thời điểm của buổi. Chọn nguồn tuyến và `inputHash` cần Firestore nên làm ở BE2 | Unit test với tile id tính tay cho một điểm ở Q1 theo công thức slippy map; tuyến mẫu biết trước số ô và số mét; tuyến có đoạn đứng yên ở cửa nhà; bảng ca của `owner` và của kết quả (hoà km, km trôi khỏi cửa sổ, trùng giờ, chủ chạy lại tuyến cũ, hai buổi của cùng người, hai người cùng ô) với đáp án tính tay. Không đổi gì người dùng thấy |
 | 1 | BE2 | Queue `territory`, `territory-sync`, `territory-rebuild`, chunk, owners, hook ở lưu buổi, hydrate, profile, xoá tài khoản, việc hằng ngày, rules, index, backfill, `config/territory.enabled` | Emulator test: task chạy lại sau khi chết ở từng bước; xoá buổi; buổi bị đánh trùng (3i rồi Strava, Strava rồi 3i); đổi public và private 4 lần trong 1 giờ; xoá tài khoản; buổi trước `enabledAt` có `result` rỗng; `enabled` tắt thì không push; task bị rớt hết lượt thử thì việc hằng ngày bù. Backfill trên prod cho số ô khớp mục 6.1 |
 | 1 | BE3 | `territory-push` hẹn giờ, tính lại `taken`, bỏ người chạy cùng, `territoryPushes`, nhóm push `territory` | Emulator test với sender giả: một push mỗi người bị chiếm mỗi lần chạy; chạy lại không gửi thêm; bản 3i và bản Strava không gửi đôi; người chạy cùng (lưu trước hay sau trong 60 phút) không nhận; buổi về trễ trong 60 phút làm đổi người nhận, kể cả khi lúc lưu buổi chỉ có ô mới; tắt nhóm thì không gửi |
-| 2 | A1 | Màn Lãnh địa, lớp ô trên `mapBaseLayer`, chạm ô xem chủ và km, ẩn hết khi `config/territory.enabled` tắt | Widget test với chunk giả; chạy với emulator `demo-runnow` |
+| 2 | A1 | Màn Lãnh địa, lớp ô trên `mapBaseLayer` đậm theo `m`, chạm ô xem chủ và km, lọc Tất cả · Của tôi · Mọi người, ẩn hết khi `config/territory.enabled` tắt | Widget test với chunk giả: độ đậm theo ngưỡng, thứ tự danh sách, lọc, bản đồ tới ô người được chọn; chạy simulator với staging |
 | 2 | A2 | "+N ô" ở màn kết thúc và chi tiết buổi, Trang chủ, deep link từ push | Chạy thử một buổi trên máy: "+N ô" hiện sau vài giây; chạm push mở đúng vùng |
 | 2 | A3 | Thẻ khoe lãnh địa | Preview test như các thẻ khác |
 | 2 | W1 | Màn Lãnh địa trên bản web cho người đã đăng nhập: kiểm lớp vector và lớp ô chạy trên web, link từ menu web | Mở threei.run đã đăng nhập, thấy đúng ô như trên app |
