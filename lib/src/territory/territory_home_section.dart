@@ -95,7 +95,7 @@ class TerritoryHomeSection extends ConsumerWidget {
       },
       // Giữ chỗ cỡ bản đồ cộng ba dòng BXH để mục về không đẩy các mục dưới.
       loading: () => SizedBox(
-        height: 170 + _homeTop * 52,
+        height: 170 + _homeTop * 38,
         child: ColoredBox(color: palette.tint),
       ),
     );
@@ -154,7 +154,7 @@ class _HolderRow extends ConsumerWidget {
           }
         },
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           child: Row(
             spacing: 12,
             children: [
@@ -166,7 +166,7 @@ class _HolderRow extends ConsumerWidget {
                   style: theme.textTheme.titleSmall,
                 ),
               ),
-              TerritoryAvatar(uid: holder.uid, name: name, size: 34),
+              TerritoryAvatar(uid: holder.uid, name: name, size: 26),
               Expanded(
                 child: Text(
                   me ? '$name (bạn)' : name,
@@ -175,18 +175,10 @@ class _HolderRow extends ConsumerWidget {
                   style: theme.textTheme.titleSmall,
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    territoryArea(holder.owner.areaM2),
-                    style: theme.textTheme.titleSmall,
-                  ),
-                  Text(
-                    '${holder.owner.cellCount} ô',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
+              // Một dòng một người: chỉ diện tích; số ô xem ở màn số liệu.
+              Text(
+                territoryArea(holder.owner.areaM2),
+                style: theme.textTheme.titleSmall,
               ),
             ],
           ),

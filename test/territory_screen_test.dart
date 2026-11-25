@@ -282,7 +282,14 @@ void main() {
 
   testWidgets('Trang chủ: số ô của mình đổi thì BXH đọc lại', (tester) async {
     await pump(tester, homeSection());
-    expect(find.text('20 ô'), findsNothing);
+    // An đang hạng 3 (3 ô, sau Bình 5 ô và aa).
+    Finder myRow() => find
+        .ancestor(of: find.text('3i member (bạn)'), matching: find.byType(Row))
+        .first;
+    expect(
+      find.descendant(of: myRow(), matching: find.text('1')),
+      findsNothing,
+    );
     // Backend ghi ô của buổi vừa chạy: doc owner của mình đổi.
     await firestore.collection('territoryOwners').doc('an').set({
       'byChunk': {'6523_3849': 20},
@@ -290,8 +297,11 @@ void main() {
     for (var i = 0; i < 5; i++) {
       await tester.pump();
     }
-    expect(find.text('20 ô'), findsOneWidget);
-    expect(find.textContaining('(bạn)'), findsOneWidget);
+    // 20 ô, nhiều nhất: An lên hạng 1.
+    expect(
+      find.descendant(of: myRow(), matching: find.text('1')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Trang chủ: mình ngoài top 3 thì thêm dòng của mình', (
