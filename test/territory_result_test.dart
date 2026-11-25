@@ -16,47 +16,24 @@ import 'package:myrun/src/screens/activity_detail_screen.dart';
 import 'package:myrun/src/territory/territory_grid.dart';
 import 'package:myrun/src/territory/territory_models.dart';
 import 'package:myrun/src/territory/territory_repository.dart';
+import 'package:myrun/src/territory/territory_result_sheet.dart';
 import 'package:myrun/src/territory/territory_widgets.dart';
 import 'package:myrun/src/widgets/activity_overview.dart';
 import 'package:myrun/src/theme.dart';
 
 void main() {
-  const names = {
-    'binh': (name: 'Bình', avatarUrl: null),
-    'chi': (name: 'Chi', avatarUrl: null),
-  };
-
-  group('chữ trên chip', () {
-    test('ô mới và ô chiếm cộng lại thành +N ô', () {
-      final text = territoryResultText(
-        const TerritoryResult(gained: 3, taken: {'binh': 2}),
-        names,
+  group('người bị chiếm', () {
+    test('mất nhiều ô nhất trước, bằng nhau theo uid', () {
+      expect(
+        territoryVictims(
+          const TerritoryResult(
+            gained: 0,
+            taken: {'x': 1, 'chi': 2, 'binh': 1},
+          ),
+        ),
+        ['chi', 'binh', 'x'],
       );
-      expect(text.gain, '+5 ô');
-      expect(text.takenFrom, 'chiếm của Bình');
-    });
-
-    test('chỉ có ô mới thì không ghi chiếm của ai', () {
-      final text = territoryResultText(const TerritoryResult(gained: 4), names);
-      expect(text.gain, '+4 ô');
-      expect(text.takenFrom, isNull);
-    });
-
-    test('nhiều người bị chiếm: ghi người mất nhiều nhất, kèm +k', () {
-      final text = territoryResultText(
-        const TerritoryResult(gained: 0, taken: {'binh': 1, 'chi': 2, 'x': 1}),
-        names,
-      );
-      expect(text.gain, '+4 ô');
-      expect(text.takenFrom, 'chiếm của Chi +2');
-    });
-
-    test('chưa biết tên thì dùng tên mặc định', () {
-      final text = territoryResultText(
-        const TerritoryResult(gained: 0, taken: {'la': 1}),
-        names,
-      );
-      expect(text.takenFrom, 'chiếm của 3i member');
+      expect(territoryVictims(const TerritoryResult(gained: 4)), isEmpty);
     });
   });
 
@@ -162,6 +139,13 @@ void main() {
             return const Scaffold();
           },
         ),
+        GoRoute(
+          path: '/club/:uid',
+          builder: (context, state) {
+            opened.add(state.uri.toString());
+            return const Scaffold();
+          },
+        ),
       ],
     );
     addTearDown(router.dispose);
@@ -194,7 +178,7 @@ void main() {
   testWidgets('chưa có kết quả thì không hiện gì, có thì hiện +N ô', (
     tester,
   ) async {
-    await pumpChip(tester);
+    final opened = await pumpChip(tester);
     expect(find.byType(ActionChip), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing);
 
@@ -202,7 +186,12 @@ void main() {
     for (var i = 0; i < 4; i++) {
       await tester.pump();
     }
-    expect(find.text('+5 ô · chiếm của Bình'), findsOneWidget);
+    expect(find.text('+5 ô'), findsOneWidget);
+    expect(find.text('chiếm của'), findsOneWidget);
+    // Avatar người bị chiếm, chạm mở hồ sơ của họ.
+    await tester.tap(find.byTooltip('Bình'));
+    await tester.pumpAndSettle();
+    expect(opened, ['/club/binh']);
   });
 
   testWidgets('chạm chip mở màn Lãnh địa ở chunk của buổi', (tester) async {
@@ -224,7 +213,13 @@ void main() {
     final opened = await pumpChip(tester);
     await tester.tap(find.byType(ActionChip));
     await tester.pumpAndSettle();
-    expect(find.text('+3 ô'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(TerritoryResultSheet),
+        matching: find.text('+3 ô'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('1 ô mới'), findsOneWidget);
     expect(find.text('chiếm 2 ô của Bình'), findsOneWidget);
     expect(opened, isEmpty);

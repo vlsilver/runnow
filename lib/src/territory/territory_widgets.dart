@@ -5,6 +5,7 @@ import 'package:myrun/src/territory/territory_grid.dart';
 import 'package:myrun/src/territory/territory_models.dart';
 import 'package:myrun/src/territory/territory_repository.dart';
 import 'package:myrun/src/territory/territory_result_sheet.dart';
+import 'package:myrun/src/territory/territory_sheets.dart';
 import 'package:myrun/src/theme.dart';
 
 /// Route màn Lãnh địa; [chunk] (id "x_y" z13) mở đúng vùng đó. [taken] (từ
@@ -179,25 +180,18 @@ class TerritoryHomeRow extends ConsumerWidget {
   }
 }
 
-/// Chữ trên chip kết quả buổi: "+N ô", và "chiếm của Bình" khi có ô chiếm
-/// được. Nhiều người bị chiếm thì ghi người mất nhiều ô nhất, kèm "+k".
-({String gain, String? takenFrom}) territoryResultText(
-  TerritoryResult result,
-  Map<String, ({String name, String? avatarUrl})> names,
-) {
-  final victims = result.taken.entries.toList()
-    ..sort((a, b) {
-      final byCount = b.value.compareTo(a.value);
-      return byCount != 0 ? byCount : a.key.compareTo(b.key);
-    });
-  String? takenFrom;
-  if (victims.isNotEmpty) {
-    final first = names[victims.first.key]?.name ?? territoryDefaultName;
-    final more = victims.length - 1;
-    takenFrom = more == 0 ? 'chiếm của $first' : 'chiếm của $first +$more';
-  }
-  return (gain: '+${result.total} ô', takenFrom: takenFrom);
-}
+/// Người bị chiếm ô trong buổi, mất nhiều ô nhất trước; bằng nhau thì theo
+/// uid cho thứ tự cố định.
+List<String> territoryVictims(TerritoryResult result) =>
+    (result.taken.entries.toList()..sort((a, b) {
+          final byCount = b.value.compareTo(a.value);
+          return byCount != 0 ? byCount : a.key.compareTo(b.key);
+        }))
+        .map((e) => e.key)
+        .toList();
+
+/// Số avatar người bị chiếm hiện trên chip; nhiều hơn thì ghi "+k".
+const _chipVictims = 3;
 
 /// Chip "+N ô" của một buổi chạy, chạm mở màn Lãnh địa ở vùng buổi đó chạy
 /// qua, kể cả buổi của người khác. Backend ghi kết quả
@@ -253,34 +247,82 @@ class TerritoryResultChip extends ConsumerWidget {
         ),
       );
     }
-    final text = territoryResultText(result, ref.watch(territoryNamesProvider));
+    final names = ref.watch(territoryNamesProvider);
+    final victims = territoryVictims(result);
     return Padding(
       padding: padding,
       child: Align(
         alignment: Alignment.centerLeft,
-        child: ActionChip(
-          avatar: Icon(
-            Icons.grid_view_rounded,
-            size: 18,
-            color: palette.accent,
-          ),
-          label: Text(
-            [text.gain, ?text.takenFrom].join(' · '),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          // Backend đã lưu từng ô thì mở thẻ có bản đồ nhỏ; kết quả cũ chỉ có
-          // số thì mở thẳng bản đồ như trước.
-          onPressed: () => result.hasCells
-              ? showModalBottomSheet<void>(
-                  context: context,
-                  showDragHandle: true,
-                  isScrollControlled: true,
-                  builder: (_) => TerritoryResultSheet(result: result),
-                )
-              : context.push(territoryLocation(chunk: result.chunk?.id)),
+        child: Wrap(
+          spacing: 10,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            ActionChip(
+              avatar: Icon(
+                Icons.grid_view_rounded,
+                size: 18,
+                color: palette.accent,
+              ),
+              label: Text('+${result.total} ô'),
+              // Backend đã lưu từng ô thì mở thẻ có bản đồ nhỏ; kết quả cũ
+              // chỉ có số thì mở thẳng bản đồ như trước.
+              onPressed: () => result.hasCells
+                  ? showModalBottomSheet<void>(
+                      context: context,
+                      showDragHandle: true,
+                      isScrollControlled: true,
+                      builder: (_) => TerritoryResultSheet(result: result),
+                    )
+                  : context.push(territoryLocation(chunk: result.chunk?.id)),
+            ),
+            if (victims.isNotEmpty)
+              // Wrap để chữ to hay màn hẹp thì xuống dòng thay vì tràn.
+              Wrap(
+                spacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    'chiếm của',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  for (final victim in victims.take(_chipVictims))
+                    _VictimAvatar(
+                      uid: victim,
+                      name: names[victim]?.name ?? territoryDefaultName,
+                    ),
+                  if (victims.length > _chipVictims)
+                    Text(
+                      '+${victims.length - _chipVictims}',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                ],
+              ),
+          ],
         ),
       ),
     );
   }
+}
+
+/// Avatar một người bị chiếm ô; chạm mở hồ sơ của họ.
+class _VictimAvatar extends StatelessWidget {
+  const _VictimAvatar({required this.uid, required this.name});
+
+  final String uid;
+  final String name;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: name,
+    child: InkResponse(
+      onTap: () => context.push('/club/$uid'),
+      radius: 22,
+      // Vùng chạm 48 px như nút chuẩn, avatar 30 px ở giữa.
+      child: Padding(
+        padding: const EdgeInsets.all(9),
+        child: TerritoryAvatar(uid: uid, name: name, size: 30),
+      ),
+    ),
+  );
 }

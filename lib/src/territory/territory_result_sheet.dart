@@ -23,11 +23,7 @@ class TerritoryResultSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.runNowPalette;
     final names = ref.watch(territoryNamesProvider);
-    final victims = result.taken.entries.toList()
-      ..sort((a, b) {
-        final byCount = b.value.compareTo(a.value);
-        return byCount != 0 ? byCount : a.key.compareTo(b.key);
-      });
+    final victims = territoryVictims(result);
     const ink = RunNowTerritoryTokens.posterInk;
     Widget legend(Widget swatch, String text) => Row(
       mainAxisSize: MainAxisSize.min,
@@ -90,7 +86,7 @@ class TerritoryResultSheet extends ConsumerWidget {
                             ),
                             '${result.gained} ô mới',
                           ),
-                        for (final MapEntry(:key, :value) in victims)
+                        for (final key in victims)
                           legend(
                             Container(
                               width: 12,
@@ -100,7 +96,7 @@ class TerritoryResultSheet extends ConsumerWidget {
                                 border: Border.all(color: _takenEdge, width: 2),
                               ),
                             ),
-                            'chiếm $value ô của '
+                            'chiếm ${result.taken[key]} ô của '
                             '${names[key]?.name ?? territoryDefaultName}',
                           ),
                       ],
