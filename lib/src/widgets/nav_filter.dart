@@ -77,6 +77,10 @@ class _NavSegment extends StatelessWidget {
         ),
         child: Text(
           label,
+          // Một dòng: tên dài (như người đang lọc ở màn Lãnh địa) cắt bằng …
+          // chứ không làm hàng cao lên.
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: selected
                 ? context.runNowPalette.glassStart

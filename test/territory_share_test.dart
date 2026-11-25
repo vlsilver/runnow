@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -128,7 +129,7 @@ void main() {
           ),
         ),
       );
-      expect(find.text('1234 ô'), findsOneWidget);
+      expect(find.textContaining('· 1234 ô'), findsOneWidget);
       expect(find.text('27,8 km²'), findsOneWidget);
       expect(find.text('05.11.2026'), findsOneWidget);
       expect(tester.takeException(), isNull, reason: style.name);
@@ -224,9 +225,17 @@ void main() {
     // 2 ô ở chunk y=3849 và 1 ô ở y=3700: 66 454,6 m², tính tay.
     expect(poster.area, '6,6 ha');
     expect(poster.name, 'An');
-    // Chọn khổ ngay trong sheet.
-    expect(find.text('Story'), findsOneWidget);
-    expect(find.text('Feed'), findsOneWidget);
+    // Khổ ảnh theo Cài đặt như mọi thẻ khác, sheet không hỏi lại.
+    expect(find.text('Story'), findsNothing);
+    expect(find.text('Feed'), findsNothing);
+    // Ô vẽ trên nền bản đồ.
+    expect(
+      find.descendant(
+        of: find.byType(TerritoryPoster),
+        matching: find.byType(FlutterMap),
+      ),
+      findsOneWidget,
+    );
 
     await tester.runAsync(() async {
       await tester.tap(find.text('Chia sẻ'));

@@ -2,12 +2,15 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../providers.dart';
+import '../achievements/run_faces/face_map.dart' show mapCreditLine;
 import '../share.dart';
 import '../theme.dart';
+import '../widgets/map_vector.dart';
 import 'territory_grid.dart';
 import 'territory_models.dart';
 import 'territory_repository.dart';
@@ -66,7 +69,8 @@ Future<void> _shareMyTerritory(
   }
 }
 
-/// Mở sheet xem trước thẻ lãnh địa, chọn khổ, rồi mới khoe. Web không gửi được
+/// Mở sheet xem trước thẻ lãnh địa rồi khoe; khổ ảnh theo Cài đặt như mọi
+/// thẻ khác. Web không gửi được
 /// file nên chỉ gửi chữ, như các thẻ khác.
 Future<void> showTerritoryShare(
   BuildContext context, {
@@ -86,7 +90,6 @@ Future<void> showTerritoryShare(
     caption: caption,
     fileName: '3i-lanh-dia.png',
     label: 'Chia sẻ',
-    formatPicker: true,
     card: TerritoryPoster(
       name: name,
       area: area,
@@ -149,9 +152,9 @@ List<Rect> territoryArtRects(
   ];
 }
 
-/// Thẻ dọc 3:4 khoe lãnh địa: các ô của mình trên nền tối, diện tích, số ô,
-/// tên và ngày. Không vẽ tile bản đồ, chỉ hình các ô, để người ngoài khó đoán
-/// chỗ mình hay chạy.
+/// Thẻ dọc 3:4 khoe lãnh địa: các ô của mình trên nền bản đồ tối, diện tích,
+/// tên, số ô và ngày. Nền bản đồ cho người xem thấy chỗ mình hay chạy; người
+/// khoe là người chọn gửi.
 class TerritoryPoster extends StatelessWidget {
   const TerritoryPoster({
     required this.name,
@@ -180,77 +183,139 @@ class TerritoryPoster extends StatelessWidget {
     final palette = context.runNowPalette;
     return SizedBox.fromSize(
       size: size,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: _background,
-          borderRadius: palette.radius(20),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+      child: ClipRRect(
+        borderRadius: palette.radius(20),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            const ColoredBox(color: _background),
+            if (cells.isNotEmpty)
+              _PosterMap(cells: cells, color: palette.accent),
+            // Tối dần ở đầu và đáy để chữ đọc được trên nền bản đồ.
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: const [0, 0.18, 0.5, 1],
+                  colors: [
+                    _background.withValues(alpha: 0.85),
+                    _background.withValues(alpha: 0),
+                    _background.withValues(alpha: 0),
+                    _background.withValues(alpha: 0.95),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 20, 22, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Expanded(
-                    child: Text(
-                      '3I RUN · LÃNH ĐỊA',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.4,
-                        color: _muted,
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          '3I RUN · LÃNH ĐỊA',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.4,
+                            color: _ink,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        _date(date),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          letterSpacing: 1.2,
+                          color: _ink,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Text(
+                    area,
+                    style: palette.heading(
+                      TextStyle(
+                        color: palette.accent,
+                        fontSize: 56,
+                        height: 1,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                   ),
+                  const SizedBox(height: 6),
                   Text(
-                    _date(date),
+                    '$name · $cellCount ô',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 12,
-                      letterSpacing: 1.2,
-                      color: _muted,
+                      color: _ink,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // Ảnh khoe không bấm được nên ghi công bản đồ in thẳng lên.
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      mapCreditLine(),
+                      style: const TextStyle(fontSize: 8, color: _muted),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: CustomPaint(
-                  painter: _CellsPainter(cells, palette.accent),
-                  child: const SizedBox.expand(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                area,
-                style: palette.heading(
-                  TextStyle(
-                    color: palette.accent,
-                    fontSize: 56,
-                    height: 1,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '$cellCount ô',
-                style: const TextStyle(color: _ink, fontSize: 15),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: _ink,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bản đồ tối đứng yên dưới thẻ khoe: khung vừa các ô, chừa chỗ cho chữ ở
+/// đầu và đáy thẻ.
+class _PosterMap extends StatelessWidget {
+  const _PosterMap({required this.cells, required this.color});
+
+  final List<TileXY> cells;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final corners = [for (final c in cells) ...cellCorners(c)];
+    return IgnorePointer(
+      child: FlutterMap(
+        options: MapOptions(
+          initialCenter: cellCenter(cells.first),
+          initialCameraFit: CameraFit.coordinates(
+            coordinates: corners,
+            padding: const EdgeInsets.fromLTRB(28, 56, 28, 130),
+            maxZoom: 16,
+          ),
+          backgroundColor: RunNowTerritoryTokens.posterBackground,
+          interactionOptions: const InteractionOptions(
+            flags: InteractiveFlag.none,
           ),
         ),
+        children: [
+          mapBaseLayer(context, dark: true, around: [cellCenter(cells.first)]),
+          PolygonLayer(
+            polygons: [
+              for (final c in cells)
+                Polygon(
+                  points: cellCorners(c),
+                  color: color.withValues(alpha: 0.6),
+                  borderColor: color,
+                  borderStrokeWidth: 1,
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -259,27 +324,3 @@ class TerritoryPoster extends StatelessWidget {
 /// "25.11.2026".
 String _date(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
-
-class _CellsPainter extends CustomPainter {
-  _CellsPainter(this.cells, this.color);
-
-  final List<TileXY> cells;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final fill = Paint()..color = color.withValues(alpha: 0.8);
-    final edge = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.6;
-    for (final rect in territoryArtRects(cells, size, padding: 8)) {
-      canvas.drawRect(rect, fill);
-      canvas.drawRect(rect, edge);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_CellsPainter old) =>
-      old.color != color || !identical(old.cells, cells);
-}

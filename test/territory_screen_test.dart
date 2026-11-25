@@ -21,6 +21,7 @@ import 'package:myrun/src/territory/territory_sheets.dart';
 import 'package:myrun/src/territory/territory_stats_screen.dart';
 import 'package:myrun/src/territory/territory_widgets.dart';
 import 'package:myrun/src/theme.dart';
+import 'package:myrun/src/widgets/nav_filter.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 
 void main() {
@@ -107,7 +108,7 @@ void main() {
 
   /// Mọi người → chạm [name] → màn số liệu → "Xem trên bản đồ".
   Future<void> pickOnMap(WidgetTester tester, String name) async {
-    await tester.tap(find.text('Mọi người'));
+    await tester.tap(find.byTooltip('Mọi người'));
     await tester.pumpAndSettle();
     await tester.tap(find.text(name));
     await tester.pumpAndSettle();
@@ -134,7 +135,7 @@ void main() {
     // Theme Nước có màu chính gần xanh nên ô người khác màu tím.
     expect(other.borderColor, RunNowTerritoryTokens.othersAlt);
     // 1 + 2 ô theo byChunk.
-    expect(find.text('Của tôi · 3 ô'), findsOneWidget);
+    expect(find.text('Của tôi'), findsOneWidget);
   });
 
   testWidgets('mở theo ô thì canh giữa ô đó, ô sai lưới thì về chunk', (
@@ -200,7 +201,7 @@ void main() {
     await pump(tester, const TerritoryScreen(), uid: 'moi');
     final map = tester.widget<FlutterMap>(find.byType(FlutterMap));
     expect(map.options.initialCenter, territoryDefaultCenter);
-    expect(find.text('Của tôi · 0 ô'), findsOneWidget);
+    expect(find.text('Của tôi'), findsOneWidget);
   });
 
   testWidgets('cờ tắt thì không có bản đồ và không có dòng ở Trang chủ', (
@@ -240,7 +241,7 @@ void main() {
       ),
     );
     expect(find.text('Hồ sơ công khai mới có ô'), findsNothing);
-    expect(find.text('Của tôi · 3 ô'), findsOneWidget);
+    expect(find.text('Của tôi'), findsOneWidget);
   });
 
   testWidgets('cờ chưa về thì đang tải, không báo chưa mở', (tester) async {
@@ -479,7 +480,7 @@ void main() {
         .runNowPalette
         .accent;
 
-    await tester.tap(find.text('Của tôi · 3 ô'));
+    await tester.tap(find.text('Của tôi'));
     await tester.pump();
     expect(polygons(tester).map((p) => p.borderColor), [accent]);
 
@@ -497,7 +498,7 @@ void main() {
           .runNowPalette
           .accent;
 
-      await tester.tap(find.text('Mọi người'));
+      await tester.tap(find.byTooltip('Mọi người'));
       await tester.pumpAndSettle();
       // Bình 5 ô, rồi aa và An cùng 3 ô thì uid nhỏ trước; doc rỗng không lên.
       // Diện tích: ô ở chunk 3849 (vĩ độ ~10,77°) rộng ~22 555 m², tính tay.
@@ -518,9 +519,15 @@ void main() {
       final drawn = polygons(tester);
       expect(drawn, hasLength(1));
       expect(drawn.single.borderColor, isNot(accent));
-      // Chip tên người đang lọc, bấm x thì về tất cả.
-      expect(find.widgetWithText(InputChip, 'Bình'), findsOneWidget);
-      await tester.tap(find.byIcon(Icons.clear));
+      // Ô tên người đang lọc nằm trong nút chọn; bấm Tất cả thì về tất cả.
+      expect(
+        find.descendant(
+          of: find.byType(NavPillToggle<String?>),
+          matching: find.text('Bình'),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Tất cả'));
       await tester.pump();
       expect(polygons(tester), hasLength(2));
     },
@@ -650,7 +657,7 @@ void main() {
       repository: repo,
     );
     for (var i = 0; i < 2; i++) {
-      await tester.tap(find.text('Mọi người'));
+      await tester.tap(find.byTooltip('Mọi người'));
       await tester.pumpAndSettle();
       await tester.tapAt(const Offset(10, 10)); // đóng sheet
       await tester.pumpAndSettle();

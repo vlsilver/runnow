@@ -17,6 +17,7 @@ import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/glass.dart';
 import 'package:myrun/src/widgets/map_attribution.dart';
 import 'package:myrun/src/widgets/map_vector.dart';
+import 'package:myrun/src/widgets/nav_filter.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 
 /// Chưa có ô nào và không có chunk để mở thì mở quanh trung tâm TP.HCM.
@@ -378,8 +379,8 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
   }
 }
 
-/// Hàng lọc dưới tiêu đề, không đè lên bản đồ: Tất cả · Của tôi · người đang
-/// chọn · Mọi người.
+/// Hàng lọc dưới tiêu đề, không đè lên bản đồ: nút chọn Tất cả | Của tôi
+/// (| người đang lọc), cuối hàng là nút mở danh sách Mọi người.
 class _FilterBar extends ConsumerWidget {
   const _FilterBar({
     required this.focus,
@@ -403,36 +404,34 @@ class _FilterBar extends ConsumerWidget {
         ? null
         : ref.watch(territoryNamesProvider)[other]?.name ??
               territoryDefaultName;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+    // Cùng kiểu nút chọn với các màn khác. Đang lọc một người thì thêm ô tên
+    // người đó; "Mọi người" mở danh sách nên là nút, không phải một lựa chọn.
+    final items = <String?, String>{
+      null: 'Tất cả',
+      ?myUid: 'Của tôi',
+      ?other: otherName ?? territoryDefaultName,
+    };
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 4, 6),
       child: Row(
-        spacing: 8,
         children: [
-          ChoiceChip(
-            label: const Text('Tất cả'),
-            selected: focus == null,
-            onSelected: (_) => onAll(),
+          Expanded(
+            child: NavPillToggle<String?>(
+              items: items,
+              value: focus,
+              onChanged: (value) {
+                if (value == null) {
+                  onAll();
+                } else if (value == myUid) {
+                  onMine(mine?.topChunk);
+                }
+              },
+            ),
           ),
-          if (myUid != null)
-            ChoiceChip(
-              label: Text(
-                mine == null ? 'Của tôi' : 'Của tôi · ${mine.cellCount} ô',
-              ),
-              selected: focus == myUid,
-              onSelected: (_) => onMine(mine?.topChunk),
-            ),
-          if (otherName != null)
-            InputChip(
-              label: Text(otherName),
-              selected: true,
-              onPressed: () {},
-              onDeleted: onAll,
-            ),
-          ActionChip(
-            avatar: const Icon(Icons.groups_rounded, size: 18),
-            label: const Text('Mọi người'),
+          IconButton(
+            tooltip: 'Mọi người',
             onPressed: onPeople,
+            icon: const Icon(Icons.groups_rounded),
           ),
         ],
       ),
