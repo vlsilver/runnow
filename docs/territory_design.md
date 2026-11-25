@@ -138,7 +138,7 @@ Ghi `result` chỉ khi chưa có. Firestore không có precondition kiểu "fiel
 
 ### Màn Lãnh địa
 
-**Màn Lãnh địa là chỗ xem lãnh địa của mình và của mọi người** (thiết kế B, canvas "Lãnh địa UI/UX"). Ô của mình màu chính của theme, mọi người khác một màu xanh (tím khi màu chính gần xanh, như theme Nước). Hàng lọc Tất cả · Của tôi · Mọi người nằm dưới tiêu đề. Nút "Là gì?" mở luật bốn dòng.
+**Màn Lãnh địa là chỗ xem lãnh địa của mình và của mọi người** (thiết kế B, canvas "Lãnh địa UI/UX"). Ô của mình màu chính của theme, mọi người khác một màu xanh (tím khi màu chính gần xanh, như theme Nước). Dưới tiêu đề là nút chọn Tất cả | Của tôi (cùng kiểu các màn khác), cuối hàng là nút mở danh sách Mọi người. Chạm ô chỉ để xem, không có nút. Nút "Là gì?" mở luật bốn dòng.
 
 - **Chạm ô:** chủ ô, km giữ ô, thanh so với người bám sau (`m2`, không có tên vì backend không lưu), câu "Chạy hơn X km trong ô này để chiếm".
 - **Mọi người:** hạng theo số ô, diện tích và số ô từng người. Chạm một người mở **Thông số**: bản đồ nhỏ, hạng, diện tích, số ô, km trong lãnh địa (tổng `m`), ô chắc nhất, ô bị bám sát (`m2` ≥ 80% `m`). "Xem trên bản đồ" lọc bản đồ theo người đó.

@@ -123,7 +123,7 @@ class TerritoryCellSheet extends ConsumerWidget {
                         style: theme.textTheme.titleMedium,
                       ),
                       Text(
-                        'Giữ ô này · 30 ngày qua',
+                        'Giữ ô này trong 30 ngày qua',
                         style: theme.textTheme.bodySmall,
                       ),
                     ],
@@ -312,7 +312,7 @@ class TerritoryHoldersSheet extends ConsumerWidget {
                         ),
                       ),
                       Text(
-                        '${territoryArea(total)} · ${holders.length} người',
+                        '${holders.length} người giữ ${territoryArea(total)}',
                         style: theme.textTheme.bodySmall,
                       ),
                     ],

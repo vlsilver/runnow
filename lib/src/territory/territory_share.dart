@@ -216,7 +216,7 @@ class TerritoryPoster extends StatelessWidget {
                     children: [
                       const Expanded(
                         child: Text(
-                          '3I RUN · LÃNH ĐỊA',
+                          '3I RUN',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
@@ -247,9 +247,14 @@ class TerritoryPoster extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
-                    '$name · $cellCount ô',
+                    '$cellCount ô',
+                    style: const TextStyle(color: _ink, fontSize: 15),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(

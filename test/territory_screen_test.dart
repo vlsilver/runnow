@@ -167,7 +167,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Bình'), findsOneWidget);
-    expect(find.text('Giữ ô này · 30 ngày qua'), findsOneWidget);
+    expect(find.text('Giữ ô này trong 30 ngày qua'), findsOneWidget);
     // Bình 420 m, người bám sau 300 m (m2).
     expect(find.text('Người bám sau'), findsOneWidget);
     expect(find.text('0,3 km'), findsOneWidget);
@@ -439,7 +439,7 @@ void main() {
     await tester.pump(kDoubleTapTimeout);
     await tester.pumpAndSettle();
     expect(find.byType(TerritoryCellSheet), findsOneWidget);
-    expect(find.text('Giữ ô này · 30 ngày qua'), findsOneWidget);
+    expect(find.text('Giữ ô này trong 30 ngày qua'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(TerritoryCellSheet),
@@ -511,7 +511,7 @@ void main() {
       expect(y('3i member'), lessThan(y('3i member (bạn)')));
       expect(find.text('11 ha'), findsOneWidget);
       expect(find.text('6,8 ha'), findsNWidgets(2));
-      expect(find.text('25 ha · 3 người'), findsOneWidget);
+      expect(find.text('3 người giữ 25 ha'), findsOneWidget);
       expect(find.text('0 ô'), findsNothing);
 
       await tester.tap(find.text('Bình'));

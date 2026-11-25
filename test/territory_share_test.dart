@@ -129,7 +129,7 @@ void main() {
           ),
         ),
       );
-      expect(find.textContaining('· 1234 ô'), findsOneWidget);
+      expect(find.text('1234 ô'), findsOneWidget);
       expect(find.text('27,8 km²'), findsOneWidget);
       expect(find.text('05.11.2026'), findsOneWidget);
       expect(tester.takeException(), isNull, reason: style.name);
