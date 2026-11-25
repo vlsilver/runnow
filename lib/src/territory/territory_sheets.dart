@@ -79,19 +79,12 @@ class TerritoryRulesSheet extends StatelessWidget {
   }
 }
 
-/// Chạm một ô: chủ ô, km giữ ô, người bám sau, cần bao nhiêu để chiếm. Nút
-/// cuối đóng sheet và trả `uid` chủ ô để mở số liệu của người đó.
+/// Chạm một ô: chủ ô, km giữ ô, người bám sau, cần bao nhiêu để chiếm. Chỉ
+/// để xem, không có nút.
 class TerritoryCellSheet extends ConsumerWidget {
-  const TerritoryCellSheet({
-    required this.cell,
-    this.showOwnerButton = true,
-    super.key,
-  });
+  const TerritoryCellSheet({required this.cell, super.key});
 
   final TerritoryCell cell;
-
-  /// Tắt khi đang ở chính màn số liệu của chủ ô, nút mở lại màn đó là thừa.
-  final bool showOwnerButton;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -180,16 +173,6 @@ class TerritoryCellSheet extends ConsumerWidget {
                       ),
                     ),
                   ],
-                ),
-              ),
-            if (showOwnerButton)
-              OutlinedButton(
-                onPressed: () => Navigator.of(context).pop(cell.ownerUid),
-                child: Text(
-                  // Nói rõ nút mở gì: màn số liệu của chủ ô.
-                  mine ? 'Số liệu của bạn' : 'Số liệu của $name',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
           ],

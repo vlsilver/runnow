@@ -249,14 +249,12 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
         .where((c) => _focus == null || c.ownerUid == _focus)
         .firstOrNull;
     if (cell == null) return;
-    final owner = await showModalBottomSheet<String>(
+    await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
       builder: (_) => TerritoryCellSheet(cell: cell),
     );
-    if (owner == null || !mounted) return;
-    await _openStats(owner);
   }
 
   @override

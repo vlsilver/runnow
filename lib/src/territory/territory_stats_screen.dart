@@ -271,8 +271,7 @@ class _CellsMap extends StatelessWidget {
           context: context,
           showDragHandle: true,
           isScrollControlled: true,
-          builder: (_) =>
-              TerritoryCellSheet(cell: cell, showOwnerButton: false),
+          builder: (_) => TerritoryCellSheet(cell: cell),
         );
       },
     );
