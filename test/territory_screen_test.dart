@@ -173,7 +173,7 @@ void main() {
     expect(find.text('0,3 km'), findsOneWidget);
     expect(find.text('Chạy hơn 0,4 km trong ô này để chiếm'), findsOneWidget);
 
-    await tester.tap(find.text('Xem lãnh địa của Bình'));
+    await tester.tap(find.text('Số liệu của Bình'));
     await tester.pumpAndSettle();
     expect(find.text('Lãnh địa của Bình'), findsOneWidget);
   });
@@ -442,7 +442,7 @@ void main() {
     expect(find.byType(TerritoryCellSheet), findsOneWidget);
     expect(find.text('Giữ ô này · 30 ngày qua'), findsOneWidget);
     // Đang ở chính màn của Bình: không có nút mở lại màn đó.
-    expect(find.textContaining('Xem lãnh địa của'), findsNothing);
+    expect(find.textContaining('Số liệu của'), findsNothing);
   });
 
   test('độ đậm theo km: bốn mức, ngưỡng 300, 750, 1500 m', () {
@@ -678,7 +678,7 @@ void main() {
     expect(find.text('1,2 km'), findsOneWidget);
     expect(find.textContaining('để chiếm'), findsNothing);
     expect(find.text('Người bám sau'), findsNothing);
-    expect(find.text('Xem lãnh địa của bạn'), findsOneWidget);
+    expect(find.text('Số liệu của bạn'), findsOneWidget);
   });
 
   testWidgets('Là gì? mở luật lãnh địa', (tester) async {

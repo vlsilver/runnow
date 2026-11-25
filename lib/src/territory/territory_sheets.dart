@@ -186,7 +186,8 @@ class TerritoryCellSheet extends ConsumerWidget {
               OutlinedButton(
                 onPressed: () => Navigator.of(context).pop(cell.ownerUid),
                 child: Text(
-                  mine ? 'Xem lãnh địa của bạn' : 'Xem lãnh địa của $name',
+                  // Nói rõ nút mở gì: màn số liệu của chủ ô.
+                  mine ? 'Số liệu của bạn' : 'Số liệu của $name',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
