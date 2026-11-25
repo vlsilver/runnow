@@ -13,6 +13,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/territory/territory_grid.dart';
 import 'package:myrun/src/territory/territory_home_section.dart';
+import 'package:myrun/src/territory/territory_mini_map.dart';
 import 'package:myrun/src/territory/territory_models.dart';
 import 'package:myrun/src/territory/territory_repository.dart';
 import 'package:myrun/src/territory/territory_screen.dart';
@@ -340,15 +341,98 @@ void main() {
         ),
       );
       await show(RunNowStyle.iron);
-    await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
       expect(find.byType(CircleAvatar), findsNothing);
       expect(find.text('B'), findsOneWidget);
       await show(RunNowStyle.elemental);
-    // MaterialApp đổi theme dần qua AnimatedTheme.
-    await tester.pumpAndSettle();
+      // MaterialApp đổi theme dần qua AnimatedTheme.
+      await tester.pumpAndSettle();
       expect(find.byType(CircleAvatar), findsOneWidget);
     },
   );
+
+  testWidgets('bản đồ nhỏ: ô về sau thì dời camera, không dựng lại bản đồ', (
+    tester,
+  ) async {
+    Widget mini(List<TileXY> fit) => MaterialApp(
+      theme: buildRunNowTheme(RunNowElement.water),
+      home: Scaffold(
+        body: SizedBox(
+          height: 200,
+          child: TerritoryMiniMap(
+            center: const LatLng(10.70, 106.60),
+            fit: fit,
+            polygons: const [],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(mini(const []));
+    await tester.pump();
+    final before = tester.state(find.byType(FlutterMap));
+    await tester.pumpWidget(mini(const [binhCell]));
+    await tester.pump();
+    // Cùng một bản đồ (lớp tile không bị dựng lại), camera đã tới ô.
+    expect(tester.state(find.byType(FlutterMap)), same(before));
+    final camera = MapCamera.of(tester.element(find.byType(PolygonLayer)));
+    expect(
+      camera.center.latitude,
+      closeTo(cellCenter(binhCell).latitude, 1e-3),
+    );
+    expect(
+      camera.center.longitude,
+      closeTo(cellCenter(binhCell).longitude, 1e-3),
+    );
+  });
+
+  testWidgets('bản đồ nhỏ: cùng số ô nhưng ô khác thì vẫn dời camera', (
+    tester,
+  ) async {
+    const far = TileXY(208830, 123245); // cách hai chunk
+    Widget mini(List<TileXY> fit) => MaterialApp(
+      theme: buildRunNowTheme(RunNowElement.water),
+      home: Scaffold(
+        body: SizedBox(
+          height: 200,
+          child: TerritoryMiniMap(
+            center: const LatLng(10.70, 106.60),
+            fit: fit,
+            polygons: const [],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(mini(const [binhCell]));
+    await tester.pump();
+    await tester.pumpWidget(mini(const [far]));
+    await tester.pump();
+    final camera = MapCamera.of(tester.element(find.byType(PolygonLayer)));
+    expect(camera.center.latitude, closeTo(cellCenter(far).latitude, 1e-3));
+    expect(camera.center.longitude, closeTo(cellCenter(far).longitude, 1e-3));
+  });
+
+  testWidgets('màn số liệu: chạm ô trên bản đồ mở thông tin ô', (tester) async {
+    tester.view.physicalSize = const Size(900, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await pump(tester, const TerritoryStatsScreen(uid: 'binh'));
+    await tester.pumpAndSettle();
+    final camera = MapCamera.of(tester.element(find.byType(PolygonLayer)));
+    expect(
+      camera.center.latitude,
+      closeTo(cellCenter(binhCell).latitude, 1e-3),
+    );
+    // Bản đồ fit vào ô duy nhất của Bình nên giữa bản đồ là ô đó.
+    await tester.tapAt(tester.getCenter(find.byType(TerritoryMiniMap)));
+    // Bản đồ có phóng bằng chạm đúp nên chạm đơn chờ hết hạn chạm đúp.
+    await tester.pump(kDoubleTapTimeout);
+    await tester.pumpAndSettle();
+    expect(find.byType(TerritoryCellSheet), findsOneWidget);
+    expect(find.text('Giữ ô này · 30 ngày qua'), findsOneWidget);
+    // Đang ở chính màn của Bình: không có nút mở lại màn đó.
+    expect(find.textContaining('Xem lãnh địa của'), findsNothing);
+  });
 
   test('độ đậm theo km: bốn mức, ngưỡng 300, 750, 1500 m', () {
     expect(territoryCellAlpha(0), 0.2);

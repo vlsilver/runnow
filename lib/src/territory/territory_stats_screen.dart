@@ -3,13 +3,13 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/territory/territory_grid.dart';
+import 'package:myrun/src/territory/territory_mini_map.dart';
 import 'package:myrun/src/territory/territory_models.dart';
 import 'package:myrun/src/territory/territory_repository.dart';
 import 'package:myrun/src/territory/territory_share.dart';
 import 'package:myrun/src/territory/territory_sheets.dart';
 import 'package:myrun/src/territory/territory_widgets.dart';
 import 'package:myrun/src/theme.dart';
-import 'package:myrun/src/widgets/map_vector.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 
 /// Số liệu lãnh địa của một người: bản đồ nhỏ các ô ở chỗ họ giữ nhiều ô
@@ -227,8 +227,8 @@ class _Stat extends StatelessWidget {
   }
 }
 
-/// Bản đồ nhỏ không kéo được: các ô ở chunk người đó giữ nhiều ô nhất, đậm
-/// theo km.
+/// Bản đồ nhỏ kéo, phóng to được: các ô ở chunk người đó giữ nhiều ô nhất,
+/// đậm theo km; chạm một ô xem chủ ô và km.
 class _CellsMap extends StatelessWidget {
   const _CellsMap({
     required this.owner,
@@ -249,40 +249,32 @@ class _CellsMap extends StatelessWidget {
       for (final cell in cells)
         if (chunkOfCell(cell.tile) == top) cell,
     ];
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final center = chunkCenter(top);
-    return FlutterMap(
-      // Đổi khoá khi ô về để camera fit lại vào các ô.
-      key: ValueKey(shown.length),
-      options: MapOptions(
-        initialCenter: center,
-        initialZoom: 15,
-        initialCameraFit: shown.isEmpty
-            ? null
-            : CameraFit.coordinates(
-                coordinates: [for (final c in shown) ...cellCorners(c.tile)],
-                padding: const EdgeInsets.all(24),
-                maxZoom: 17,
-              ),
-        backgroundColor: palette.tint,
-        interactionOptions: const InteractionOptions(
-          flags: InteractiveFlag.none,
-        ),
-      ),
-      children: [
-        mapBaseLayer(context, dark: dark, around: [center]),
-        PolygonLayer(
-          polygons: [
-            for (final cell in shown)
-              Polygon(
-                points: cellCorners(cell.tile),
-                color: color.withValues(alpha: territoryCellAlpha(cell.meters)),
-                borderColor: color,
-                borderStrokeWidth: 1,
-              ),
-          ],
-        ),
+    return TerritoryMiniMap(
+      center: chunkCenter(top),
+      fit: [for (final c in shown) c.tile],
+      interactive: true,
+      polygons: [
+        for (final cell in shown)
+          Polygon(
+            points: cellCorners(cell.tile),
+            color: color.withValues(alpha: territoryCellAlpha(cell.meters)),
+            borderColor: color,
+            borderStrokeWidth: 1,
+          ),
       ],
+      // Chạm một ô: chủ ô, km giữ ô, người bám sau.
+      onTap: (point) {
+        final tile = tileAt(point, territoryCellZoom);
+        final cell = shown.where((c) => c.tile == tile).firstOrNull;
+        if (cell == null) return;
+        showModalBottomSheet<void>(
+          context: context,
+          showDragHandle: true,
+          isScrollControlled: true,
+          builder: (_) =>
+              TerritoryCellSheet(cell: cell, showOwnerButton: false),
+        );
+      },
     );
   }
 }

@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/territory/territory_grid.dart';
+import 'package:myrun/src/territory/territory_mini_map.dart';
 import 'package:myrun/src/territory/territory_models.dart';
 import 'package:myrun/src/territory/territory_repository.dart';
 import 'package:myrun/src/territory/territory_sheets.dart';
 import 'package:myrun/src/territory/territory_stats_screen.dart';
 import 'package:myrun/src/territory/territory_widgets.dart';
 import 'package:myrun/src/theme.dart';
-import 'package:myrun/src/widgets/map_vector.dart';
 
 /// Số người đầu BXH lãnh địa hiện ở Trang chủ.
 const _homeTop = 3;
@@ -216,34 +215,12 @@ class _HomeMiniMap extends ConsumerWidget {
         if (cell.ownerUid == myUid) cell,
     ];
     final fit = mine.isNotEmpty ? mine : cells;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final center = chunkCenter(chunk);
-    return FlutterMap(
-      // Đổi khoá khi ô về để camera fit lại vào các ô.
-      key: ValueKey(fit.length),
-      options: MapOptions(
-        initialCenter: center,
-        initialZoom: 14,
-        initialCameraFit: fit.isEmpty
-            ? null
-            : CameraFit.coordinates(
-                coordinates: [for (final c in fit) ...cellCorners(c.tile)],
-                padding: const EdgeInsets.all(20),
-                maxZoom: 16,
-              ),
-        backgroundColor: palette.tint,
-        interactionOptions: const InteractionOptions(
-          flags: InteractiveFlag.none,
-        ),
-      ),
-      children: [
-        mapBaseLayer(context, dark: dark, around: [center]),
-        PolygonLayer(
-          polygons: [
-            for (final cell in cells)
-              territoryCellPolygon(cell, myUid: myUid, mine: palette.accent),
-          ],
-        ),
+    return TerritoryMiniMap(
+      center: chunkCenter(chunk),
+      fit: [for (final c in fit) c.tile],
+      polygons: [
+        for (final cell in cells)
+          territoryCellPolygon(cell, myUid: myUid, mine: palette.accent),
       ],
     );
   }
