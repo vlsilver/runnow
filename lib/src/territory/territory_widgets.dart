@@ -27,6 +27,26 @@ Color territoryOwnerColor(
   return others[_stableHash(ownerUid) % others.length];
 }
 
+/// Ngưỡng mét cho bốn mức đậm của ô. Một lượt chạy xuyên ô dài khoảng
+/// 150 m (cạnh ô z18 ở TP.HCM), nên 300/750/1500 m tương đương khoảng
+/// 2/5/10 lượt. Số mét là số backend dùng để giữ ô (`m`, 30 ngày), nên ô càng
+/// đậm càng khó bị chiếm.
+const territoryShadeMeters = <int>[300, 750, 1500];
+const _shadeAlpha = <double>[0.2, 0.38, 0.56, 0.74];
+
+/// Độ đậm (alpha) của ô theo số mét chủ ô đã chạy trong ô.
+double territoryCellAlpha(int meters) {
+  var level = 0;
+  while (level < territoryShadeMeters.length &&
+      meters >= territoryShadeMeters[level]) {
+    level++;
+  }
+  return _shadeAlpha[level];
+}
+
+/// Bốn mức đậm, để vẽ chú thích "ít → nhiều".
+List<double> get territoryShadeLevels => _shadeAlpha;
+
 /// FNV-1a 32 bit trên mã UTF-16: `String.hashCode` không hứa giữ nguyên giữa
 /// các lần chạy hay giữa web và máy.
 int _stableHash(String text) {

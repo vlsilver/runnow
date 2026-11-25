@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:myrun/src/providers.dart';
@@ -45,6 +47,22 @@ class TerritoryRepository {
     ];
   }
 
+  /// Mọi người đang giữ ô, nhiều ô trước; bằng nhau thì theo uid cho thứ tự
+  /// không nhảy giữa các lần mở. Đọc một lần khi mở danh sách: mỗi người một
+  /// doc nhỏ, và Firestore không xếp được theo tổng `byChunk`.
+  Future<List<TerritoryHolder>> fetchHolders() async {
+    final snap = await _firestore.collection('territoryOwners').get();
+    return [
+      for (final doc in snap.docs)
+        if (TerritoryOwner.fromMap(doc.data()) case final owner
+            when owner.cellCount > 0)
+          (uid: doc.id, owner: owner),
+    ]..sort((a, b) {
+      final byCount = b.owner.cellCount.compareTo(a.owner.cellCount);
+      return byCount != 0 ? byCount : a.uid.compareTo(b.uid);
+    });
+  }
+
   /// Kết quả lãnh địa của một buổi, đọc doc nhỏ `territoryResults` thay vì
   /// doc buổi (tới 800 KB vì có tuyến). Backend ghi vài giây sau khi lưu buổi,
   /// và ghi lại khi buổi đổi từ không được tính sang được tính, nên nghe tiếp.
@@ -83,6 +101,23 @@ final myTerritoryProvider = StreamProvider.autoDispose<TerritoryOwner?>((ref) {
   if (uid == null) return Stream.value(null);
   return ref.watch(territoryRepositoryProvider).watchOwner(uid);
 });
+
+/// Người giữ ô trong danh sách "Mọi người".
+typedef TerritoryHolder = ({String uid, TerritoryOwner owner});
+
+/// Danh sách người giữ ô, tải khi mở sheet "Mọi người". Giữ 5 phút sau lần
+/// đọc để đóng mở sheet không đọc lại cả collection.
+final territoryHoldersProvider =
+    FutureProvider.autoDispose<List<TerritoryHolder>>((ref) async {
+      final holders = await ref
+          .watch(territoryRepositoryProvider)
+          .fetchHolders();
+      // Chỉ giữ khi đọc được: lỗi thì đóng sheet là thôi thử lại, mở lại đọc mới.
+      final link = ref.keepAlive();
+      final timer = Timer(const Duration(minutes: 5), link.close);
+      ref.onDispose(timer.cancel);
+      return holders;
+    });
 
 /// Kết quả lãnh địa của buổi [activityId] thuộc [uid].
 final activityTerritoryResultProvider = StreamProvider.autoDispose
