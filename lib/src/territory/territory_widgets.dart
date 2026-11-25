@@ -211,8 +211,9 @@ class TerritoryResultChip extends ConsumerWidget {
   final String uid;
   final String activityId;
 
-  /// Id ô z18 giữa tuyến buổi, cho link khi buổi không có số ô.
-  final String? fallbackCell;
+  /// Id ô z18 giữa tuyến buổi, cho link khi buổi không có số ô. Là hàm để
+  /// chỉ giải mã tuyến khi lãnh địa mở và buổi thật sự cần link.
+  final ValueGetter<String?>? fallbackCell;
 
   /// Chỉ áp khi chip hiện, để chỗ đặt chip không dôi khoảng trống.
   final EdgeInsetsGeometry padding;
@@ -229,8 +230,9 @@ class TerritoryResultChip extends ConsumerWidget {
     final palette = context.runNowPalette;
     if (result == null || result.total == 0) {
       // Đợi đọc xong mới hiện link, để buổi có số ô không chớp link trước.
-      final cell = fallbackCell;
-      if (cell == null || !async.hasValue) return const SizedBox.shrink();
+      if (!async.hasValue) return const SizedBox.shrink();
+      final cell = fallbackCell?.call();
+      if (cell == null) return const SizedBox.shrink();
       return Padding(
         padding: padding,
         child: Align(

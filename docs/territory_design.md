@@ -152,8 +152,21 @@ Ghi `result` chỉ khi chưa có. Firestore không có precondition kiểu "fiel
 | Không đổi backend: `m`, `m2`, `byChunk` đã có | Đậm theo km, không đếm số buổi; người bám sau không có tên |
 | Danh sách và Thông số đọc thẳng `territoryOwners`, chunk | Mỗi lần tải danh sách đọc mọi doc owners (giữ 5 phút); Thông số đọc mọi chunk của người đó |
 
-- **"+N ô":** chạm chip mở thẻ nền tối có hình ô mới và ô chiếm được, đọc `newCells`, `takenCells` của `territoryResults`. Kết quả cũ chưa có hai field này thì chip mở thẳng bản đồ.
+- **"+N ô":** chạm chip mở thẻ nền tối có hình ô mới và ô chiếm được, đọc `newCells`, `takenCells` của `territoryResults`. Kết quả cũ chưa có hai field này thì chip mở thẳng bản đồ. Cạnh chip là "chiếm của" kèm tối đa ba avatar người mất nhiều ô nhất (thừa thì "+k"); chạm avatar mở hồ sơ người đó (`/club/:uid`). Tên và ảnh lấy từ BXH đã tải (`leaderboardEntries`); người không có trong đó hiện chữ cái đầu và tên mặc định.
+- **Buổi không có số ô** (kết thúc trước `enabledAt`, hay +0 ô). App hiện link cho mọi buổi có tuyến, kể cả loại không bao giờ được tính ô như đạp xe; với buổi đó link chỉ mở bản đồ đúng vùng: chi tiết buổi có link "Xem lãnh địa". Đọc kết quả lỗi hay đang đọc thì không hiện link. Link mở màn Lãnh địa canh giữa ô ở điểm giữa tuyến (`/lanh-dia?cell=x_y`, zoom 16). Thẻ "+N ô" cũng mở theo ô giữa danh sách ô của buổi, vì tâm chunk (≈ 5 km) hay để ô của buổi ra ngoài màn hình.
 - **Bị chiếm:** push mang người chiếm, số ô và tối đa 40 ô mình mất (`n`, `cells`, đã bỏ ô chạy cùng). Màn mở từ push vẽ viền nét đứt các ô đó (trừ ô đã giành lại), fit bản đồ vào đó, thẻ "X chiếm N ô của bạn" với nút Chạy giành lại. Lấy từ push chứ không đọc kết quả của buổi chiếm, để số trên thẻ khớp thân push.
+
+### Ô trên bản đồ tuyến
+
+**Bản đồ khi chạy, chi tiết buổi và ảnh khoe thẻ chạy vẽ thêm các ô tuyến đi qua đang có chủ**, tô như màn Lãnh địa (chủ hiện tại, không phải ô của buổi lúc chạy). Ô lấy bằng cách đi dọc từng đoạn tuyến bước 20 m, bỏ đoạn quá 2 km, như backend; tuyến thẻ chỉ giữ 80 điểm nên không đi dọc thì sót ô. Đọc tối đa 16 chunk nhiều ô nhất.
+
+- **Công tắc:** mỗi chỗ một công tắc lưu trên máy (không theo tài khoản), mặc định bật. Cùng một công tắc đổi được ở ba nơi: Cài đặt → "Ô lãnh địa trên bản đồ"; nút ngay trên bản đồ (cột nút bên phải, ẩn khi header chi tiết buổi thu nhỏ dưới 200 px; màn chạy dưới nút ℹ️, chạy trong phòng thì không có vì panel phòng che); nút trên màn khoe (công tắc "Ảnh khoe"). Phóng to bản đồ toàn màn vẫn có ô nhưng không có nút. Màn Lãnh địa luôn có ô. Lãnh địa tắt (`config/territory.enabled`) thì không có ô, không có nút.
+- **Ảnh khoe:** khoá cache có thêm phần ô; màn khoe chốt có vẽ ô một lần mỗi lượt ghi, sau khi đọc cờ và công tắc (mỗi bước ≤ 2 giây), rồi chờ các chunk của tuyến (≤ 3 giây). Không kịp hay lỗi thì vẫn hiện ảnh nhưng không lưu cache. Ô của mình trên ảnh khoe là màu vàng của theme tối màn khoe.
+
+| Được | Mất |
+|---|---|
+| Nhìn ngay ô quanh tuyến mà không mở màn Lãnh địa | Mỗi bản đồ nghe các doc chunk tuyến đi qua, tối đa 16 (buổi thường 1–2); màn chạy nghe suốt buổi |
+| Bản đồ tuyến không phụ thuộc lãnh địa (`underRoute`, `RouteUnderlayScope`, `mapAction` là chỗ cắm chung) | Ảnh khoe chụp ô của lúc khoe; ô đổi chủ sau đó thì ảnh cũ trong cache vẫn là ô cũ tới khi bấm Tạo lại |
 
 ### Phương án đã cân nhắc và loại
 

@@ -473,10 +473,13 @@ class _CardShareScreenState extends ConsumerState<CardShareScreen> {
   Future<bool> _territoryForRecording() async {
     if (_route.isEmpty) return false;
     const wait = Duration(seconds: 2);
-    try {
-      await ref.read(territoryEnabledProvider.future).timeout(wait);
-    } catch (error) {
-      debugPrint('Khoe thẻ: chưa đọc được cờ lãnh địa: $error');
+    // Cờ đã có giá trị (thường đã có từ màn trước) thì khỏi chờ.
+    if (!ref.read(territoryEnabledProvider).hasValue) {
+      try {
+        await ref.read(territoryEnabledProvider.future).timeout(wait);
+      } catch (error) {
+        debugPrint('Khoe thẻ: chưa đọc được cờ lãnh địa: $error');
+      }
     }
     if (!_territoryAvailable) return false;
     final prefs = ref.read(territoryMapPrefsProvider);

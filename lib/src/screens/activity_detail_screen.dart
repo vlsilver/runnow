@@ -188,7 +188,7 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                           uid: heartOwner,
                           activityId: widget.activityId,
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                          fallbackCell: _routeCell(item.summary),
+                          fallbackCell: () => _routeCell(item.summary),
                         ),
                       if (heart != null)
                         Padding(
@@ -331,9 +331,10 @@ class _ActivityRouteHeaderDelegate extends SliverPersistentHeaderDelegate {
             cheerMoments: cheerMoments,
             height: height,
             underRoute: _territoryDetailLayer,
-            mapAction: const TerritoryMapToggle(
-              place: TerritoryMapPlace.detail,
-            ),
+            // Header thu nhỏ thì nút sẽ đè badge đồng bộ góc dưới phải.
+            mapAction: height >= 200
+                ? const TerritoryMapToggle(place: TerritoryMapPlace.detail)
+                : null,
           ),
           activity: showSyncBadge ? detail.summary : null,
         ),

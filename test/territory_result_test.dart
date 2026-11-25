@@ -129,7 +129,7 @@ void main() {
             body: TerritoryResultChip(
               uid: 'an',
               activityId: 'a1',
-              fallbackCell: fallbackCell,
+              fallbackCell: fallbackCell == null ? null : () => fallbackCell,
             ),
           ),
         ),
@@ -346,7 +346,7 @@ void main() {
     expect(
       tester
           .widget<TerritoryResultChip>(find.byType(TerritoryResultChip))
-          .fallbackCell,
+          .fallbackCell!(),
       '208149_115402',
     );
   });

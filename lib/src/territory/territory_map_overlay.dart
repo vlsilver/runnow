@@ -190,11 +190,14 @@ class _TerritoryRouteLayerState extends ConsumerState<TerritoryRouteLayer> {
   @override
   Widget build(BuildContext context) {
     if (!widget.decided) {
-      final enabled = ref.watch(territoryEnabledProvider).value ?? false;
+      // Cờ trước: lãnh địa tắt (prod) thì không tạo công tắc, không đọc máy.
+      if (!(ref.watch(territoryEnabledProvider).value ?? false)) {
+        return const SizedBox.shrink();
+      }
       final shows = ref.watch(
         territoryMapPrefsProvider.select((p) => p.shows(widget.place)),
       );
-      if (!enabled || !shows) return const SizedBox.shrink();
+      if (!shows) return const SizedBox.shrink();
     }
     _refresh(widget.points);
     final myUid = ref.watch(firebaseUserProvider).value?.uid;
