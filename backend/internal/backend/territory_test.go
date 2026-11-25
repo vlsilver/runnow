@@ -2,6 +2,7 @@ package backend
 
 import (
 	"math"
+	"slices"
 	"testing"
 	"time"
 )
@@ -295,10 +296,10 @@ func TestResultFor(t *testing.T) {
 	run := func(x territoryPass, others ...territoryPass) territoryResult {
 		return resultFor(x, map[string]int{cell: x.Meters}, map[string][]territoryPass{cell: others}, terrMonth)
 	}
-	if r := run(terrPass("B", "b1", 5, 100)); r.Gained != 1 || len(r.Taken) != 0 {
+	if r := run(terrPass("B", "b1", 5, 100)); r.Gained != 1 || len(r.Taken) != 0 || !slices.Equal(r.GainedCells, []string{cell}) {
 		t.Fatalf("ô trống phải là ô mới: %+v", r)
 	}
-	if r := run(terrPass("B", "b1", 5, 400), terrPass("A", "a1", 1, 300)); r.Gained != 0 || r.Taken["A"] != 1 {
+	if r := run(terrPass("B", "b1", 5, 400), terrPass("A", "a1", 1, 300)); r.Gained != 0 || r.Taken["A"] != 1 || r.TakenCells[cell] != "A" || len(r.GainedCells) != 0 {
 		t.Fatalf("vượt A phải chiếm của A: %+v", r)
 	}
 	if r := run(terrPass("B", "b1", 5, 200), terrPass("A", "a1", 1, 300)); r.Gained != 0 || len(r.Taken) != 0 {
@@ -323,6 +324,11 @@ func TestResultFor(t *testing.T) {
 	// được tính vào "trước", nên x chiếm của A chứ không của C.
 	if r := run(terrPass("B", "b1", 5, 400), terrPass("A", "a1", 1, 300), terrPass("C", "c1", 5, 350)); r.Taken["A"] != 1 || r.Taken["C"] != 0 {
 		t.Fatalf("lượt cùng giờ đứng sau x bị tính vào trước: %+v", r)
+	}
+	// Nhiều ô mới: danh sách ô theo thứ tự id, không theo thứ tự duyệt map.
+	many := resultFor(terrPass("B", "b1", 5, 100), map[string]int{"3_1": 100, "1_1": 100, "2_1": 100}, nil, terrMonth)
+	if !slices.Equal(many.GainedCells, []string{"1_1", "2_1", "3_1"}) {
+		t.Fatalf("ô mới phải xếp theo id: %v", many.GainedCells)
 	}
 	// Hoà với chủ cũ: chủ cũ tới trước nên giữ, B không chiếm.
 	if r := run(terrPass("B", "b1", 5, 300), terrPass("A", "a1", 1, 300)); len(r.Taken) != 0 {

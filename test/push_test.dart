@@ -94,7 +94,15 @@ void main() {
         'chunk': '6523_3849',
         'uid': 'binh',
         'activityId': 'a1',
+        'n': '2',
+        'cells': '1_1,2_1',
+        'to': 'an',
       }),
+      '/lanh-dia?chunk=6523_3849&by=binh&n=2&lost=1_1%2C2_1&to=an',
+    );
+    // Push cũ không có người chiếm thì chỉ mở đúng vùng.
+    expect(
+      pushLocation({'kind': 'territory_taken', 'chunk': '6523_3849'}),
       '/lanh-dia?chunk=6523_3849',
     );
     expect(pushLocation({'kind': 'territory_taken'}), isNull);

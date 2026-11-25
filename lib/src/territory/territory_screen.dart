@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
@@ -28,9 +29,13 @@ const _chunkZoom = 15.0;
 /// [chunk] (id "x_y" z13, từ push bị chiếm ô) mở đúng vùng đó; không có thì
 /// mở ở chunk mình giữ nhiều ô nhất.
 class TerritoryScreen extends ConsumerWidget {
-  const TerritoryScreen({this.chunk, super.key});
+  const TerritoryScreen({this.chunk, this.taken, super.key});
 
   final String? chunk;
+
+  /// Người chiếm và buổi chiếm, từ push bị chiếm ô: màn vẽ ô vừa mất và hiện
+  /// thẻ "X chiếm N ô của bạn".
+  final TerritoryTaken? taken;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -61,7 +66,11 @@ class TerritoryScreen extends ConsumerWidget {
   Widget _body(WidgetRef ref) {
     final asked = TileXY.parse(chunk);
     if (asked != null) {
-      return TerritoryMap(center: chunkCenter(asked), zoom: _chunkZoom);
+      return TerritoryMap(
+        center: chunkCenter(asked),
+        zoom: _chunkZoom,
+        taken: taken,
+      );
     }
     return ref
         .watch(myTerritoryProvider)
@@ -87,10 +96,18 @@ class TerritoryScreen extends ConsumerWidget {
 /// tôi, hay của một người chọn từ danh sách "Mọi người". Ô càng nhiều km càng
 /// đậm ([territoryCellAlpha]).
 class TerritoryMap extends ConsumerStatefulWidget {
-  const TerritoryMap({required this.center, required this.zoom, super.key});
+  const TerritoryMap({
+    required this.center,
+    required this.zoom,
+    this.taken,
+    super.key,
+  });
 
   final LatLng center;
   final double zoom;
+
+  /// Buổi chiếm ô của mình (từ push): vẽ viền ô vừa mất và thẻ bị chiếm.
+  final TerritoryTaken? taken;
 
   @override
   ConsumerState<TerritoryMap> createState() => _TerritoryMapState();
@@ -107,6 +124,22 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
 
   /// Người dùng tự kéo bản đồ trong lúc chờ đọc ô thì không kéo bản đồ đi nữa.
   var _userMoved = false;
+
+  /// Người dùng đã đóng thẻ bị chiếm.
+  var _takenDismissed = false;
+
+  /// Mở từ push bị chiếm: lúc bản đồ sẵn sàng thì đưa tới đúng các ô vừa mất.
+  void _fitLost() {
+    final lost = widget.taken?.cells ?? const <TileXY>[];
+    if (lost.isEmpty) return;
+    _map.fitCamera(
+      CameraFit.coordinates(
+        coordinates: [for (final cell in lost) ...cellCorners(cell)],
+        padding: const EdgeInsets.fromLTRB(32, 160, 32, 96),
+        maxZoom: 17,
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -222,6 +255,24 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final myUid = ref.watch(firebaseUserProvider).value?.uid;
     final cells = _visibleCells();
+    // Push gửi cho tài khoản khác (máy đổi tài khoản mà token cũ chưa gỡ)
+    // thì không hiện: thẻ nói "của bạn".
+    final taken = switch (widget.taken) {
+      final t? when !_takenDismissed && (t.to == null || t.to == myUid) => t,
+      _ => null,
+    };
+    // Ô đã giành lại (chủ hiện tại là mình) thì thôi viền.
+    final mineNow = {
+      for (final chunk in _chunks ?? const <TileXY>[])
+        for (final cell
+            in ref.watch(territoryChunkProvider(chunk)).value ??
+                const <TerritoryCell>[])
+          if (cell.ownerUid == myUid) cell.tile,
+    };
+    final lost = [
+      for (final cell in taken?.cells ?? const <TileXY>[])
+        if (!mineNow.contains(cell)) cell,
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -243,7 +294,10 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
                   minZoom: 4,
                   maxZoom: 19,
                   backgroundColor: palette.tint,
-                  onMapReady: () => _updateChunks(_map.camera),
+                  onMapReady: () {
+                    _fitLost();
+                    _updateChunks(_map.camera);
+                  },
                   onPositionChanged: (camera, hasGesture) {
                     if (hasGesture) _userMoved = true;
                     _updateChunks(camera);
@@ -259,6 +313,15 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
                     polygons: [
                       for (final cell in cells)
                         _polygon(cell, myUid, palette.accent),
+                      // Ô vừa mất: viền nét đứt màu của mình trên ô người chiếm.
+                      for (final cell in lost)
+                        Polygon(
+                          points: cellCorners(cell),
+                          color: Colors.transparent,
+                          borderColor: palette.accent,
+                          borderStrokeWidth: 2.5,
+                          pattern: StrokePattern.dashed(segments: [6, 4]),
+                        ),
                     ],
                   ),
                   const MapAttribution(),
@@ -266,9 +329,20 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
               ),
               Positioned(
                 top: 12,
-                left: 0,
-                right: 0,
-                child: Center(child: _Badge(tooFar: _chunks == null)),
+                left: 12,
+                right: 12,
+                child: Column(
+                  spacing: 8,
+                  children: [
+                    if (taken != null && myUid != null)
+                      _TakenBanner(
+                        takerUid: taken.uid,
+                        lost: taken.count,
+                        onClose: () => setState(() => _takenDismissed = true),
+                      ),
+                    _Badge(tooFar: _chunks == null),
+                  ],
+                ),
               ),
               const Positioned(left: 12, bottom: 12, child: _Legend()),
               Positioned(
@@ -428,6 +502,68 @@ class _RulesButton extends StatelessWidget {
         onPressed: onPressed,
         icon: const Icon(Icons.help_outline_rounded, size: 18),
         label: const Text('Là gì?'),
+      ),
+    );
+  }
+}
+
+/// Thẻ "X chiếm N ô của bạn" khi mở từ push bị chiếm, nút chạy giành lại.
+class _TakenBanner extends ConsumerWidget {
+  const _TakenBanner({
+    required this.takerUid,
+    required this.lost,
+    required this.onClose,
+  });
+
+  final String takerUid;
+  final int lost;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final name =
+        ref.watch(territoryNamesProvider)[takerUid]?.name ??
+        territoryDefaultName;
+    return Material(
+      color: theme.colorScheme.surface,
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+        child: Column(
+          spacing: 10,
+          children: [
+            Row(
+              spacing: 12,
+              children: [
+                TerritoryAvatar(uid: takerUid, name: name),
+                Expanded(
+                  child: Text(
+                    '$name chiếm $lost ô của bạn',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+                IconButton(
+                  onPressed: onClose,
+                  tooltip: 'Đóng',
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => context.go('/tracking'),
+                  child: const Text('Chạy giành lại'),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

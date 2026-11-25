@@ -5,6 +5,8 @@ package backend
 import (
 	"context"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -186,6 +188,16 @@ func TestEmulatorTerritoryTakeAndPush(t *testing.T) {
 	h.run("A", "a1", 30, 1)
 	h.sync("A")
 	a := h.activity("A", "a1")
+	// Buổi đầu của A sau khi bật: mọi ô là ô mới, ghi từng ô vào bản nhỏ.
+	aSmall, err := getData(context.Background(), h.db.Doc("territoryResults/A_a1"))
+	if err != nil || aSmall == nil {
+		t.Fatalf("thiếu territoryResults/A_a1: %v", err)
+	}
+	aCellsMap, _ := a["cells"].(map[string]any)
+	newCells, _ := aSmall["newCells"].([]any)
+	if len(newCells) == 0 || len(newCells) != len(aCellsMap) || number(aSmall["gained"]) != float64(len(newCells)) {
+		t.Fatalf("newCells phải là mọi ô của A (%d), ra %v, gained %v", len(aCellsMap), newCells, aSmall["gained"])
+	}
 	n := len(a["cells"].(map[string]any))
 	if res := a["result"].(map[string]any); int(number(res["gained"])) != n {
 		t.Fatalf("A chạy ô trống phải được %d ô mới: %+v", n, res)
@@ -216,6 +228,17 @@ func TestEmulatorTerritoryTakeAndPush(t *testing.T) {
 	if len(h.push.sent) != 1 || h.push.sent[0].Token != "tok-A" || h.push.sent[0].Data["kind"] != territoryPushKind {
 		t.Fatalf("A phải nhận đúng một push: %+v", h.push.sent)
 	}
+	// Push mang số ô và từng ô A mất, đúng như thân push.
+	sent := h.push.sent[0].Data
+	sentCells := strings.Split(sent["cells"], ",")
+	if sent["to"] != "A" || sent["n"] != strconv.Itoa(len(sentCells)) || number(taken["A"]) != float64(len(sentCells)) {
+		t.Fatalf("push phải mang %v ô, ra n=%q cells=%q", taken["A"], sent["n"], sent["cells"])
+	}
+	for _, cell := range sentCells {
+		if aCellsMap[cell] == nil {
+			t.Fatalf("ô %s trong push không phải ô của A", cell)
+		}
+	}
 	// Push mở chunk của một ô A đã mất.
 	aChunks := stringList(a["chunks"])
 	if got := h.push.sent[0].Data["chunk"]; got == "" || !slices.Contains(aChunks, got) {
@@ -228,6 +251,17 @@ func TestEmulatorTerritoryTakeAndPush(t *testing.T) {
 	}
 	if st, _ := small["taken"].(map[string]any); number(st["A"]) != number(taken["A"]) || stringValue(small["chunk"]) == "" {
 		t.Fatalf("bản nhỏ lệch result: %+v vs %+v", small, res)
+	}
+	// Từng ô chiếm được, kèm người bị chiếm, để app vẽ ô A vừa mất.
+	takenCells, _ := small["takenCells"].(map[string]any)
+	if float64(len(takenCells)) != number(taken["A"]) {
+		t.Fatalf("takenCells phải có %v ô, ra %d: %+v", taken["A"], len(takenCells), takenCells)
+	}
+	aCells, _ := a["cells"].(map[string]any)
+	for cell, victim := range takenCells {
+		if victim != "A" || aCells[cell] == nil {
+			t.Fatalf("ô %s chiếm của %v, phải là ô của A", cell, victim)
+		}
 	}
 
 	// B chuyển private: ô trả về A, owners của B rỗng.

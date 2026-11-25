@@ -9,6 +9,7 @@ import 'package:myrun/src/achievements/run_card_providers.dart';
 import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/screens/activity_detail_screen.dart';
+import 'package:myrun/src/territory/territory_grid.dart';
 import 'package:myrun/src/territory/territory_models.dart';
 import 'package:myrun/src/territory/territory_repository.dart';
 import 'package:myrun/src/territory/territory_widgets.dart';
@@ -51,6 +52,31 @@ void main() {
         names,
       );
       expect(text.takenFrom, 'chiếm của 3i member');
+    });
+  });
+
+  group('ô của kết quả', () {
+    test('đọc ô mới và ô chiếm, bỏ ô hỏng', () {
+      final result = TerritoryResult.fromMap({
+        'gained': 1,
+        'taken': {'binh': 2},
+        'newCells': ['5_5', 'hỏng'],
+        'takenCells': {'1_1': 'binh', '2_1': 'binh', '3_1': 'chi', '4_1': ''},
+      })!;
+      expect(result.newCells, [const TileXY(5, 5)]);
+      expect(result.takenCells.length, 3);
+      expect(result.takenCells, {
+        const TileXY(1, 1): 'binh',
+        const TileXY(2, 1): 'binh',
+        const TileXY(3, 1): 'chi',
+      });
+      expect(result.hasCells, isTrue);
+    });
+
+    test('kết quả cũ chưa có ô thì không vẽ bản đồ nhỏ', () {
+      final result = TerritoryResult.fromMap({'gained': 3})!;
+      expect(result.hasCells, isFalse);
+      expect(result.newCells, isEmpty);
     });
   });
 
@@ -170,6 +196,27 @@ void main() {
     await result('an', 'a1').set(doc('an', 3, chunk: '6523_3849'));
     final opened = await pumpChip(tester);
     await tester.tap(find.byType(ActionChip));
+    await tester.pumpAndSettle();
+    expect(opened, ['/lanh-dia?chunk=6523_3849']);
+  });
+
+  testWidgets('có từng ô thì chạm chip mở thẻ +N ô, rồi mới tới bản đồ', (
+    tester,
+  ) async {
+    await result('an', 'a1').set({
+      ...doc('an', 1, taken: {'binh': 2}, chunk: '6523_3849'),
+      'newCells': ['208766_123181'],
+      'takenCells': {'208767_123181': 'binh', '208768_123181': 'binh'},
+    });
+    final opened = await pumpChip(tester);
+    await tester.tap(find.byType(ActionChip));
+    await tester.pumpAndSettle();
+    expect(find.text('+3 ô'), findsOneWidget);
+    expect(find.text('1 ô mới'), findsOneWidget);
+    expect(find.text('chiếm 2 ô của Bình'), findsOneWidget);
+    expect(opened, isEmpty);
+
+    await tester.tap(find.text('Xem trên bản đồ'));
     await tester.pumpAndSettle();
     expect(opened, ['/lanh-dia?chunk=6523_3849']);
   });

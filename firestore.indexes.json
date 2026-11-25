@@ -138,6 +138,8 @@
     },
     { "collectionGroup": "activities", "fieldPath": "territory.cells", "indexes": [] },
     { "collectionGroup": "territoryChunks", "fieldPath": "cells", "indexes": [] },
+    { "collectionGroup": "territoryResults", "fieldPath": "newCells", "indexes": [] },
+    { "collectionGroup": "territoryResults", "fieldPath": "takenCells", "indexes": [] },
     { "collectionGroup": "territoryPushes", "fieldPath": "expireAt", "ttl": true, "indexes": [] }
   ]
 }

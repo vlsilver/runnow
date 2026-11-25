@@ -1341,4 +1341,7 @@ abstract final class RunNowTerritoryTokens {
   static const posterBackground = Color(0xFF111316);
   static const posterInk = Color(0xFFF2F1ED);
   static const posterMuted = Color(0xFF9A968F);
+
+  /// Viền ô chiếm được trên thẻ "+N ô" nền tối.
+  static const posterTakenEdge = Color(0xFF8DB3F5);
 }

@@ -525,6 +525,10 @@ func (s *TerritoryService) writeResult(ctx context.Context, uid string, d territ
 		return nil
 	}
 	result := map[string]any{"gained": 0, "taken": map[string]any{}}
+	// Ô cụ thể chỉ ghi vào bản nhỏ cho app vẽ bản đồ "+N ô" và màn bị chiếm;
+	// territory.result trên doc buổi giữ số như cũ.
+	newCells := []string{}
+	takenCells := map[string]any{}
 	if t["counted"] == true && cfg.resultsOn(d.endedAt()) {
 		r, _, err := s.outcome(ctx, uid, d, cfg)
 		if err != nil {
@@ -535,11 +539,17 @@ func (s *TerritoryService) writeResult(ctx context.Context, uid string, d territ
 			taken[u] = n
 		}
 		result = map[string]any{"gained": r.Gained, "taken": taken}
+		if r.GainedCells != nil {
+			newCells = r.GainedCells
+		}
+		for cell, victim := range r.TakenCells {
+			takenCells[cell] = victim
+		}
 	}
 	// Bản sao nhỏ cho app: doc buổi tới 800 KB vì routePoints, app nghe doc này
 	// thay vì nghe cả buổi chỉ để lấy "+N ô". Ghi trước dấu territory.result,
 	// để chạy lại sau lỗi ghi lại cả hai.
-	small := map[string]any{"uid": uid, "activityId": d.ref.ID, "gained": result["gained"], "taken": result["taken"], "updatedAt": firestore.ServerTimestamp}
+	small := map[string]any{"uid": uid, "activityId": d.ref.ID, "gained": result["gained"], "taken": result["taken"], "newCells": newCells, "takenCells": takenCells, "updatedAt": firestore.ServerTimestamp}
 	if chunks := stringList(t["chunks"]); len(chunks) > 0 {
 		small["chunk"] = chunks[0]
 	}

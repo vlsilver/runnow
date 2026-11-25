@@ -152,7 +152,8 @@ Ghi `result` chỉ khi chưa có. Firestore không có precondition kiểu "fiel
 | Không đổi backend: `m`, `m2`, `byChunk` đã có | Đậm theo km, không đếm số buổi; người bám sau không có tên |
 | Danh sách và Thông số đọc thẳng `territoryOwners`, chunk | Mỗi lần tải danh sách đọc mọi doc owners (giữ 5 phút); Thông số đọc mọi chunk của người đó |
 
-Hai màn trên canvas cần backend nên làm đợt sau: bản đồ nhỏ "+N ô" sau buổi chạy (`territoryResults` phải ghi danh sách ô) và màn mở từ push bị chiếm (push phải mang người chiếm và ô mất).
+- **"+N ô":** chạm chip mở thẻ nền tối có hình ô mới và ô chiếm được, đọc `newCells`, `takenCells` của `territoryResults`. Kết quả cũ chưa có hai field này thì chip mở thẳng bản đồ.
+- **Bị chiếm:** push mang người chiếm, số ô và tối đa 40 ô mình mất (`n`, `cells`, đã bỏ ô chạy cùng). Màn mở từ push vẽ viền nét đứt các ô đó (trừ ô đã giành lại), fit bản đồ vào đó, thẻ "X chiếm N ô của bạn" với nút Chạy giành lại. Lấy từ push chứ không đọc kết quả của buổi chiếm, để số trên thẻ khớp thân push.
 
 ### Phương án đã cân nhắc và loại
 
@@ -234,7 +235,7 @@ flowchart LR
 | `push_prefs.go` `pushGroups`, `Prefs` | Thêm nhóm `territory` ("Lãnh địa: bị chiếm ô"); `Prefs` chỉ trả nhóm này khi `config/territory.enabled` | Nhỏ |
 | `http_server.go` `rebuild-derived-data` và `refresh-leaderboard` | Cuối `rebuild-derived-data` enqueue `territory-sync`. Mọi đường lưu, xoá buổi và đổi hồ sơ đã đi qua task này, và `refresh-leaderboard` chạy nó cho mọi member mỗi ngày, nên một chỗ móc là đủ. `refresh-leaderboard` enqueue thêm `territory-daily`, TaskID theo ngày | Nhỏ |
 | `migrations/territory-backfill` (mới) | Chạy `Sync` cho mọi user, không hẹn push | Nhỏ |
-| `firestore.rules` | `territoryChunks`, `territoryOwners`, `config/territory`: đọc khi đăng nhập, app không ghi. App lấy cờ bật từ `config/territory.enabled`, không dùng Remote Config riêng, để ra mắt chỉ bật một chỗ và bản web cũng theo được. `territoryPushes`: không ai đọc từ app | Nhỏ |
+| `firestore.rules` | `territoryChunks`, `territoryOwners`, `config/territory`: đọc khi đăng nhập, app không ghi. `territoryResults`: chỉ `get`, khi là chủ buổi hay hồ sơ đang công khai (doc chưa có thì đọc được); không `list`, vì doc có ô cụ thể của từng buổi. App lấy cờ bật từ `config/territory.enabled`, không dùng Remote Config riêng, để ra mắt chỉ bật một chỗ và bản web cũng theo được. `territoryPushes`: không ai đọc từ app | Nhỏ |
 | `firestore.indexes.json` | Index collection group `activities`: `territory.counted` ==, `territory.chunks` array-contains, `territory.endedAt` range. Field override tắt index tự động cho `territoryChunks.cells` và `territory.cells` (collection group `activities`). TTL cho `territoryPushes.expireAt` | Nhỏ |
 | `lib/src/territory/` (mới) | Repository nghe chunk theo khung nhìn, màn Lãnh địa, lớp ô trên `mapBaseLayer` đậm theo `m`, hàng lọc, danh sách người giữ ô đọc từ `territoryOwners` | Lớn |
 | Màn kết thúc buổi, chi tiết buổi, Trang chủ | Dòng "+N ô" và "Lãnh địa N ô" | Vừa |
@@ -263,7 +264,7 @@ Buổi 5 km thường có khoảng 35 ô, mỗi mục khoảng 20 byte, nên `ce
 
 **`territoryOwners/{uid}`**, chỉ backend ghi: `byChunk` (map chunk → số ô người này giữ trong chunk) và `updatedAt`. Mỗi lần tính lại chunk ghi đè mục `byChunk.{chunk}` của từng người có ô trước hoặc sau lần tính, về 0 thì xoá mục. Ghi đè chứ không cộng dồn, nên chạy lại không lệch số. App cộng các mục để ra tổng; danh sách Mọi người đọc cả collection và bỏ doc rỗng. Tên và avatar đọc từ `leaderboardEntries`. Lần tính lại chạy sau khi owners đã bị xoá có thể tạo lại một doc rỗng chỉ có `updatedAt`, không có dữ liệu cá nhân; việc hằng ngày xoá nó.
 
-**`territoryResults/{uid}_{activityId}`**, chỉ backend ghi, người đăng nhập đọc: bản nhỏ của `territory.result` (`gained`, `taken`, `chunk` là chunk đầu của buổi để mở bản đồ đúng vùng). App nghe doc này thay vì nghe doc buổi tới 800 KB. Backend ghi nó trước dấu `territory.result`; xoá tài khoản xoá theo `uid`.
+**`territoryResults/{uid}_{activityId}`**, chỉ backend ghi: bản nhỏ của `territory.result` (`gained`, `taken`, `chunk` là chunk đầu của buổi để mở bản đồ đúng vùng), thêm `newCells` (ô mới, theo id) và `takenCells` (ô chiếm được → người bị chiếm) để vẽ thẻ "+N ô". App nghe doc này thay vì nghe doc buổi tới 800 KB. Đọc theo luật của doc buổi: chủ buổi hay hồ sơ công khai, không list; người chuyển private thì không ai khác đọc được lịch sử ô. Backend ghi nó trước dấu `territory.result`; xoá tài khoản xoá theo `uid`. Index tự động tắt cho `newCells`, `takenCells`.
 
 **`territoryPushes/{uid}_{activityId}`**, chỉ backend: claim một lần cho push, tạo bằng `Create` (đã có thì thất bại), `expireAt` sau 30 ngày cho TTL. Doc riêng để claim không bao giờ dựng lại doc buổi đã xoá; `claimOnce` hiện có (`notify_dedup.go`) làm việc đó khi gặp `NotFound`.
 

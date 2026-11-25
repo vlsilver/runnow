@@ -365,9 +365,17 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if false;
     }
-    // "+N ô" của từng buổi, bản nhỏ để app không phải nghe cả doc buổi.
+    // "+N ô" của từng buổi, bản nhỏ để app không phải nghe cả doc buổi. Có
+    // ô cụ thể của buổi (newCells, takenCells) nên đọc theo cùng luật với doc
+    // buổi: chủ buổi, hay hồ sơ đang công khai. Người chuyển private thì lịch
+    // sử ô của họ không còn ai đọc được. Doc chưa có thì đọc được (không lộ gì)
+    // để app nghe trước khi backend ghi. Không cho list.
     match /territoryResults/{resultId} {
-      allow read: if signedIn();
+      allow get: if signedIn()
+        && (resource == null
+          || request.auth.uid == resource.data.uid
+          || isPublicProfile(resource.data.uid));
+      allow list: if false;
       allow write: if false;
     }
     // Cờ bật lãnh địa: app đọc config/territory.enabled, cùng cờ backend dùng.

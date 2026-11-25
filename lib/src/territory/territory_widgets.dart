@@ -1,15 +1,55 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myrun/src/territory/territory_grid.dart';
 import 'package:myrun/src/territory/territory_models.dart';
 import 'package:myrun/src/territory/territory_repository.dart';
+import 'package:myrun/src/territory/territory_result_sheet.dart';
 import 'package:myrun/src/theme.dart';
 
-/// Route màn Lãnh địa; [chunk] (id "x_y" z13) mở đúng vùng đó.
-String territoryLocation({String? chunk}) => Uri(
-  path: '/lanh-dia',
-  queryParameters: chunk == null ? null : {'chunk': chunk},
-).toString();
+/// Route màn Lãnh địa; [chunk] (id "x_y" z13) mở đúng vùng đó. [taken] (từ
+/// push bị chiếm) là người chiếm, số ô và các ô mình vừa mất.
+String territoryLocation({String? chunk, TerritoryTaken? taken}) {
+  final query = {
+    'chunk': ?chunk,
+    if (taken != null) ...{
+      'by': taken.uid,
+      'n': '${taken.count}',
+      'lost': [for (final c in taken.cells) c.id].join(','),
+      'to': ?taken.to,
+    },
+  };
+  return Uri(
+    path: '/lanh-dia',
+    queryParameters: query.isEmpty ? null : query,
+  ).toString();
+}
+
+/// Số ô tối đa một push bị chiếm mang theo (`territoryPushCells` ở backend).
+const territoryTakenMaxCells = 40;
+
+/// Đọc lại [TerritoryTaken] từ query của route hay data của push. Thiếu người
+/// chiếm hay số ô thì null (push cũ chỉ có chunk). Link có thể tự gõ nên chặn
+/// số ô và danh sách ô ở mức push thật gửi được: một buổi tối đa 3000 ô.
+TerritoryTaken? parseTerritoryTaken(
+  String? by,
+  String? n,
+  String? lost, {
+  String? to,
+}) {
+  final count = int.tryParse(n ?? '');
+  if (by == null || by.isEmpty || count == null || count <= 0) return null;
+  if (count > 3000) return null;
+  return (
+    uid: by,
+    count: count,
+    cells: [
+      for (final id in (lost ?? '').split(',').take(territoryTakenMaxCells))
+        ?TileXY.parse(id),
+    ],
+    to: to == null || to.isEmpty ? null : to,
+  );
+}
 
 /// "1,2 km" từ số mét của chủ ô.
 String territoryKm(int meters) =>
@@ -203,8 +243,16 @@ class TerritoryResultChip extends ConsumerWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          onPressed: () =>
-              context.push(territoryLocation(chunk: result.chunk?.id)),
+          // Backend đã lưu từng ô thì mở thẻ có bản đồ nhỏ; kết quả cũ chỉ có
+          // số thì mở thẳng bản đồ như trước.
+          onPressed: () => result.hasCells
+              ? showModalBottomSheet<void>(
+                  context: context,
+                  showDragHandle: true,
+                  isScrollControlled: true,
+                  builder: (_) => TerritoryResultSheet(result: result),
+                )
+              : context.push(territoryLocation(chunk: result.chunk?.id)),
         ),
       ),
     );

@@ -268,6 +268,23 @@ void main() {
     );
   });
 
+  test('đọc lần bị chiếm từ push: thiếu người chiếm hay số ô thì bỏ', () {
+    final taken = parseTerritoryTaken('binh', '2', '1_1,hỏng,2_1')!;
+    expect(taken.uid, 'binh');
+    expect(taken.count, 2);
+    expect(taken.cells, [const TileXY(1, 1), const TileXY(2, 1)]);
+    expect(parseTerritoryTaken('binh', null, '1_1'), isNull);
+    expect(parseTerritoryTaken('binh', '0', '1_1'), isNull);
+    expect(parseTerritoryTaken('', '2', '1_1'), isNull);
+    // Link tự gõ: số ô quá một buổi thì bỏ, danh sách ô cắt ở 40.
+    expect(parseTerritoryTaken('binh', '5000', '1_1'), isNull);
+    final many = List.generate(60, (i) => '${i}_1').join(',');
+    expect(parseTerritoryTaken('binh', '60', many)!.cells, hasLength(40));
+    expect(parseTerritoryTaken('binh', '2', '1_1', to: 'an')!.to, 'an');
+    // Thiếu danh sách ô vẫn có thẻ, chỉ không có viền.
+    expect(parseTerritoryTaken('binh', '2', null)!.cells, isEmpty);
+  });
+
   test('route màn Lãnh địa', () {
     expect(territoryLocation(), '/lanh-dia');
     expect(territoryLocation(chunk: '6523_3849'), '/lanh-dia?chunk=6523_3849');

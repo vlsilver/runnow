@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -56,6 +58,9 @@ func (s *TerritoryService) PushTaken(ctx context.Context, uid, activityID string
 	// theo id, để chạy lại ra cùng chunk), không phải ô của người khác.
 	victims := map[string]int{}
 	victimChunk := map[string]string{}
+	// Ô từng người mất, theo id, để app vẽ đúng ô push nói tới (đã bỏ ô chạy
+	// cùng). Data FCM giới hạn 4 KB nên gửi tối đa territoryPushCells ô.
+	victimCells := map[string][]string{}
 	cells := make([]string, 0, len(res.TakenCells))
 	for cell := range res.TakenCells {
 		cells = append(cells, cell)
@@ -67,6 +72,9 @@ func (s *TerritoryService) PushTaken(ctx context.Context, uid, activityID string
 			continue
 		}
 		victims[victim]++
+		if len(victimCells[victim]) < territoryPushCells {
+			victimCells[victim] = append(victimCells[victim], cell)
+		}
 		if _, ok := victimChunk[victim]; !ok {
 			if c, err := parseTileID(cell); err == nil {
 				victimChunk[victim] = chunkOf(c).id()
@@ -97,7 +105,10 @@ func (s *TerritoryService) PushTaken(ctx context.Context, uid, activityID string
 		note := pushNote{
 			Title: "Lãnh địa",
 			Body:  fmt.Sprintf("%s vừa chiếm %d ô của bạn", name, victims[v]),
-			Data:  map[string]string{"kind": territoryPushKind, "chunk": victimChunk[v], "uid": uid, "activityId": activityID},
+			Data: map[string]string{
+				"kind": territoryPushKind, "chunk": victimChunk[v], "uid": uid, "activityId": activityID,
+				"n": strconv.Itoa(victims[v]), "cells": strings.Join(victimCells[v], ","), "to": v,
+			},
 		}
 		if err := s.push.Send(ctx, []string{v}, note); err != nil {
 			slog.WarnContext(ctx, "territory.push_failed", "uid", uid, "activityId", activityID, "victim", v, "error", err)
@@ -106,6 +117,10 @@ func (s *TerritoryService) PushTaken(ctx context.Context, uid, activityID string
 	slog.InfoContext(ctx, "territory.push_sent", "uid", uid, "activityId", activityID, "victims", len(uids))
 	return nil
 }
+
+// territoryPushCells: số ô tối đa gửi kèm push bị chiếm. Id ô dài khoảng 14
+// byte, 40 ô khoảng 600 byte, xa giới hạn 4 KB của data FCM.
+const territoryPushCells = 40
 
 // ranTogether: người bị chiếm có lượt qua ô này cách buổi chiếm không quá
 // quiet, theo cả hai chiều, tức hai người chạy cùng nhau.

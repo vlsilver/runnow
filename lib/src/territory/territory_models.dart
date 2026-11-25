@@ -88,6 +88,16 @@ class TerritoryOwner {
   }
 }
 
+/// Lần bị chiếm mở từ push: người chiếm, số ô mất và các ô đó (push gửi tối đa
+/// 40 ô). Lấy từ push chứ không đọc kết quả của buổi chiếm, để khớp đúng thân
+/// push (đã bỏ ô chạy cùng, tính lúc gửi).
+typedef TerritoryTaken = ({
+  String uid,
+  int count,
+  List<TileXY> cells,
+  String? to,
+});
+
 /// Kết quả lãnh địa của một buổi chạy, đọc từ doc nhỏ
 /// `territoryResults/{uid}_{activityId}` backend ghi kèm `territory.result`.
 class TerritoryResult {
@@ -95,12 +105,16 @@ class TerritoryResult {
     required this.gained,
     this.taken = const {},
     this.chunk,
+    this.newCells = const [],
+    this.takenCells = const {},
   });
 
   /// Null khi backend chưa ghi kết quả (vài giây sau khi lưu buổi).
   static TerritoryResult? fromMap(Map<String, dynamic>? data) {
     if (data == null) return null;
     final taken = data['taken'];
+    final newCells = data['newCells'];
+    final takenCells = data['takenCells'];
     return TerritoryResult(
       gained: (data['gained'] as num?)?.toInt() ?? 0,
       taken: {
@@ -109,6 +123,17 @@ class TerritoryResult {
             if (key is String && value is num && value > 0) key: value.toInt(),
       },
       chunk: TileXY.parse(data['chunk'] as String?),
+      newCells: [
+        if (newCells is List)
+          for (final id in newCells)
+            if (id is String) ?TileXY.parse(id),
+      ],
+      takenCells: {
+        if (takenCells is Map)
+          for (final MapEntry(:key, :value) in takenCells.entries)
+            if (value is String && value.isNotEmpty)
+              ?TileXY.parse(key as String?): value,
+      },
     );
   }
 
@@ -123,6 +148,15 @@ class TerritoryResult {
 
   /// Số ô buổi này có thêm: ô mới cộng ô chiếm được.
   int get total => taken.values.fold(gained, (sum, n) => sum + n);
+
+  /// Ô mới của buổi. Rỗng với kết quả ghi trước khi backend lưu từng ô.
+  final List<TileXY> newCells;
+
+  /// Ô chiếm được → uid người bị chiếm.
+  final Map<TileXY, String> takenCells;
+
+  /// Backend đã lưu từng ô, đủ để vẽ bản đồ nhỏ.
+  bool get hasCells => newCells.isNotEmpty || takenCells.isNotEmpty;
 }
 
 /// Số liệu lãnh địa của một người, tính từ các ô người đó đang giữ.

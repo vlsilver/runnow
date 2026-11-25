@@ -537,6 +537,60 @@ void main() {
     );
     expect(initial.style?.color, context.runNowPalette.onAccent);
   });
+
+  testWidgets(
+    'mở từ push bị chiếm: thẻ người chiếm, viền ô vừa mất, đóng được',
+    (tester) async {
+      // Push: Bình chiếm 2 ô của An. binhCell nay của Bình; mineCell An đã
+      // giành lại nên không viền.
+      await pump(
+        tester,
+        const TerritoryScreen(
+          chunk: '6523_3849',
+          taken: (uid: 'binh', count: 2, cells: [binhCell, mineCell], to: 'an'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // Số ô lấy từ push, không đếm lại.
+      expect(find.text('Bình chiếm 2 ô của bạn'), findsOneWidget);
+      final dashed = polygons(
+        tester,
+      ).where((p) => p.pattern != const StrokePattern.solid()).toList();
+      expect(dashed, hasLength(1));
+      expect(
+        dashed.single.points.first.latitude,
+        closeTo(cellCorners(binhCell).first.latitude, 1e-12),
+      );
+      // Bản đồ fit vào hai ô (zoom trần 17), ô vừa mất nằm trong màn hình.
+      final camera = MapCamera.of(tester.element(find.byType(PolygonLayer)));
+      expect(camera.zoom, 17);
+      expect(camera.visibleBounds.contains(cellCenter(binhCell)), isTrue);
+
+      await tester.tap(find.byTooltip('Đóng'));
+      await tester.pump();
+      expect(find.text('Bình chiếm 2 ô của bạn'), findsNothing);
+      expect(polygons(tester), hasLength(2));
+    },
+  );
+
+  testWidgets('push gửi cho tài khoản khác thì không có thẻ bị chiếm', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      const TerritoryScreen(
+        chunk: '6523_3849',
+        taken: (uid: 'binh', count: 2, cells: [binhCell], to: 'chi'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('chiếm'), findsNothing);
+  });
+
+  testWidgets('mở thường thì không có thẻ bị chiếm', (tester) async {
+    await pump(tester, const TerritoryScreen(chunk: '6523_3849'));
+    expect(find.textContaining('chiếm'), findsNothing);
+  });
 }
 
 /// Đọc ô chờ test cho xong, và đếm số lần đọc danh sách người giữ ô.

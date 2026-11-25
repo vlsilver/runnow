@@ -75,8 +75,11 @@ func ownerOf(passes []territoryPass, at time.Time, window time.Duration) (cellOw
 // buổi làm chủ nhân được, Taken là ô lấy của từng người. TakenCells ghi ô nào
 // lấy của ai, để push lọc người chạy cùng theo từng ô; không lưu xuống DB.
 type territoryResult struct {
-	Gained     int
-	Taken      map[string]int
+	Gained int
+	// GainedCells là id các ô mới, theo thứ tự id.
+	GainedCells []string
+	Taken       map[string]int
+	// TakenCells: ô chiếm được → uid người bị chiếm.
 	TakenCells map[string]string
 }
 
@@ -106,10 +109,12 @@ func resultFor(x territoryPass, cells map[string]int, others map[string][]territ
 		switch {
 		case !hadOwner:
 			res.Gained++
+			res.GainedCells = append(res.GainedCells, cell)
 		case prev.UID != x.UID:
 			res.Taken[prev.UID]++
 			res.TakenCells[cell] = prev.UID
 		}
 	}
+	sort.Strings(res.GainedCells)
 	return res
 }
