@@ -245,6 +245,7 @@ final _router = GoRouter(
         final query = state.uri.queryParameters;
         return TerritoryScreen(
           chunk: query['chunk'],
+          cell: query['cell'],
           taken: parseTerritoryTaken(
             query['by'],
             query['n'],

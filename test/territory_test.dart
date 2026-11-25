@@ -24,6 +24,15 @@ void main() {
       );
     });
 
+    test('ô của tuyến lấy theo điểm giữa, tuyến rỗng thì null', () {
+      // Hồ Gươm: x = (105,85+180)/360·2^18 = 208149,6; y tính tay ra 115402,5.
+      expect(
+        territoryCellOfRoute([benThanh, const LatLng(21.03, 105.85), benThanh]),
+        const TileXY(208149, 115402),
+      );
+      expect(territoryCellOfRoute(const []), isNull);
+    });
+
     test(
       'góc tile theo lon = x/2^z·360−180, lat = atan(sinh(π(1−2y/2^z)))',
       () {
@@ -288,5 +297,9 @@ void main() {
   test('route màn Lãnh địa', () {
     expect(territoryLocation(), '/lanh-dia');
     expect(territoryLocation(chunk: '6523_3849'), '/lanh-dia?chunk=6523_3849');
+    expect(
+      territoryLocation(cell: '208149_115402'),
+      '/lanh-dia?cell=208149_115402',
+    );
   });
 }

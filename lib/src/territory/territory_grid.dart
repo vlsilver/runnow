@@ -83,6 +83,19 @@ TileXY chunkOfCell(TileXY cell) {
   return TileXY(cell.x >> shift, cell.y >> shift);
 }
 
+/// Ô z18 chứa điểm giữa tuyến, để mở bản đồ lãnh địa đúng chỗ một buổi.
+/// Tuyến rỗng, hay điểm giữa ngoài khoảng toạ độ (tuyến do client gửi lên),
+/// thì null: [tileAt] với vĩ độ ngoài ±90 ra NaN rồi ném lỗi.
+TileXY? territoryCellOfRoute(List<LatLng> route) {
+  if (route.isEmpty) return null;
+  final mid = route[route.length ~/ 2];
+  return mid.isValid ? tileAt(mid, territoryCellZoom) : null;
+}
+
+/// Tâm một ô z18.
+LatLng cellCenter(TileXY cell) =>
+    tileCorner(cell.x + 0.5, cell.y + 0.5, territoryCellZoom);
+
 /// Tâm chunk, tính trên lưới Mercator để rơi đúng giữa ô trên bản đồ.
 LatLng chunkCenter(TileXY chunk) =>
     tileCorner(chunk.x + 0.5, chunk.y + 0.5, territoryChunkZoom);

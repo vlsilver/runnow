@@ -9,9 +9,10 @@ import 'package:myrun/src/theme.dart';
 
 /// Route màn Lãnh địa; [chunk] (id "x_y" z13) mở đúng vùng đó. [taken] (từ
 /// push bị chiếm) là người chiếm, số ô và các ô mình vừa mất.
-String territoryLocation({String? chunk, TerritoryTaken? taken}) {
+String territoryLocation({String? chunk, String? cell, TerritoryTaken? taken}) {
   final query = {
     'chunk': ?chunk,
+    'cell': ?cell,
     if (taken != null) ...{
       'by': taken.uid,
       'n': '${taken.count}',
@@ -201,16 +202,23 @@ class TerritoryHomeRow extends ConsumerWidget {
 /// Chip "+N ô" của một buổi chạy, chạm mở màn Lãnh địa ở vùng buổi đó chạy
 /// qua, kể cả buổi của người khác. Backend ghi kết quả
 /// vài giây sau khi lưu buổi; chưa có thì không hiện gì, không chờ.
+///
+/// Buổi không có số ô (chạy trước khi bật lãnh địa, hay +0 ô) mà có
+/// [fallbackCell] thì hiện "Xem lãnh địa", mở bản đồ ngay ô đó.
 class TerritoryResultChip extends ConsumerWidget {
   const TerritoryResultChip({
     required this.uid,
     required this.activityId,
     this.padding = EdgeInsets.zero,
+    this.fallbackCell,
     super.key,
   });
 
   final String uid;
   final String activityId;
+
+  /// Id ô z18 giữa tuyến buổi, cho link khi buổi không có số ô.
+  final String? fallbackCell;
 
   /// Chỉ áp khi chip hiện, để chỗ đặt chip không dôi khoảng trống.
   final EdgeInsetsGeometry padding;
@@ -220,14 +228,32 @@ class TerritoryResultChip extends ConsumerWidget {
     if (!(ref.watch(territoryEnabledProvider).value ?? false)) {
       return const SizedBox.shrink();
     }
-    final result = ref
-        .watch(
-          activityTerritoryResultProvider((uid: uid, activityId: activityId)),
-        )
-        .value;
-    if (result == null || result.total == 0) return const SizedBox.shrink();
-    final text = territoryResultText(result, ref.watch(territoryNamesProvider));
+    final async = ref.watch(
+      activityTerritoryResultProvider((uid: uid, activityId: activityId)),
+    );
+    final result = async.value;
     final palette = context.runNowPalette;
+    if (result == null || result.total == 0) {
+      // Đợi đọc xong mới hiện link, để buổi có số ô không chớp link trước.
+      final cell = fallbackCell;
+      if (cell == null || !async.hasValue) return const SizedBox.shrink();
+      return Padding(
+        padding: padding,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: ActionChip(
+            avatar: Icon(
+              Icons.grid_view_rounded,
+              size: 18,
+              color: palette.accent,
+            ),
+            label: const Text('Xem lãnh địa'),
+            onPressed: () => context.push(territoryLocation(cell: cell)),
+          ),
+        ),
+      );
+    }
+    final text = territoryResultText(result, ref.watch(territoryNamesProvider));
     return Padding(
       padding: padding,
       child: Align(

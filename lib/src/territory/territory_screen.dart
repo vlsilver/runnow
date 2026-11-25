@@ -23,15 +23,18 @@ import 'package:myrun/src/widgets/run_now_loading.dart';
 const territoryDefaultCenter = LatLng(10.7769, 106.7009);
 const _defaultZoom = 14.0;
 const _chunkZoom = 15.0;
+const _cellZoom = 16.0;
 
 /// Màn Lãnh địa: ô của mình (màu chính) và của mọi người (xanh) trên bản đồ,
 /// lọc theo người, chạm ô xem chủ ô, danh sách Mọi người, số liệu từng người.
-/// [chunk] (id "x_y" z13, từ push bị chiếm ô) mở đúng vùng đó; không có thì
-/// mở ở chunk mình giữ nhiều ô nhất.
+/// [cell] (id "x_y" z18, ô của một buổi) mở ngay ô đó; không có thì [chunk]
+/// (id z13, từ push bị chiếm ô) mở đúng vùng đó; không có nữa thì mở ở chunk
+/// mình giữ nhiều ô nhất.
 class TerritoryScreen extends ConsumerWidget {
-  const TerritoryScreen({this.chunk, this.taken, super.key});
+  const TerritoryScreen({this.chunk, this.cell, this.taken, super.key});
 
   final String? chunk;
+  final String? cell;
 
   /// Người chiếm và buổi chiếm, từ push bị chiếm ô: màn vẽ ô vừa mất và hiện
   /// thẻ "X chiếm N ô của bạn".
@@ -64,6 +67,15 @@ class TerritoryScreen extends ConsumerWidget {
   }
 
   Widget _body(WidgetRef ref) {
+    // Link có thể tự gõ: ô ngoài lưới z18 thì bỏ qua.
+    const side = 1 << territoryCellZoom;
+    if (TileXY.parse(cell) case final at? when at.x < side && at.y < side) {
+      return TerritoryMap(
+        center: cellCenter(at),
+        zoom: _cellZoom,
+        taken: taken,
+      );
+    }
     final asked = TileXY.parse(chunk);
     if (asked != null) {
       return TerritoryMap(
@@ -164,7 +176,7 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
     final view = _map.camera.visibleBounds;
     final onScreen = _visibleCells(
       read: true,
-    ).any((cell) => view.contains(_cellCenter(cell.tile)));
+    ).any((cell) => view.contains(cellCenter(cell.tile)));
     if (onScreen) return;
     List<TerritoryCell> owned;
     try {
@@ -191,9 +203,6 @@ class _TerritoryMapState extends ConsumerState<TerritoryMap> {
     }
     _updateChunks(_map.camera);
   }
-
-  static LatLng _cellCenter(TileXY tile) =>
-      tileCorner(tile.x + 0.5, tile.y + 0.5, territoryCellZoom);
 
   /// Mọi người → chọn một người → số liệu của họ → "Xem trên bản đồ" thì lọc.
   Future<void> _pickPerson() async {

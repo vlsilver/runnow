@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +15,7 @@ import 'package:myrun/src/territory/territory_grid.dart';
 import 'package:myrun/src/territory/territory_models.dart';
 import 'package:myrun/src/territory/territory_repository.dart';
 import 'package:myrun/src/territory/territory_widgets.dart';
+import 'package:myrun/src/widgets/activity_overview.dart';
 import 'package:myrun/src/theme.dart';
 
 void main() {
@@ -134,14 +137,20 @@ void main() {
   Future<List<String>> pumpChip(
     WidgetTester tester, {
     bool enabled = true,
+    String? fallbackCell,
+    Stream<TerritoryResult?>? results,
   }) async {
     final opened = <String>[];
     final router = GoRouter(
       routes: [
         GoRoute(
           path: '/',
-          builder: (context, state) => const Scaffold(
-            body: TerritoryResultChip(uid: 'an', activityId: 'a1'),
+          builder: (context, state) => Scaffold(
+            body: TerritoryResultChip(
+              uid: 'an',
+              activityId: 'a1',
+              fallbackCell: fallbackCell,
+            ),
           ),
         ),
         GoRoute(
@@ -165,6 +174,8 @@ void main() {
             (ref) async =>
                 (await firestore.collection('leaderboardEntries').get()).docs,
           ),
+          if (results != null)
+            activityTerritoryResultProvider.overrideWith((ref, key) => results),
         ],
         child: MaterialApp.router(
           theme: buildRunNowTheme(RunNowElement.water),
@@ -218,12 +229,53 @@ void main() {
 
     await tester.tap(find.text('Xem trên bản đồ'));
     await tester.pumpAndSettle();
-    expect(opened, ['/lanh-dia?chunk=6523_3849']);
+    expect(opened, ['/lanh-dia?chunk=6523_3849&cell=208767_123181']);
   });
 
   testWidgets('buổi không thêm ô nào thì không có chip', (tester) async {
     await result('an', 'a1').set(doc('an', 0));
     await pumpChip(tester);
+    expect(find.byType(ActionChip), findsNothing);
+  });
+
+  testWidgets('buổi chưa có kết quả mà có tuyến thì có link mở vùng của buổi', (
+    tester,
+  ) async {
+    final opened = await pumpChip(tester, fallbackCell: '208149_115402');
+    expect(find.text('Xem lãnh địa'), findsOneWidget);
+    await tester.tap(find.byType(ActionChip));
+    await tester.pumpAndSettle();
+    expect(opened, ['/lanh-dia?cell=208149_115402']);
+  });
+
+  testWidgets('buổi +0 ô có tuyến cũng có link, buổi +N ô vẫn là chip số', (
+    tester,
+  ) async {
+    await result('an', 'a1').set(doc('an', 0));
+    await pumpChip(tester, fallbackCell: '208149_115402');
+    expect(find.text('Xem lãnh địa'), findsOneWidget);
+
+    await result('an', 'a1').set(doc('an', 2));
+    for (var i = 0; i < 4; i++) {
+      await tester.pump();
+    }
+    expect(find.text('Xem lãnh địa'), findsNothing);
+    expect(find.text('+2 ô'), findsOneWidget);
+  });
+
+  testWidgets('đang đọc kết quả thì chưa hiện link', (tester) async {
+    final results = StreamController<TerritoryResult?>();
+    addTearDown(results.close);
+    await pumpChip(
+      tester,
+      fallbackCell: '208149_115402',
+      results: results.stream,
+    );
+    expect(find.byType(ActionChip), findsNothing);
+  });
+
+  testWidgets('cờ tắt thì không có link', (tester) async {
+    await pumpChip(tester, enabled: false, fallbackCell: '208149_115402');
     expect(find.byType(ActionChip), findsNothing);
   });
 
@@ -233,10 +285,7 @@ void main() {
     expect(find.byType(ActionChip), findsNothing);
   });
 
-  testWidgets('màn chi tiết buổi của người khác hiện chip của buổi đó', (
-    tester,
-  ) async {
-    await result('binh', 'a1').set(doc('binh', 7));
+  Future<void> pumpDetail(WidgetTester tester, {String? polyline}) async {
     tester.view.physicalSize = const Size(420, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -250,6 +299,7 @@ void main() {
         distanceMeters: 5000,
         movingTimeSeconds: 1800,
         elapsedTimeSeconds: 1900,
+        polyline: polyline,
       ),
     );
     await tester.pumpWidget(
@@ -279,7 +329,58 @@ void main() {
     for (var i = 0; i < 4; i++) {
       await tester.pump();
     }
+  }
+
+  testWidgets('màn chi tiết buổi của người khác hiện chip của buổi đó', (
+    tester,
+  ) async {
+    await result('binh', 'a1').set(doc('binh', 7));
+    await pumpDetail(tester);
     expect(find.text('+7 ô'), findsOneWidget);
+  });
+
+  testWidgets('màn chi tiết buổi cũ có tuyến thì link mở ô giữa tuyến', (
+    tester,
+  ) async {
+    // Một điểm (21,03; 105,85) mã hoá polyline tay: nằm ở ô 208149_115402.
+    await pumpDetail(tester, polyline: 'olj_Coy`eS');
+    expect(find.text('Xem lãnh địa'), findsOneWidget);
+    expect(
+      tester
+          .widget<TerritoryResultChip>(find.byType(TerritoryResultChip))
+          .fallbackCell,
+      '208149_115402',
+    );
+  });
+
+  testWidgets('màn chi tiết buổi không có tuyến thì không có link', (
+    tester,
+  ) async {
+    await pumpDetail(tester);
+    expect(find.text('Xem lãnh địa'), findsNothing);
+  });
+
+  testWidgets(
+    'toạ độ ngoài khoảng thì bỏ link, màn chi tiết vẫn hiện số liệu',
+    (tester) async {
+      // (120; 105,85) mã hoá polyline tay: vĩ độ không hợp lệ.
+      await pumpDetail(tester, polyline: '_ol{Uoy`eS');
+      // Header bản đồ có assert riêng với vĩ độ này, có từ trước.
+      tester.takeException();
+      expect(find.byType(ActivityOverview), findsOneWidget);
+      expect(find.text('Xem lãnh địa'), findsNothing);
+    },
+  );
+
+  testWidgets('polyline cụt thì bỏ link, màn chi tiết vẫn hiện số liệu', (
+    tester,
+  ) async {
+    await pumpDetail(tester, polyline: 'olj_Coy`e');
+    // Header bản đồ (RouteMap) vỡ với polyline cụt từ trước; ở đây chỉ kiểm
+    // link lãnh địa không kéo cả cột số liệu vỡ theo.
+    expect(tester.takeException(), isA<RangeError>());
+    expect(find.byType(ActivityOverview), findsOneWidget);
+    expect(find.text('Xem lãnh địa'), findsNothing);
   });
 }
 

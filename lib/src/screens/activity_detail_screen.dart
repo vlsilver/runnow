@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:myrun/src/achievements/achievement_card.dart';
 import 'package:myrun/src/achievements/card_share.dart';
 import 'package:myrun/src/achievements/run_card.dart';
@@ -20,6 +21,7 @@ import 'package:myrun/src/models.dart';
 import 'package:myrun/src/providers.dart';
 import 'package:myrun/src/run_contracts/run_contract_controller.dart';
 import 'package:myrun/src/screens/route_replay_screen.dart';
+import 'package:myrun/src/territory/territory_grid.dart';
 import 'package:myrun/src/territory/territory_widgets.dart';
 import 'package:myrun/src/run_contracts/run_contract_models.dart';
 import 'package:myrun/src/theme.dart';
@@ -54,6 +56,25 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
   void dispose() {
     _selectedDistanceMeters.dispose();
     super.dispose();
+  }
+
+  /// Id ô lãnh địa ở giữa tuyến buổi; buổi không có tuyến thì null.
+  String? _routeCell(ActivitySummary summary) {
+    final points = summary.routePoints;
+    if (points.isNotEmpty) {
+      final mid = points[points.length ~/ 2];
+      return territoryCellOfRoute([LatLng(mid.latitude, mid.longitude)])?.id;
+    }
+    final encoded = summary.polyline;
+    if (encoded == null || encoded.isEmpty) return null;
+    // Polyline cụt thì decodePolyline đọc quá cuối chuỗi. Lỗi ở đây làm mất
+    // cả cột số liệu, nên chỉ bỏ link.
+    try {
+      return territoryCellOfRoute(decodePolyline(encoded))?.id;
+    } on RangeError catch (error) {
+      debugPrint('lãnh địa: polyline buổi ${summary.id} hỏng: $error');
+      return null;
+    }
   }
 
   @override
@@ -166,6 +187,7 @@ class _ActivityDetailScreenState extends ConsumerState<ActivityDetailScreen> {
                           uid: heartOwner,
                           activityId: widget.activityId,
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                          fallbackCell: _routeCell(item.summary),
                         ),
                       if (heart != null)
                         Padding(

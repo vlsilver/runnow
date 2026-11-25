@@ -129,6 +129,24 @@ void main() {
     expect(find.text('Của tôi · 3 ô'), findsOneWidget);
   });
 
+  testWidgets('mở theo ô thì canh giữa ô đó, ô sai lưới thì về chunk', (
+    tester,
+  ) async {
+    await pump(tester, const TerritoryScreen(cell: '208149_115402'));
+    var map = tester.widget<TerritoryMap>(find.byType(TerritoryMap));
+    // Tâm ô tính tay: lon = 208149,5/2^18·360−180, lat = atan(sinh(π(1−2y/2^18))).
+    expect(map.center.longitude, closeTo(105.849838257, 1e-6));
+    expect(map.center.latitude, closeTo(21.030032720, 1e-6));
+    expect(map.zoom, 16);
+
+    await pump(
+      tester,
+      const TerritoryScreen(chunk: '6523_3849', cell: '262144_1'),
+    );
+    map = tester.widget<TerritoryMap>(find.byType(TerritoryMap));
+    expect(map.zoom, 15);
+  });
+
   testWidgets('chạm ô thì hiện tên chủ ô và km', (tester) async {
     await pump(
       tester,

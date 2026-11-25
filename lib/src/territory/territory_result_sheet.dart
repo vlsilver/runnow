@@ -112,7 +112,14 @@ class TerritoryResultSheet extends ConsumerWidget {
             FilledButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                context.push(territoryLocation(chunk: result.chunk?.id));
+                // Ô giữa danh sách, để buổi dài cũng mở vào giữa các ô.
+                final cells = [...result.newCells, ...result.takenCells.keys];
+                context.push(
+                  territoryLocation(
+                    chunk: result.chunk?.id,
+                    cell: cells.isEmpty ? null : cells[cells.length ~/ 2].id,
+                  ),
+                );
               },
               child: const Text('Xem trên bản đồ'),
             ),
