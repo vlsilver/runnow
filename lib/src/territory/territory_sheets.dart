@@ -6,6 +6,7 @@ import 'package:myrun/src/territory/territory_repository.dart';
 import 'package:myrun/src/territory/territory_widgets.dart';
 import 'package:myrun/src/theme.dart';
 import 'package:myrun/src/widgets/cached_avatar.dart';
+import 'package:myrun/src/widgets/run_now_avatar.dart';
 import 'package:myrun/src/widgets/run_now_loading.dart';
 
 /// Luật lãnh địa trong bốn dòng, mở từ nút "Là gì?".
@@ -248,7 +249,7 @@ class TerritoryAvatar extends ConsumerWidget {
   final String name;
 
   /// Ảnh đại diện; không truyền thì lấy từ BXH đã tải. Có ảnh thì phủ lên chữ
-  /// cái đầu, tải lỗi thì vẫn thấy chữ.
+  /// cái đầu.
   final String? avatarUrl;
   final double size;
 
@@ -261,13 +262,13 @@ class TerritoryAvatar extends ConsumerWidget {
         ? '?'
         : name.trim().characters.first.toUpperCase();
     final url = avatarUrl ?? ref.watch(territoryNamesProvider)[uid]?.avatarUrl;
-    return CircleAvatar(
+    // Theo theme như mọi avatar của app: vuông ở kiểu Thép, Pixel.
+    return RunNowAvatar(
       radius: size / 2,
       backgroundColor: color,
       foregroundImage: url == null || url.isEmpty
           ? null
           : cachedAvatarImage(context, url, size),
-      onForegroundImageError: url == null || url.isEmpty ? null : (_, _) {},
       child: Text(
         initial,
         style: TextStyle(

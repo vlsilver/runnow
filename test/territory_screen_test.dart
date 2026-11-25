@@ -320,6 +320,36 @@ void main() {
     );
   });
 
+  testWidgets(
+    'avatar lãnh địa theo theme: vuông ở kiểu Thép, tròn ở kiểu gốc',
+    (tester) async {
+      Future<void> show(RunNowStyle style) => tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            firebaseUserProvider.overrideWith(
+              (ref) => Stream.value(MockUser(uid: 'an')),
+            ),
+            leaderboardDocsProvider.overrideWith((ref) async => const []),
+          ],
+          child: MaterialApp(
+            theme: buildRunNowTheme(RunNowElement.water, style: style),
+            home: const Scaffold(
+              body: TerritoryAvatar(uid: 'binh', name: 'Bình'),
+            ),
+          ),
+        ),
+      );
+      await show(RunNowStyle.iron);
+    await tester.pumpAndSettle();
+      expect(find.byType(CircleAvatar), findsNothing);
+      expect(find.text('B'), findsOneWidget);
+      await show(RunNowStyle.elemental);
+    // MaterialApp đổi theme dần qua AnimatedTheme.
+    await tester.pumpAndSettle();
+      expect(find.byType(CircleAvatar), findsOneWidget);
+    },
+  );
+
   test('độ đậm theo km: bốn mức, ngưỡng 300, 750, 1500 m', () {
     expect(territoryCellAlpha(0), 0.2);
     expect(territoryCellAlpha(299), 0.2);
