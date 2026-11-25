@@ -138,14 +138,21 @@ Ghi `result` chỉ khi chưa có. Firestore không có precondition kiểu "fiel
 
 ### Màn Lãnh địa
 
-**Màn Lãnh địa là chỗ xem lãnh địa của mình và của mọi người.** Trên bản đồ có hàng lọc Tất cả · Của tôi · Mọi người. Mọi người mở danh sách người đang giữ ô, nhiều ô trước, bằng nhau thì theo `uid` để thứ tự không nhảy. Chọn một người thì bản đồ chỉ vẽ ô của người đó. Màn hình không có ô nào của họ thì bản đồ fit vào các ô họ giữ ở chunk nhiều ô nhất; đang thấy ô của họ thì giữ chỗ xem. Người dùng đổi lọc hay tự kéo bản đồ trong lúc chờ đọc ô thì bản đồ không bị kéo đi.
+**Màn Lãnh địa là chỗ xem lãnh địa của mình và của mọi người** (thiết kế B, canvas "Lãnh địa UI/UX"). Ô của mình màu chính của theme, mọi người khác một màu xanh (tím khi màu chính gần xanh, như theme Nước). Hàng lọc Tất cả · Của tôi · Mọi người nằm dưới tiêu đề. Nút "Là gì?" mở luật bốn dòng.
 
-**Ô đậm theo `m`**, tức số mét chủ ô chạy trong ô trong cửa sổ giữ ô. Có bốn mức, ngưỡng 300, 750 và 1500 m, tương đương khoảng 2, 5 và 10 lượt qua ô (mỗi lượt khoảng 150 m). Đây cũng là số dùng để xét ai giữ ô, nên ô càng đậm thì người khác càng phải chạy nhiều mới chiếm được. Chạm ô thì thấy tên chủ và km.
+- **Chạm ô:** chủ ô, km giữ ô, thanh so với người bám sau (`m2`, không có tên vì backend không lưu), câu "Chạy hơn X km trong ô này để chiếm".
+- **Mọi người:** hạng theo số ô, diện tích và số ô từng người. Chạm một người mở **Thông số**: bản đồ nhỏ, hạng, diện tích, số ô, km trong lãnh địa (tổng `m`), ô chắc nhất, ô bị bám sát (`m2` ≥ 80% `m`). "Xem trên bản đồ" lọc bản đồ theo người đó.
+- **Diện tích** = số ô từng chunk × diện tích một ô ở vĩ độ chunk (cạnh ≈ 150 m ở TP.HCM, ≈ 2,26 ha).
+- **Thẻ khoe:** diện tích, số ô, tên, ngày; chỉ hình ô, không nền bản đồ; chọn khổ Story / Feed.
+
+**Ô đậm theo `m`**, bốn mức 300, 750, 1500 m (khoảng 2, 5, 10 lượt qua ô). Đây cũng là số dùng để giữ ô, nên ô càng đậm càng khó bị chiếm.
 
 | Được | Mất |
 |---|---|
-| Không đổi backend, không tính lại dữ liệu: `m` đã có trong chunk | Một buổi chạy vòng nhiều lần trong một ô cũng làm ô đậm, chứ không đếm số buổi |
-| Danh sách Mọi người đọc thẳng `territoryOwners`, rules đã cho đọc | Mỗi lần tải đọc mọi doc owners, kể cả doc rỗng (lọc ở app). App giữ danh sách 5 phút sau lần đọc thành công |
+| Không đổi backend: `m`, `m2`, `byChunk` đã có | Đậm theo km, không đếm số buổi; người bám sau không có tên |
+| Danh sách và Thông số đọc thẳng `territoryOwners`, chunk | Mỗi lần tải danh sách đọc mọi doc owners (giữ 5 phút); Thông số đọc mọi chunk của người đó |
+
+Hai màn trên canvas cần backend nên làm đợt sau: bản đồ nhỏ "+N ô" sau buổi chạy (`territoryResults` phải ghi danh sách ô) và màn mở từ push bị chiếm (push phải mang người chiếm và ô mất).
 
 ### Phương án đã cân nhắc và loại
 
