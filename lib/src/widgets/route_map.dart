@@ -168,9 +168,9 @@ class RouteMap extends StatelessWidget {
   /// Lớp vẽ dưới đường chạy, cả khi phóng to toàn màn.
   final RouteUnderlayBuilder? underRoute;
 
-  /// Một nút thêm trên bản đồ (vd. bật tắt ô lãnh địa): góc trên trái khi bản
-  /// đồ nằm trong màn, dưới nút ℹ️ khi bám vị trí (màn chạy). Không có khi
-  /// phóng to toàn màn.
+  /// Một nút thêm trên bản đồ (vd. bật tắt ô lãnh địa): cùng cột phải với nút
+  /// phóng to và 3D khi bản đồ nằm trong màn, dưới nút ℹ️ khi bám vị trí (màn
+  /// chạy). Không có khi phóng to toàn màn.
   final Widget? mapAction;
 
   @override
@@ -185,6 +185,12 @@ class RouteMap extends StatelessWidget {
         ),
       );
     }
+    final show3d =
+        !follow &&
+        liveRunnersStream == null &&
+        hasVectorMap &&
+        vectorMapCovers(points) &&
+        points.length > 1;
     return ClipRect(
       child: SizedBox(
         height: height,
@@ -204,8 +210,6 @@ class RouteMap extends StatelessWidget {
                 followAction: follow ? mapAction : null,
               ),
             ),
-            if (!follow && mapAction != null)
-              Positioned(top: 10, left: 10, child: mapAction!),
             // Map tracking (follow) đã tràn viền toàn màn → không cần nút
             // phóng-to-toàn-màn (gây rối ở góc trên).
             if (!follow)
@@ -220,11 +224,10 @@ class RouteMap extends StatelessWidget {
                         onTap: () => _openFullscreen(context, points),
                       ),
               ),
-            if (!follow &&
-                liveRunnersStream == null &&
-                hasVectorMap &&
-                vectorMapCovers(points) &&
-                points.length > 1)
+            // Cùng cột với nút phóng to và 3D, ngay dưới nút cuối.
+            if (!follow && mapAction != null)
+              Positioned(top: show3d ? 98 : 54, right: 10, child: mapAction!),
+            if (show3d)
               Positioned(
                 top: 54,
                 right: 10,
